@@ -38,6 +38,7 @@ export function useUpdateTask() {
       projectId: string
       status?: string
       title?: string
+      description?: string    // ← add this
       priority?: string
     }) => {
       const { data } = await api.patch(`/tasks/${id}`, payload)
