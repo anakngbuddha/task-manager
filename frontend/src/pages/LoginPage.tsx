@@ -17,16 +17,20 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-
-    const { error } = await signIn.email({ email, password })
-
-    if (error) {
-      setError(error.message ?? 'Login failed')
-      setLoading(false)
-      return
-    }
-
-    navigate('/')
+  
+    await signIn.email({
+      email,
+      password,
+      fetchOptions: {
+        onSuccess: () => {
+          navigate('/')
+        },
+        onError: (ctx) => {
+          setError(ctx.error.message ?? 'Login failed')
+          setLoading(false)
+        },
+      },
+    })
   }
 
   const handleGoogle = async () => {

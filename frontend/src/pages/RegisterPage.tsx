@@ -18,16 +18,26 @@ export default function RegisterPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-
-    const { error } = await signUp.email({ name, email, password })
-
+  
+    const { error } = await signUp.email({
+      name,
+      email,
+      password,
+      fetchOptions: {
+        onSuccess: () => {
+          navigate('/')
+        },
+        onError: (ctx) => {
+          setError(ctx.error.message ?? 'Registration failed')
+          setLoading(false)
+        }
+      }
+    })
+  
     if (error) {
       setError(error.message ?? 'Registration failed')
       setLoading(false)
-      return
     }
-
-    navigate('/')
   }
 
   return (
