@@ -10,7 +10,7 @@ import 'dotenv/config'
 const app = Fastify({ logger: true })
 
 await app.register(cors, {
-  origin: ['http://localhost:5173'],
+  origin: ['http://localhost:5173','http://task-manager-mauve-eta.vercel.app/'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'cookie'],
