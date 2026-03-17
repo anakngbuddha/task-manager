@@ -8,14 +8,12 @@ const createProjectSchema = z.object({
 })
 
 export async function projectRoutes(app: FastifyInstance) {
-  // GET all projects for current user
   app.get('/projects', {
     preHandler: authenticate,
   }, async (req) => {
-    return projectService.getAllForUser(req.user.id)
+    return projectService.getAllForUser(req.authUser.id)
   })
 
-  // GET single project
   app.get('/projects/:id', {
     preHandler: authenticate,
   }, async (req, reply) => {
@@ -25,16 +23,14 @@ export async function projectRoutes(app: FastifyInstance) {
     return project
   })
 
-  // POST create project
   app.post('/projects', {
     preHandler: authenticate,
   }, async (req, reply) => {
     const { name } = createProjectSchema.parse(req.body)
-    const project = await projectService.create(name, req.user.id)
+    const project = await projectService.create(name, req.authUser.id)
     return reply.status(201).send(project)
   })
 
-  // PATCH update project
   app.patch('/projects/:id', {
     preHandler: authenticate,
   }, async (req, reply) => {
@@ -43,7 +39,6 @@ export async function projectRoutes(app: FastifyInstance) {
     return projectService.update(id, name)
   })
 
-  // DELETE project
   app.delete('/projects/:id', {
     preHandler: authenticate,
   }, async (req, reply) => {

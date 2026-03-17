@@ -35,8 +35,10 @@ app.addHook('onRequest', async (req, reply) => {
 
   if (req.url.startsWith('/api/auth')) {
     injectCORSHeaders(reply.raw)
+    const handler = toNodeHandler(auth)
     await new Promise<void>((resolve) => {
-      toNodeHandler(auth)(req.raw, reply.raw, () => resolve())
+      handler(req.raw, reply.raw)
+      resolve()
     })
     return reply.hijack()
   }

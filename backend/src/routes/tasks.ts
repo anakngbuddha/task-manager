@@ -20,16 +20,13 @@ const updateTaskSchema = z.object({
 })
 
 export async function taskRoutes(app: FastifyInstance) {
-  // GET all tasks for a project
   app.get('/projects/:projectId/tasks', {
     preHandler: authenticate,
-  }, async (req, reply) => {
+  }, async (req) => {
     const { projectId } = req.params as { projectId: string }
-    const tasks = await taskService.getAll(projectId)
-    return tasks
+    return taskService.getAll(projectId)
   })
 
-  // GET single task
   app.get('/tasks/:id', {
     preHandler: authenticate,
   }, async (req, reply) => {
@@ -39,7 +36,6 @@ export async function taskRoutes(app: FastifyInstance) {
     return task
   })
 
-  // POST create task
   app.post('/tasks', {
     preHandler: authenticate,
   }, async (req, reply) => {
@@ -48,17 +44,14 @@ export async function taskRoutes(app: FastifyInstance) {
     return reply.status(201).send(task)
   })
 
-  // PATCH update task
   app.patch('/tasks/:id', {
     preHandler: authenticate,
-  }, async (req, reply) => {
+  }, async (req) => {
     const { id } = req.params as { id: string }
     const body = updateTaskSchema.parse(req.body)
-    const task = await taskService.update(id, body)
-    return task
+    return taskService.update(id, body)
   })
 
-  // DELETE task
   app.delete('/tasks/:id', {
     preHandler: authenticate,
   }, async (req, reply) => {
