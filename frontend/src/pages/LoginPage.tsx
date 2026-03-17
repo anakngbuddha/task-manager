@@ -17,20 +17,20 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-  
-    await signIn.email({
-      email,
-      password,
-      fetchOptions: {
-        onSuccess: () => {
-          navigate('/')
-        },
-        onError: (ctx) => {
-          setError(ctx.error.message ?? 'Login failed')
-          setLoading(false)
-        },
-      },
-    })
+
+    try {
+      const result = await signIn.email({ email, password })
+      if (result?.error) {
+        setError(result.error.message ?? 'Login failed')
+        setLoading(false)
+        return
+      }
+      // Force hard redirect to ensure session is picked up
+      window.location.href = '/'
+    } catch (err: any) {
+      setError(err?.message ?? 'Login failed')
+      setLoading(false)
+    }
   }
 
   const handleGoogle = async () => {
