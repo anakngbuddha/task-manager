@@ -17,6 +17,17 @@ export const auth = betterAuth({
   },
   trustedOrigins: [
     'http://localhost:5173',
-    'https://task-manager-mauve-eta.vercel.app',  // ← add this
+    'https://task-manager-mauve-eta.vercel.app',
   ],
+  advanced: {
+    crossSubdomainCookies: {
+      enabled: false,
+    },
+    defaultCookieAttributes: {
+      secure: true,
+      httpOnly: true,
+      sameSite: 'none',
+      partitioned: true,
+    },
+  },
 })

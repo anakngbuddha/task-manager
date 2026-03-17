@@ -32,7 +32,8 @@ function injectCORSHeaders(req: any, res: any) {
   }
   res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,cookie')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,cookie,set-cookie')
+  res.setHeader('Access-Control-Expose-Headers', 'set-cookie')
 }
 
 app.addHook('onRequest', async (req, reply) => {
