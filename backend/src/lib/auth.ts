@@ -15,5 +15,8 @@ export const auth = betterAuth({
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     },
   },
-  trustedOrigins: ['http://localhost:5173'],
+  trustedOrigins: [
+    'http://localhost:5173',
+    'https://task-manager-mauve-eta.vercel.app',  // ← add this
+  ],
 })
