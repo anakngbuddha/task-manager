@@ -9,8 +9,13 @@ import 'dotenv/config'
 
 const app = Fastify({ logger: true })
 
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'https://task-manager-mauve-eta.vercel.app',
+]
+
 await app.register(cors, {
-  origin: ['http://localhost:5173','http://task-manager-mauve-eta.vercel.app/'],
+  origin: ALLOWED_ORIGINS,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'cookie'],
@@ -20,8 +25,11 @@ await app.register(jwt, {
   secret: process.env.JWT_SECRET!,
 })
 
-function injectCORSHeaders(res: any) {
-  res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173')
+function injectCORSHeaders(req: any, res: any) {
+  const origin = req.headers?.origin
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  }
   res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,cookie')
@@ -29,12 +37,12 @@ function injectCORSHeaders(res: any) {
 
 app.addHook('onRequest', async (req, reply) => {
   if (req.method === 'OPTIONS' && req.url.startsWith('/api/auth')) {
-    injectCORSHeaders(reply.raw)
+    injectCORSHeaders(req.raw, reply.raw)
     return reply.status(204).send()
   }
 
   if (req.url.startsWith('/api/auth')) {
-    injectCORSHeaders(reply.raw)
+    injectCORSHeaders(req.raw, reply.raw)
     const handler = toNodeHandler(auth)
     await new Promise<void>((resolve) => {
       handler(req.raw, reply.raw)
