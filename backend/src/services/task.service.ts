@@ -23,6 +23,7 @@ export const taskService = {
     projectId: string
     assigneeId?: string
     priority?: Priority
+    deadline?: Date | null
   }) {
     return prisma.task.create({
       data,
@@ -36,6 +37,7 @@ export const taskService = {
     status?: TaskStatus
     priority?: Priority
     assigneeId?: string
+    deadline?: Date | null
   }) {
     return prisma.task.update({
       where: { id },

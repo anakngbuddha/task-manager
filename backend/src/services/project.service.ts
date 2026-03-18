@@ -28,7 +28,7 @@ export const projectService = {
       data: {
         name,
         members: {
-          create: { userId, role: 'OWNER' },
+          create: { userId, role: 'MASTER_ADMIN' },
         },
       },
       include: { members: true },
@@ -49,6 +49,28 @@ export const projectService = {
   async addMember(projectId: string, userId: string) {
     return prisma.projectMember.create({
       data: { projectId, userId, role: 'MEMBER' },
+    })
+  },
+
+  async listMembers(projectId: string) {
+    return prisma.projectMember.findMany({
+      where: { projectId },
+      include: { user: true },
+      orderBy: { role: 'asc' },
+    })
+  },
+
+  async getMemberRole(projectId: string, userId: string) {
+    return prisma.projectMember.findUnique({
+      where: { userId_projectId: { userId, projectId } },
+      select: { role: true },
+    })
+  },
+
+  async updateMemberRole(projectId: string, userId: string, role: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER') {
+    return prisma.projectMember.update({
+      where: { userId_projectId: { userId, projectId } },
+      data: { role },
     })
   },
 }

@@ -19,7 +19,9 @@ export function useCreateTask() {
       title: string
       description?: string
       projectId: string
+      assigneeId?: string
       priority?: string
+      deadline?: string | null
     }) => {
       const { data } = await api.post('/tasks', payload)
       return data
@@ -38,8 +40,9 @@ export function useUpdateTask() {
       projectId: string
       status?: string
       title?: string
-      description?: string    // ← add this
+      description?: string
       priority?: string
+      deadline?: string | null
     }) => {
       const { data } = await api.patch(`/tasks/${id}`, payload)
       return data

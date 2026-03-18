@@ -5,12 +5,20 @@ import { toNodeHandler } from 'better-auth/node'
 import { auth } from './lib/auth.js'
 import { taskRoutes } from './routes/tasks.js'
 import { projectRoutes } from './routes/projects.js'
+import { inviteRoutes } from './routes/invites.js'
+import { taskCommentRoutes } from './routes/taskComments.js'
+import { projectMessageRoutes } from './routes/projectMessages.js'
+import { projectDirectMessageRoutes } from './routes/projectDirectMessages.js'
+import { activityRoutes } from './routes/activity.js'
+import { notificationRoutes } from './routes/notifications.js'
+import { readReceiptRoutes } from './routes/readReceipts.js'
 import 'dotenv/config'
 
 const app = Fastify({ logger: true })
 
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
+  'http://localhost:5174',
   'https://task-manager-mauve-eta.vercel.app',
 ]
 
@@ -55,6 +63,13 @@ app.addHook('onRequest', async (req, reply) => {
 
 app.register(taskRoutes, { prefix: '/api' })
 app.register(projectRoutes, { prefix: '/api' })
+app.register(inviteRoutes, { prefix: '/api' })
+app.register(taskCommentRoutes, { prefix: '/api' })
+app.register(projectMessageRoutes, { prefix: '/api' })
+app.register(projectDirectMessageRoutes, { prefix: '/api' })
+app.register(activityRoutes, { prefix: '/api' })
+app.register(notificationRoutes, { prefix: '/api' })
+app.register(readReceiptRoutes, { prefix: '/api' })
 
 app.get('/health', async () => {
   return { status: 'ok' }

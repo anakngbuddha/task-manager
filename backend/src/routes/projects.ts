@@ -7,6 +7,10 @@ const createProjectSchema = z.object({
   name: z.string().min(1).max(100),
 })
 
+const updateRoleSchema = z.object({
+  role: z.enum(['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']),
+})
+
 export async function projectRoutes(app: FastifyInstance) {
   app.get('/projects', {
     preHandler: authenticate,
@@ -45,5 +49,52 @@ export async function projectRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     await projectService.delete(id)
     return reply.status(204).send()
+  })
+
+  app.get('/projects/:projectId/members', {
+    preHandler: authenticate,
+  }, async (req, reply) => {
+    const { projectId } = req.params as { projectId: string }
+    const membership = await projectService.getMemberRole(projectId, req.authUser.id)
+    if (!membership) return reply.status(403).send({ error: 'Forbidden' })
+    return projectService.listMembers(projectId)
+  })
+
+  app.patch('/projects/:projectId/members/:userId/role', {
+    preHandler: authenticate,
+  }, async (req, reply) => {
+    const { projectId, userId } = req.params as { projectId: string; userId: string }
+    const { role } = updateRoleSchema.parse(req.body)
+
+    // Disallow changing your own role (prevents MASTER_ADMIN self-demotion, etc.)
+    if (req.authUser.id === userId) {
+      return reply.status(403).send({ error: 'You cannot change your own role' })
+    }
+
+    const me = await projectService.getMemberRole(projectId, req.authUser.id)
+    if (!me) return reply.status(403).send({ error: 'Forbidden' })
+
+    // Permission rules:
+    // - MASTER_ADMIN can change anyone's role (including other admins)
+    // - PROJECT_MANAGER can only change MEMBER roles (cannot change MASTER_ADMIN/PROJECT_MANAGER)
+    if (me.role === 'MEMBER') return reply.status(403).send({ error: 'Forbidden' })
+
+    const target = await projectService.getMemberRole(projectId, userId)
+    if (!target) return reply.status(404).send({ error: 'Member not found' })
+
+    if (me.role === 'PROJECT_MANAGER') {
+      if (target.role !== 'MEMBER') return reply.status(403).send({ error: 'Forbidden' })
+      if (role !== 'MEMBER') return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    // Prevent removing the last MASTER_ADMIN (simple guard)
+    if (target.role === 'MASTER_ADMIN' && role !== 'MASTER_ADMIN') {
+      const admins = await projectService.listMembers(projectId)
+      const adminCount = admins.filter((m: any) => m.role === 'MASTER_ADMIN').length
+      if (adminCount <= 1) return reply.status(400).send({ error: 'Project must have at least one MASTER_ADMIN' })
+    }
+
+    await projectService.updateMemberRole(projectId, userId, role)
+    return { ok: true }
   })
 }
