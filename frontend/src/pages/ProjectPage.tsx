@@ -6,6 +6,7 @@ import {
   } from '@dnd-kit/core'
   import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
 import Sidebar from '@/components/layout/Sidebar'
+import NotificationBell from '@/components/layout/NotificationBell'
 import KanbanColumn from '@/components/board/KanbanColumn'
 import TaskCard from '@/components/board/TaskCard'
 import TaskDialog from '@/components/board/TaskDialog'
@@ -13,12 +14,13 @@ import { useTasks, useUpdateTask, useCreateTask } from '@/hooks/useTasks'
 import { useProject } from '@/hooks/useProject'
 import { useProjectMembers } from '@/hooks/useProjectMembers'
 import { useSession } from '@/lib/auth-client'
+import { useNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from '@/hooks/useNotifications'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FolderPlus, LayoutGrid, MessageCircle, Plus, UserPlus } from 'lucide-react'
+import { FolderPlus, LayoutGrid, MessageCircle, Plus, UserPlus, ChevronRight } from 'lucide-react'
 import { useCreateInvite } from '@/hooks/useInvites'
 import { Link } from 'react-router-dom'
 
@@ -45,6 +47,9 @@ const COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
 export default function ProjectPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const { data: session } = useSession()
+  const { data: notifData } = useNotifications(20)
+  const markRead = useMarkNotificationRead()
+  const markAllRead = useMarkAllNotificationsRead()
   const { data: tasks = [], isLoading } = useTasks(projectId!)
   const { data: project } = useProject(projectId!)
   const { data: members = [] } = useProjectMembers(projectId!)
@@ -189,25 +194,36 @@ export default function ProjectPage() {
       <Sidebar />
       <main className="flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.08),transparent_55%)]">
         <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-          <div className="px-6 py-6 sm:px-8">
-            <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="h-13 px-4 sm:px-6">
+            <div className="flex h-full items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <LayoutGrid className="size-4" />
-                  <span className="text-xs font-medium uppercase tracking-wider">Project board</span>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <LayoutGrid className="size-3.5" />
+                    <span className="font-medium">Project Board</span>
+                  </span>
+                  <ChevronRight className="size-3.5" />
+                  <span className="truncate font-medium text-foreground/90">{project?.name ?? 'Tasks'}</span>
                 </div>
-                <h2 className="mt-1 text-2xl font-semibold leading-tight">Tasks</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Drag tasks between columns to update status.
-                </p>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <h2 className="truncate text-sm font-semibold">Tasks</h2>
+                  <span className="text-xs text-muted-foreground">· Drag & drop to update status</span>
+                </div>
               </div>
 
               <div className="flex items-center gap-2">
+                <NotificationBell
+                  notifData={notifData}
+                  markAllRead={markAllRead}
+                  markRead={markRead}
+                  onNavigate={(to) => (to ? window.location.assign(to) : undefined)}
+                />
+
                 <Dialog open={inviteModalOpen} onOpenChange={setInviteModalOpen}>
                   <DialogTrigger asChild>
                     <Button
                       variant="outline"
-                      className="h-10 gap-2"
+                      className="h-9 gap-2"
                       onClick={async () => {
                         const base = window.location.origin
                         const res = await createInvite.mutateAsync()
@@ -243,9 +259,15 @@ export default function ProjectPage() {
                   </DialogContent>
                 </Dialog>
 
+                <Link to={`/projects/${projectId}/members`}>
+                  <Button variant="outline" className="h-9">
+                    View members
+                  </Button>
+                </Link>
+
                 <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                   <DialogTrigger asChild>
-                    <Button className="h-10 gap-2" disabled={!canCreateTask}>
+                    <Button className="h-9 gap-2" disabled={!canCreateTask}>
                       <Plus className="size-4" />
                       Add task
                     </Button>
@@ -340,12 +362,6 @@ export default function ProjectPage() {
                     </form>
                   </DialogContent>
                 </Dialog>
-
-                <Link to={`/projects/${projectId}/members`}>
-                  <Button variant="outline" className="h-10">
-                    View members
-                  </Button>
-                </Link>
               </div>
             </div>
           </div>

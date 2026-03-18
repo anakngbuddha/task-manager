@@ -1,14 +1,15 @@
 import { Badge } from '@/components/ui/badge'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical } from 'lucide-react'
 
 const priorityColors: Record<string, string> = {
-  LOW:    'bg-slate-100 text-slate-700',
-  MEDIUM: 'bg-blue-100 text-blue-700',
-  HIGH:   'bg-orange-100 text-orange-700',
-  URGENT: 'bg-red-100 text-red-700',
+  LOW:    'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+  MEDIUM: 'bg-blue-500/15 text-blue-600 dark:text-blue-400',
+  HIGH:   'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+  URGENT: 'bg-red-500/15 text-red-600 dark:text-red-400',
 }
 
 const priorityLabels: Record<string, string> = {
@@ -35,27 +36,26 @@ export default function TaskCard({ task, onClick }: {
     <Card
       ref={setNodeRef}
       style={style}
-      className="group cursor-default rounded-none border-border/60 bg-card/90 transition-colors hover:border-primary/60"
+      className={[
+        'group cursor-pointer rounded-xl border-border/60 bg-card/90',
+        'transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-[0_14px_50px_-35px_rgba(0,0,0,.35)]',
+        isDragging ? 'shadow-none' : '',
+      ].join(' ')}
       onClick={() => {
         if (!isDragging) onClick(task)
       }}
     >
-      <CardHeader className="px-2 py-1.5">
+      <CardHeader className="px-3 pb-1.5 pt-2.5">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 space-y-1">
-            <CardTitle className="text-xs font-medium leading-snug line-clamp-2">
+            <CardTitle className="text-sm font-semibold leading-snug line-clamp-2">
               {task.title}
             </CardTitle>
-            {task.deadline && (
-              <p className="text-[0.65rem] text-muted-foreground">
-                Due {new Date(task.deadline).toLocaleString()}
-              </p>
-            )}
           </div>
           <button
             type="button"
             aria-label="Drag task"
-            className="inline-flex shrink-0 items-center justify-center p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+            className="inline-flex shrink-0 items-center justify-center rounded-md p-1 text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 group-hover:opacity-100"
             {...attributes}
             {...listeners}
           >
@@ -63,16 +63,25 @@ export default function TaskCard({ task, onClick }: {
           </button>
         </div>
       </CardHeader>
-      <CardContent className="px-2 pb-2 pt-0 space-y-1">
+      <CardContent className="space-y-2 px-3 pb-3 pt-0">
         {task.description && (
-          <p className="text-[0.7rem] text-muted-foreground line-clamp-2">{task.description}</p>
+          <p className="text-xs text-muted-foreground line-clamp-2">{task.description}</p>
+        )}
+        {task.deadline && (
+          <p className="text-[0.7rem] text-muted-foreground">
+            Due {new Date(task.deadline).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+          </p>
         )}
         <div className="flex items-center justify-between gap-2">
-          <Badge className={`text-[0.68rem] px-1.5 py-0.5 ${priorityColors[task.priority]}`} variant="outline">
+          <Badge className={`text-[0.68rem] px-2 py-0.5 ${priorityColors[task.priority] ?? ''}`} variant="secondary">
             {priorityLabels[task.priority] ?? task.priority}
           </Badge>
           {task.assignee && (
-            <span className="text-[0.68rem] text-muted-foreground truncate max-w-[8rem]">{task.assignee.name}</span>
+            <Avatar className="h-6 w-6">
+              <AvatarFallback className="text-[0.65rem]">
+                {(task.assignee.name ?? task.assignee.email ?? 'U').charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
           )}
         </div>
       </CardContent>

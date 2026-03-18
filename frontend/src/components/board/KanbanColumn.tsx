@@ -2,12 +2,12 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import TaskCard from './TaskCard'
 
-const columnStyles: Record<string, string> = {
-  TODO:        'bg-[oklch(0.96_0.01_245)] text-[oklch(0.22_0.04_250)]',
-  IN_PROGRESS: 'bg-[oklch(0.94_0.03_192)] text-[oklch(0.22_0.04_250)]',
-  IN_REVIEW:   'bg-[oklch(0.96_0.02_95)] text-[oklch(0.22_0.04_250)]',
-  DONE:        'bg-[oklch(0.95_0.03_150)] text-[oklch(0.22_0.04_250)]',
-  READY:       'bg-[oklch(0.95_0.02_40)] text-[oklch(0.22_0.04_250)]',
+const columnDot: Record<string, string> = {
+  TODO: 'bg-muted-foreground/45',
+  IN_PROGRESS: 'bg-blue-500',
+  IN_REVIEW: 'bg-amber-500',
+  DONE: 'bg-emerald-500',
+  READY: 'bg-primary',
 }
 
 const columnLabels: Record<string, string> = {
@@ -27,37 +27,28 @@ export default function KanbanColumn({ status, tasks, onTaskClick }: {
 
   return (
     <div className="flex w-64 shrink-0 flex-col sm:w-72">
-      <div className="border border-border/60 bg-card/70 shadow-sm">
-        <div className="sticky top-0 z-10 border-b border-border/60 bg-card/85 px-2 py-1.5 backdrop-blur">
+      <div className="rounded-xl border border-border/60 bg-card/70 shadow-sm">
+        <div className="sticky top-0 z-10 border-b border-border/60 bg-card/85 px-3 py-2 backdrop-blur">
           <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={['h-2 w-2 rounded-full', columnDot[status] ?? 'bg-muted-foreground/45'].join(' ')} />
+              <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {columnLabels[status]}
               </p>
-              <div className="mt-1 flex items-center gap-2">
-                <span className={`inline-flex h-5 items-center rounded-full px-1.5 text-[0.7rem] font-medium ${columnStyles[status]}`}>
-                  {columnLabels[status]}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
-                </span>
-              </div>
+              <span className="text-xs text-muted-foreground">({tasks.length})</span>
             </div>
-            <span className="grid size-7 place-items-center border border-border/60 bg-background/60 text-xs font-semibold">
-              {tasks.length}
-            </span>
           </div>
         </div>
 
         <SortableContext items={tasks.map(t => String(t.id))} strategy={verticalListSortingStrategy}>
           <div
             ref={setNodeRef}
-            className={`min-h-32 space-y-1.5 overflow-auto p-2 transition-colors ${
+            className={`min-h-32 space-y-2 overflow-auto p-3 transition-colors ${
               isOver ? 'bg-accent/40 ring-1 ring-primary/25' : 'bg-transparent'
             }`}
           >
             {tasks.length === 0 ? (
-              <div className="border border-dashed border-border/70 bg-background/40 p-3 text-center text-xs text-muted-foreground">
+              <div className="rounded-lg border border-dashed border-border/70 bg-background/40 p-3 text-center text-xs text-muted-foreground">
                 Drop tasks here
               </div>
             ) : (
@@ -65,6 +56,14 @@ export default function KanbanColumn({ status, tasks, onTaskClick }: {
                 <TaskCard key={task.id} task={task} onClick={onTaskClick} />
               ))
             )}
+
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 bg-background/30 px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+            >
+              <span className="text-base leading-none">+</span>
+              Add task
+            </button>
           </div>
         </SortableContext>
       </div>

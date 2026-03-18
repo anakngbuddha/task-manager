@@ -79,6 +79,7 @@ model Project {
   name      String
   createdAt DateTime        @default(now())
   tasks     Task[]
+  sprints   Sprint[]
   members   ProjectMember[]
   invites   ProjectInvite[]
   messages  ProjectMessage[]
@@ -97,11 +98,13 @@ model Task {
   priority    Priority   @default(MEDIUM)
   projectId   String
   assigneeId  String?
+  sprintId    String?
   deadline    DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   project     Project    @relation(fields: [projectId], references: [id])
   assignee    User?      @relation(fields: [assigneeId], references: [id])
+  sprint      Sprint?    @relation(fields: [sprintId], references: [id], onDelete: SetNull)
   comments    TaskComment[]
 }
 
@@ -226,6 +229,28 @@ model DirectChatReadState {
 
   @@id([projectId, userId, otherUserId])
   @@index([projectId, otherUserId, userId])
+}
+
+model Sprint {
+  id        String       @id @default(cuid())
+  projectId String
+  name      String
+  goal      String?      @db.Text
+  startDate DateTime
+  endDate   DateTime
+  status    SprintStatus @default(PLANNING)
+  createdAt DateTime     @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@index([projectId, startDate])
+}
+
+enum SprintStatus {
+  PLANNING
+  ACTIVE
+  COMPLETED
 }
 
 enum TaskStatus {
