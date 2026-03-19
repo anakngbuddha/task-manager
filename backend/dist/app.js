@@ -16,7 +16,7 @@ import { sprintRoutes } from './routes/sprints.js';
 import { timeLogRoutes } from './routes/timeLogs.js';
 import { userRoutes } from './routes/users.js';
 import 'dotenv/config';
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, trustProxy: true });
 const ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:5174',

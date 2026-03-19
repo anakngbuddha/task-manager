@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { prisma } from './prisma.js';
-const isProd = process.env.NODE_ENV === 'production';
+const isProd = process.env.NODE_ENV === 'production' || process.env.BETTER_AUTH_URL?.startsWith('https://');
 export const auth = betterAuth({
     database: prismaAdapter(prisma, {
         provider: 'mysql',
