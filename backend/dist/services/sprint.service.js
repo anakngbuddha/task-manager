@@ -110,7 +110,7 @@ export const sprintService = {
         // Note: tasks completed after sprintEnd are ignored; tasks completed before sprintStart are counted on day 0.
         const completedByDay = Array.from({ length: days }, () => 0);
         for (const t of tasks) {
-            if (t.status !== 'DONE')
+            if (t.status !== 'DONE' && t.status !== 'READY')
                 continue;
             const completedDayUTC = startOfDayUTC(new Date(t.updatedAt));
             const diffMs = completedDayUTC.getTime() - sprintStart.getTime();

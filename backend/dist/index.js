@@ -2,8 +2,6 @@ import 'dotenv/config';
 import app from './app.js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { presenceService } from './services/presence.service.js';
-import { userStatusService } from './services/userStatus.service.js';
 const PORT = Number(process.env.PORT) || 3000;
 const httpServer = createServer(app.server);
 const io = new Server(httpServer, {
@@ -41,21 +39,6 @@ io.on('connection', (socket) => {
     });
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
-    });
-    socket.on('presence:ping', (payload) => {
-        if (!payload?.userId)
-            return;
-        presenceService.ping(payload.userId);
-        socket.broadcast.emit('presence:update', {
-            userId: payload.userId,
-            lastActiveAt: presenceService.lastActiveAt(payload.userId),
-        });
-    });
-    socket.on('status:set', async (payload) => {
-        if (!payload?.userId)
-            return;
-        const next = await userStatusService.setStatus(payload.userId, payload.status);
-        socket.broadcast.emit('status:update', { userId: payload.userId, status: next });
     });
 });
 const start = async () => {

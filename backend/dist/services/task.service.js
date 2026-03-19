@@ -3,7 +3,11 @@ export const taskService = {
     async getAll(projectId) {
         return prisma.task.findMany({
             where: { projectId },
-            include: { assignee: true },
+            include: {
+                assignee: true,
+                blockingTasks: { include: { blockedTask: true } },
+                blockedByTasks: { include: { blockingTask: true } },
+            },
             orderBy: { createdAt: 'desc' },
         });
     },

@@ -15,6 +15,7 @@ const createTaskSchema = z.object({
     status: z.nativeEnum(TaskStatus).optional(),
     // If null, task will not belong to any sprint.
     sprintId: z.string().nullable().optional(),
+    startDate: z.string().datetime().nullable().optional(),
     deadline: z.string().datetime().nullable().optional(),
 });
 const updateTaskSchema = z.object({
@@ -25,6 +26,7 @@ const updateTaskSchema = z.object({
     assigneeId: z.string().optional(),
     // If null, clear sprint assignment.
     sprintId: z.string().nullable().optional(),
+    startDate: z.string().datetime().nullable().optional(),
     deadline: z.string().datetime().nullable().optional(),
 });
 export async function taskRoutes(app) {
@@ -38,7 +40,15 @@ export async function taskRoutes(app) {
         preHandler: authenticate,
     }, async (req, reply) => {
         const { id } = req.params;
-        const task = await taskService.getById(id);
+        const task = await prisma.task.findUnique({
+            where: { id },
+            include: {
+                assignee: true,
+                project: true,
+                blockingTasks: { include: { blockedTask: true } },
+                blockedByTasks: { include: { blockingTask: true } },
+            },
+        });
         if (!task)
             return reply.status(404).send({ error: 'Task not found' });
         return task;
@@ -72,6 +82,7 @@ export async function taskRoutes(app) {
         }
         const task = await taskService.create({
             ...body,
+            startDate: body.startDate ? new Date(body.startDate) : null,
             deadline: body.deadline ? new Date(body.deadline) : null,
         });
         await activityService.record({
@@ -143,6 +154,11 @@ export async function taskRoutes(app) {
                 throw new Error('Deadline cannot be in the past');
             }
         }
+        if (body.startDate && body.deadline) {
+            if (new Date(body.startDate).getTime() > new Date(body.deadline).getTime()) {
+                return reply.status(400).send({ error: 'Start date must be before deadline' });
+            }
+        }
         if (String(body.status) === 'READY') {
             try {
                 await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN']);
@@ -152,29 +168,14 @@ export async function taskRoutes(app) {
             }
         }
         const updateData = { ...body };
-        // Only convert/overwrite deadline if the client explicitly provided it.
+        // Only convert/overwrite dates if the client explicitly provided them.
         if ('deadline' in body) {
             updateData.deadline = body.deadline ? new Date(body.deadline) : null;
         }
-        const prevStatus = existing.status;
-        const nextStatus = (updateData.status ?? existing.status);
-        const updated = await taskService.update(id, updateData);
-        const becameDone = prevStatus !== TaskStatus.DONE
-            && nextStatus === TaskStatus.DONE;
-        if (becameDone) {
-            await activityService.record({
-                projectId: updated.projectId,
-                actorId: req.authUser.id,
-                type: 'TASK_COMPLETED',
-                entityType: 'TASK',
-                entityId: updated.id,
-                metadata: {
-                    taskId: updated.id,
-                    assigneeId: updated.assigneeId ?? null,
-                    completedAt: new Date().toISOString(),
-                },
-            });
+        if ('startDate' in body) {
+            updateData.startDate = body.startDate ? new Date(body.startDate) : null;
         }
+        const updated = await taskService.update(id, updateData);
         await activityService.record({
             projectId: updated.projectId,
             actorId: req.authUser.id,
@@ -211,6 +212,45 @@ export async function taskRoutes(app) {
                 data: { taskId: updated.id },
             })));
         }
+        // If status changed, notify the assignee (or all members if unassigned)
+        if (body.status && body.status !== existing.status) {
+            const statusLabel = {
+                TODO: 'To Do',
+                IN_PROGRESS: 'In Progress',
+                READY: 'Ready',
+                DONE: 'Done',
+            };
+            const label = statusLabel[String(body.status)] ?? String(body.status);
+            const statusHref = `/projects/${updated.projectId}`;
+            const statusTitle = `Task "${updated.title}" moved to ${label}`;
+            if (updated.assigneeId && updated.assigneeId !== req.authUser.id) {
+                await notificationService.create({
+                    userId: updated.assigneeId,
+                    projectId: updated.projectId,
+                    type: 'TASK_STATUS_CHANGED',
+                    title: statusTitle,
+                    body: `Status changed to: ${label}`,
+                    href: statusHref,
+                    data: { taskId: updated.id },
+                });
+            }
+            else if (!updated.assigneeId) {
+                const allMembers = await prisma.projectMember.findMany({
+                    where: { projectId: updated.projectId },
+                    select: { userId: true },
+                });
+                const recipients = allMembers.map((m) => m.userId).filter((id) => id !== req.authUser.id);
+                await Promise.all(recipients.map((userId) => notificationService.create({
+                    userId,
+                    projectId: updated.projectId,
+                    type: 'TASK_STATUS_CHANGED',
+                    title: statusTitle,
+                    body: `Status changed to: ${label}`,
+                    href: statusHref,
+                    data: { taskId: updated.id },
+                })));
+            }
+        }
         return updated;
     });
     app.delete('/tasks/:id', {
@@ -218,6 +258,65 @@ export async function taskRoutes(app) {
     }, async (req, reply) => {
         const { id } = req.params;
         await taskService.delete(id);
+        return reply.status(204).send();
+    });
+    // Dependencies
+    app.post('/tasks/:id/dependencies', {
+        preHandler: authenticate,
+    }, async (req, reply) => {
+        const { id } = req.params;
+        const { targetTaskId, type } = req.body;
+        if (id === targetTaskId)
+            return reply.status(400).send({ error: 'Cannot depend on itself' });
+        const existingTask = await taskService.getById(id);
+        const targetTask = await taskService.getById(targetTaskId);
+        if (!existingTask || !targetTask)
+            return reply.status(404).send({ error: 'Task not found' });
+        try {
+            await requireProjectRole(existingTask.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        let blockingTaskId = id;
+        let blockedTaskId = targetTaskId;
+        if (type === 'IS_BLOCKED_BY') {
+            blockingTaskId = targetTaskId;
+            blockedTaskId = id;
+        }
+        const dep = await prisma.taskDependency.create({
+            data: {
+                blockingTaskId,
+                blockedTaskId,
+                type: 'BLOCKS',
+            },
+            include: {
+                blockingTask: true,
+                blockedTask: true,
+            }
+        });
+        return reply.status(201).send(dep);
+    });
+    app.delete('/tasks/:id/dependencies/:depId', {
+        preHandler: authenticate,
+    }, async (req, reply) => {
+        const { id, depId } = req.params;
+        const dep = await prisma.taskDependency.findUnique({
+            where: { id: depId },
+            include: { blockingTask: true, blockedTask: true },
+        });
+        if (!dep)
+            return reply.status(404).send({ error: 'Dependency not found' });
+        if (dep.blockingTaskId !== id && dep.blockedTaskId !== id) {
+            return reply.status(403).send({ error: 'Dependency does not belong to this task' });
+        }
+        try {
+            await requireProjectRole(dep.blockingTask.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        await prisma.taskDependency.delete({ where: { id: depId } });
         return reply.status(204).send();
     });
 }

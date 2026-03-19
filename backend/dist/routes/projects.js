@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { requireProjectRole } from '../services/projectAuth.service.js';
 import { dashboardLayoutService, WIDGET_TYPES } from '../services/dashboardLayout.service.js';
 import { prisma } from '../lib/prisma.js';
-import { presenceService } from '../services/presence.service.js';
 const createProjectSchema = z.object({
     name: z.string().min(1).max(100),
 });
@@ -79,12 +78,16 @@ export async function projectRoutes(app) {
         const project = await projectService.create(name, req.authUser.id);
         return reply.status(201).send(project);
     });
+    const updateProjectSchema = z.object({
+        name: z.string().min(1).max(100).optional(),
+        status: z.enum(['ACTIVE', 'COMPLETED']).optional(),
+    });
     app.patch('/projects/:id', {
         preHandler: authenticate,
     }, async (req, reply) => {
         const { id } = req.params;
-        const { name } = createProjectSchema.parse(req.body);
-        return projectService.update(id, name);
+        const data = updateProjectSchema.parse(req.body);
+        return projectService.update(id, data);
     });
     app.delete('/projects/:id', {
         preHandler: authenticate,
@@ -166,18 +169,5 @@ export async function projectRoutes(app) {
             where: { userId_projectId: { userId, projectId } },
         });
         return reply.status(204).send();
-    });
-    app.get('/projects/:projectId/presence', {
-        preHandler: authenticate,
-    }, async (req, reply) => {
-        const { projectId } = req.params;
-        try {
-            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
-        }
-        catch {
-            return reply.status(403).send({ error: 'Forbidden' });
-        }
-        const rows = await presenceService.listForProject(projectId);
-        return reply.status(200).send({ members: rows });
     });
 }

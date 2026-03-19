@@ -1,13 +1,48 @@
 import { z } from 'zod';
 import { authenticate } from '../middlewares/authenticate.js';
-import { userStatusService, USER_STATUSES } from '../services/userStatus.service.js';
+import { prisma } from '../lib/prisma.js';
+const USER_STATUSES = ['ONLINE', 'WORKING', 'BUSY', 'AWAY', 'IN_MEETING', 'OFFLINE'];
+const updateStatusSchema = z.object({
+    status: z.enum(USER_STATUSES),
+});
 export async function userRoutes(app) {
-    app.patch('/users/me/status', {
-        preHandler: authenticate,
-    }, async (req, reply) => {
-        const schema = z.object({ status: z.enum(USER_STATUSES) });
-        const body = schema.parse(req.body);
-        const next = await userStatusService.setStatus(req.authUser.id, body.status);
-        return reply.status(200).send({ status: next });
+    // Get current user profile (including status)
+    app.get('/users/me', { preHandler: authenticate }, async (req) => {
+        const user = await prisma.user.findUnique({
+            where: { id: req.authUser.id },
+            select: { id: true, name: true, email: true, status: true, lastSeenAt: true },
+        });
+        return user;
+    });
+    // Update current user status
+    app.patch('/users/me/status', { preHandler: authenticate }, async (req, reply) => {
+        const { status } = updateStatusSchema.parse(req.body);
+        const user = await prisma.user.update({
+            where: { id: req.authUser.id },
+            data: { status, lastSeenAt: new Date() },
+            select: { id: true, status: true, lastSeenAt: true },
+        });
+        return reply.status(200).send(user);
+    });
+    // Update lastSeenAt (ping endpoint for presence)
+    app.post('/users/me/ping', { preHandler: authenticate }, async (req, reply) => {
+        await prisma.user.update({
+            where: { id: req.authUser.id },
+            data: { lastSeenAt: new Date() },
+        });
+        return reply.status(204).send();
+    });
+    // Get status for a list of user IDs (for messages presence)
+    app.get('/users/status', { preHandler: authenticate }, async (req) => {
+        const schema = z.object({ ids: z.string() }); // comma-separated
+        const { ids } = schema.parse((req.query ?? {}));
+        const userIds = ids.split(',').filter(Boolean);
+        if (userIds.length === 0)
+            return [];
+        const users = await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, status: true, lastSeenAt: true },
+        });
+        return users;
     });
 }

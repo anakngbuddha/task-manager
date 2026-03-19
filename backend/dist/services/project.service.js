@@ -77,10 +77,10 @@ export const projectService = {
             statusMap[pId][status] = count;
             totalMap[pId] += count;
             totalTasksAll += count;
-            if (status === 'DONE')
-                doneMap[pId] = count;
-            if (status === 'DONE')
+            if (status === 'DONE' || status === 'READY') {
+                doneMap[pId] = (doneMap[pId] || 0) + count;
                 completedTasksAll += count;
+            }
         }
         const avgCompletionAccumulator = {};
         for (const pId of projectIds) {
@@ -98,12 +98,13 @@ export const projectService = {
             const totalTasks = totalMap[p.id] ?? 0;
             const doneTasksCount = doneMap[p.id] ?? 0;
             const completionPct = totalTasks > 0 ? (doneTasksCount / totalTasks) * 100 : 0;
-            const isFinished = totalTasks > 0 && doneTasksCount === totalTasks;
+            const isFinished = p.status === 'COMPLETED';
             const acc = avgCompletionAccumulator[p.id];
             const avgCompletionHours = acc?.count ? acc.sumHours / acc.count : null;
             return {
                 id: p.id,
                 name: p.name,
+                status: p.status,
                 totalTasks,
                 doneTasks: doneTasksCount,
                 completionPct,
@@ -168,10 +169,10 @@ export const projectService = {
             include: { members: true },
         });
     },
-    async update(id, name) {
+    async update(id, data) {
         return prisma.project.update({
             where: { id },
-            data: { name },
+            data,
         });
     },
     async delete(id) {

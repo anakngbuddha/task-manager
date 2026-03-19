@@ -24,6 +24,9 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5174',
   'https://task-manager-mauve-eta.vercel.app',
 ]
+if (process.env.FRONTEND_URL && !ALLOWED_ORIGINS.includes(process.env.FRONTEND_URL)) {
+  ALLOWED_ORIGINS.push(process.env.FRONTEND_URL)
+}
 
 await app.register(cors, {
   origin: ALLOWED_ORIGINS,

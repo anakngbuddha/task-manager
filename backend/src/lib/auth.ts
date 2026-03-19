@@ -21,6 +21,7 @@ export const auth = betterAuth({
     'http://localhost:5173',
     'http://localhost:5174',
     'https://task-manager-mauve-eta.vercel.app',
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
   ],
   advanced: {
     crossSubdomainCookies: {
