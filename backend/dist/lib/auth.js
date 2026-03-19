@@ -19,19 +19,16 @@ export const auth = betterAuth({
         'http://localhost:5173',
         'http://localhost:5174',
         'https://task-manager-mauve-eta.vercel.app',
-        ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+        ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.replace(/\/$/, '')] : []),
     ],
     advanced: {
         crossSubdomainCookies: {
             enabled: false,
         },
         defaultCookieAttributes: {
-            // In dev we run over http://localhost, so Secure cookies would be dropped
-            secure: isProd,
+            secure: true,
             httpOnly: true,
-            // localhost:5174 -> localhost:3000 is same-site; Lax works in dev
-            sameSite: isProd ? 'none' : 'lax',
-            // Partitioned cookies require Secure; but breaks cross-domain OAuth callbacks
+            sameSite: 'none',
             partitioned: false,
         },
     },

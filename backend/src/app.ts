@@ -24,8 +24,9 @@ const ALLOWED_ORIGINS = [
   'http://localhost:5174',
   'https://task-manager-mauve-eta.vercel.app',
 ]
-if (process.env.FRONTEND_URL && !ALLOWED_ORIGINS.includes(process.env.FRONTEND_URL)) {
-  ALLOWED_ORIGINS.push(process.env.FRONTEND_URL)
+const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '')
+if (FRONTEND_URL && !ALLOWED_ORIGINS.includes(FRONTEND_URL)) {
+  ALLOWED_ORIGINS.push(FRONTEND_URL)
 }
 
 await app.register(cors, {
@@ -41,8 +42,11 @@ await app.register(jwt, {
 
 function injectCORSHeaders(req: any, res: any) {
   const origin = req.headers?.origin
-  if (ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin)
+  if (origin) {
+    const normalizedOrigin = origin.replace(/\/$/, '')
+    if (ALLOWED_ORIGINS.includes(normalizedOrigin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin)
+    }
   }
   res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
