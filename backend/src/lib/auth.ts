@@ -31,7 +31,7 @@ export const auth = betterAuth({
       secure: true,
       httpOnly: true,
       sameSite: 'none',
-      partitioned: false,
+      partitioned: true,
     },
   },
 })
