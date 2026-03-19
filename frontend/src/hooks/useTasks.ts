@@ -20,6 +20,8 @@ export function useCreateTask() {
       description?: string
       projectId: string
       assigneeId?: string
+      status?: string
+      sprintId?: string | null
       priority?: string
       deadline?: string | null
     }) => {
@@ -42,6 +44,7 @@ export function useUpdateTask() {
       title?: string
       description?: string
       priority?: string
+      sprintId?: string | null
       deadline?: string | null
     }) => {
       const { data } = await api.patch(`/tasks/${id}`, payload)
@@ -58,6 +61,31 @@ export function useDeleteTask() {
   return useMutation({
     mutationFn: async ({ id }: { id: string; projectId: string }) => {
       await api.delete(`/tasks/${id}`)
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', vars.projectId] })
+    },
+  })
+}
+
+export function useCreateTaskDependency() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ taskId, targetTaskId, type }: { taskId: string; targetTaskId: string; type: 'BLOCKS' | 'IS_BLOCKED_BY', projectId: string }) => {
+      const { data } = await api.post(`/tasks/${taskId}/dependencies`, { targetTaskId, type })
+      return data
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', vars.projectId] })
+    },
+  })
+}
+
+export function useDeleteTaskDependency() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ taskId, depId }: { taskId: string; depId: string; projectId: string }) => {
+      await api.delete(`/tasks/${taskId}/dependencies/${depId}`)
     },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['tasks', vars.projectId] })

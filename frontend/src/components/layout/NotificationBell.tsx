@@ -33,9 +33,7 @@ export default function NotificationBell({
         >
           <Bell className="size-4" />
           {(notifData?.unread ?? 0) > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-full bg-destructive px-1 text-[0.65rem] leading-4 text-destructive-foreground">
-              {Math.min(99, notifData!.unread)}
-            </span>
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background" />
           )}
         </Button>
       </DropdownMenuTrigger>

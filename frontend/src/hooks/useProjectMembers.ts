@@ -25,3 +25,16 @@ export function useUpdateMemberRole(projectId: string) {
   })
 }
 
+export function useRemoveProjectMember(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      await api.delete(`/projects/${projectId}/members/${userId}`)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-members', projectId] })
+      qc.invalidateQueries({ queryKey: ['project', projectId] })
+    },
+  })
+}
+

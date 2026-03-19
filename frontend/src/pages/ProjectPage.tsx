@@ -6,23 +6,32 @@ import {
   } from '@dnd-kit/core'
   import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
 import Sidebar from '@/components/layout/Sidebar'
-import NotificationBell from '@/components/layout/NotificationBell'
+import { PageHeader } from '@/components/layout/PageHeader'
 import KanbanColumn from '@/components/board/KanbanColumn'
 import TaskCard from '@/components/board/TaskCard'
 import TaskDialog from '@/components/board/TaskDialog'
 import { useTasks, useUpdateTask, useCreateTask } from '@/hooks/useTasks'
-import { useProject } from '@/hooks/useProject'
+import { useProject, useUpdateProject } from '@/hooks/useProject'
 import { useProjectMembers } from '@/hooks/useProjectMembers'
+import { useCreateSprint, useSprints } from '@/hooks/useSprints'
+import { useProjectTimeReport } from '@/hooks/useTimeLogs'
 import { useSession } from '@/lib/auth-client'
-import { useNotifications, useMarkAllNotificationsRead, useMarkNotificationRead } from '@/hooks/useNotifications'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FolderPlus, LayoutGrid, MessageCircle, Plus, UserPlus, ChevronRight } from 'lucide-react'
+import { CalendarPlus, FolderPlus, MessageCircle, MoreHorizontal, Plus, UserPlus } from 'lucide-react'
 import { useCreateInvite } from '@/hooks/useInvites'
 import { Link } from 'react-router-dom'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 function getTodayStartLocalForInput() {
   const now = new Date()
@@ -43,19 +52,27 @@ function isPastToday(value: string) {
 }
 
 const COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
+const STATUS_LABELS: Record<string, string> = {
+  TODO: 'To Do',
+  IN_PROGRESS: 'In Progress',
+  IN_REVIEW: 'In Review',
+  DONE: 'Done',
+  READY: 'Ready',
+}
 
 export default function ProjectPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const { data: session } = useSession()
-  const { data: notifData } = useNotifications(20)
-  const markRead = useMarkNotificationRead()
-  const markAllRead = useMarkAllNotificationsRead()
   const { data: tasks = [], isLoading } = useTasks(projectId!)
   const { data: project } = useProject(projectId!)
   const { data: members = [] } = useProjectMembers(projectId!)
+  const { data: sprints = [] } = useSprints(projectId!)
+  const { data: timeReport } = useProjectTimeReport(projectId!)
   const updateTask = useUpdateTask()
   const createTask = useCreateTask()
+  const createSprint = useCreateSprint(projectId!)
   const createInvite = useCreateInvite(projectId!)
+  const updateProject = useUpdateProject()
   // Messages are now in a dedicated page: /projects/:id/messages
 
   const [activeTask, setActiveTask] = useState<any>(null)
@@ -67,19 +84,47 @@ export default function ProjectPage() {
   const [newAssigneeId, setNewAssigneeId] = useState<string>('EVERYONE')
   const [newDeadline, setNewDeadline] = useState('')
   const [deadlineError, setDeadlineError] = useState('')
+  const [newStatus, setNewStatus] = useState<string>('TODO')
+  const [newSprintId, setNewSprintId] = useState<string>('NONE')
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState('')
   const [localTasks, setLocalTasks] = useState<any[]>([])
   const dragStartRef = useRef<{ id: string; status: string } | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
 
+  const [selectedSprintId, setSelectedSprintId] = useState<string>('ALL')
+  const [createSprintOpen, setCreateSprintOpen] = useState(false)
+  const [sprintName, setSprintName] = useState('')
+  const [sprintGoal, setSprintGoal] = useState('')
+  const [sprintStart, setSprintStart] = useState('')
+  const [sprintEnd, setSprintEnd] = useState('')
+  const [sprintError, setSprintError] = useState('')
+
   const sensors = useSensors(useSensor(PointerSensor, {
     activationConstraint: { distance: 5 },
   }))
 
   useEffect(() => {
-    setLocalTasks(tasks)
+    setLocalTasks(
+      tasks.map((t: any) => ({
+        ...t,
+        timeTotalHours: (timeReport?.byTask ?? []).find((row: any) => String(row.taskId) === String(t.id))?.totalHours ?? 0,
+      })),
+    )
   }, [tasks])
+
+  const taskTimeTotalHours = useMemo(() => {
+    return new Map<string, number>((timeReport?.byTask ?? []).map((r: any) => [String(r.taskId), r.totalHours]))
+  }, [timeReport])
+
+  useEffect(() => {
+    setLocalTasks((prev) =>
+      prev.map((t: any) => ({
+        ...t,
+        timeTotalHours: taskTimeTotalHours.get(String(t.id)) ?? 0,
+      })),
+    )
+  }, [taskTimeTotalHours])
 
   // Chat rendering moved to dedicated messages page
 
@@ -89,8 +134,47 @@ export default function ProjectPage() {
     return map
   }, [localTasks])
 
-  const getColumnTasks = (status: string) =>
-    localTasks.filter((t: any) => t.status === status)
+  useEffect(() => {
+    if (!selectedTask) return
+    const next = tasksById.get(String(selectedTask.id))
+    if (next) setSelectedTask(next)
+  }, [tasksById, selectedTask])
+
+  const displayedTasks = useMemo(() => {
+    if (selectedSprintId === 'ALL') return localTasks
+    if (selectedSprintId === 'NONE') return localTasks.filter((t: any) => t.sprintId == null)
+    return localTasks.filter(
+      (t: any) => t.sprintId != null && String(t.sprintId) === String(selectedSprintId),
+    )
+  }, [localTasks, selectedSprintId])
+
+  const getColumnTasks = (status: string) => displayedTasks.filter((t: any) => t.status === status)
+
+  const handleCreateSprint = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!sprintName.trim() || !sprintStart || !sprintEnd) return
+
+    const start = new Date(sprintStart)
+    const end = new Date(sprintEnd)
+    if (end <= start) {
+      setSprintError('End date must be after start date')
+      return
+    }
+
+    setSprintError('')
+    await createSprint.mutateAsync({
+      name: sprintName.trim(),
+      goal: sprintGoal.trim() ? sprintGoal.trim() : undefined,
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+    })
+
+    setSprintName('')
+    setSprintGoal('')
+    setSprintStart('')
+    setSprintEnd('')
+    setCreateSprintOpen(false)
+  }
 
   const handleDragStart = (e: DragStartEvent) => {
     const t = tasksById.get(String(e.active.id)) ?? null
@@ -171,6 +255,8 @@ export default function ProjectPage() {
       projectId: projectId!,
       priority: newPriority,
       assigneeId: newAssigneeId === 'EVERYONE' ? undefined : newAssigneeId,
+      status: newStatus,
+      sprintId: newSprintId === 'NONE' ? null : newSprintId,
       deadline: newDeadline ? new Date(newDeadline).toISOString() : null,
     })
     setNewTitle('')
@@ -178,7 +264,20 @@ export default function ProjectPage() {
     setNewPriority('MEDIUM')
     setNewAssigneeId('EVERYONE')
     setNewDeadline('')
+    setNewStatus('TODO')
+    setNewSprintId('NONE')
     setCreateOpen(false)
+  }
+
+  const prepareCreateTaskDefaults = (status: string) => {
+    setNewStatus(status)
+    // If user is already filtering by a specific sprint, default to it.
+    setNewSprintId(selectedSprintId === 'ALL' ? 'NONE' : selectedSprintId)
+  }
+
+  const handleOpenCreateTask = (status: string) => {
+    prepareCreateTaskDefaults(status)
+    setCreateOpen(true)
   }
 
   const myId = session?.user?.id
@@ -189,94 +288,56 @@ export default function ProjectPage() {
   const canCreateTask = canManageRoles
   const canMoveToReady = effectiveMyRole === 'MASTER_ADMIN'
 
+  const selectedSprint = useMemo(() => {
+    if (selectedSprintId === 'ALL' || selectedSprintId === 'NONE') return null
+    return (sprints as any[]).find((s) => String(s.id) === String(selectedSprintId)) ?? null
+  }, [sprints, selectedSprintId])
+
+  const sprintRangeText = useMemo(() => {
+    if (!selectedSprint) return null
+    const start = selectedSprint.startDate ?? selectedSprint.start ?? selectedSprint.startsAt
+    const end = selectedSprint.endDate ?? selectedSprint.end ?? selectedSprint.endsAt
+    if (!start || !end) return selectedSprint.name
+    const fmt = (v: any) =>
+      new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return `${selectedSprint.name} · ${fmt(start)} – ${fmt(end)}`
+  }, [selectedSprint])
+
+  const sprintStatusDotClass = useMemo(() => {
+    if (!selectedSprint) return null
+    const status = String(selectedSprint.status ?? '').toUpperCase()
+    if (status === 'ACTIVE') return 'bg-emerald-500'
+    if (status === 'PLANNING') return 'bg-amber-500'
+    if (status === 'COMPLETED') return 'bg-muted-foreground/50'
+    return 'bg-muted-foreground/50'
+  }, [selectedSprint])
+
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <main className="flex-1 overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.08),transparent_55%)]">
-        <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-          <div className="h-13 px-4 sm:px-6">
-            <div className="flex h-full items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">
-                    <LayoutGrid className="size-3.5" />
-                    <span className="font-medium">Project Board</span>
-                  </span>
-                  <ChevronRight className="size-3.5" />
-                  <span className="truncate font-medium text-foreground/90">{project?.name ?? 'Tasks'}</span>
-                </div>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <h2 className="truncate text-sm font-semibold">Tasks</h2>
-                  <span className="text-xs text-muted-foreground">· Drag & drop to update status</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <NotificationBell
-                  notifData={notifData}
-                  markAllRead={markAllRead}
-                  markRead={markRead}
-                  onNavigate={(to) => (to ? window.location.assign(to) : undefined)}
-                />
-
-                <Dialog open={inviteModalOpen} onOpenChange={setInviteModalOpen}>
-                  <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="h-9 gap-2"
-                      onClick={async () => {
-                        const base = window.location.origin
-                        const res = await createInvite.mutateAsync()
-                        const url = `${base}/invite/${res.code}`
-                        setGeneratedInviteUrl(url)
-                        setInviteModalOpen(true)
-                      }}
-                    >
-                      <UserPlus className="size-4" />
-                      Invite members
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Invite members to this project</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-3 pt-2">
-                      <p className="text-sm text-muted-foreground">
-                        Share this link with teammates. If they don&apos;t have an account yet,
-                        they&apos;ll be asked to register first and can then join this project
-                        using the same link.
-                      </p>
-                      <div className="space-y-1">
-                        <Label>Invite link</Label>
-                        <Input
-                          readOnly
-                          value={generatedInviteUrl}
-                          className="h-10"
-                          onFocus={(e) => e.target.select()}
-                        />
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-
-                <Link to={`/projects/${projectId}/members`}>
-                  <Button variant="outline" className="h-9">
-                    View members
+      <main className="flex-1 overflow-hidden bg-background">
+        <PageHeader
+          breadcrumb={<span className="text-muted-foreground">Projects / {project?.name ?? 'Project'} / Board</span>}
+          title="Tasks"
+          subtitle="Drag tasks between columns to update status."
+          actions={(
+            <>
+              <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    className="h-9 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
+                    disabled={!canCreateTask}
+                    onClick={() => prepareCreateTaskDefaults('TODO')}
+                  >
+                    <Plus className="size-4" />
+                    Add task
                   </Button>
-                </Link>
-
-                <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="h-9 gap-2" disabled={!canCreateTask}>
-                      <Plus className="size-4" />
-                      Add task
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Create new task</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={handleCreateTask} className="space-y-4 pt-2">
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create new task</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCreateTask} className="space-y-4 pt-2">
                       <div className="space-y-1">
                         <Label>Title</Label>
                         <div className="relative">
@@ -330,6 +391,35 @@ export default function ProjectPage() {
                         </Select>
                       </div>
                       </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <Label>Status</Label>
+                          <Select value={newStatus} onValueChange={setNewStatus}>
+                            <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {COLUMNS.map((s) => (
+                                <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Sprint</Label>
+                          <Select value={newSprintId} onValueChange={setNewSprintId}>
+                            <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="NONE">No sprint</SelectItem>
+                              {(sprints as any[]).map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
                       <div className="space-y-1">
                         <Label>Deadline</Label>
                         <Input
@@ -360,12 +450,172 @@ export default function ProjectPage() {
                         {createTask.isPending ? 'Creating...' : 'Create task'}
                       </Button>
                     </form>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </div>
-          </div>
-        </header>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={createSprintOpen} onOpenChange={setCreateSprintOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="h-9 gap-2" disabled={!canManageRoles}>
+                    <CalendarPlus className="size-4" />
+                    Create Sprint
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create sprint</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCreateSprint} className="space-y-4 pt-2">
+                    <div className="space-y-1">
+                      <Label>Name</Label>
+                      <Input
+                        className="h-10"
+                        placeholder="Sprint name"
+                        value={sprintName}
+                        onChange={(e) => setSprintName(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Goal</Label>
+                      <Input
+                        className="h-10"
+                        placeholder="What are we aiming to deliver?"
+                        value={sprintGoal}
+                        onChange={(e) => setSprintGoal(e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label>Start date</Label>
+                        <Input
+                          type="datetime-local"
+                          className="h-10"
+                          value={sprintStart}
+                          min={getTodayStartLocalForInput()}
+                          onChange={(e) => setSprintStart(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>End date</Label>
+                        <Input
+                          type="datetime-local"
+                          className="h-10"
+                          value={sprintEnd}
+                          min={sprintStart || getTodayStartLocalForInput()}
+                          onChange={(e) => setSprintEnd(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    {sprintError && (
+                      <p className="text-xs text-red-500">{sprintError}</p>
+                    )}
+                    <Button
+                      type="submit"
+                      className="h-10 w-full"
+                      disabled={
+                        createSprint.isPending ||
+                        !sprintName.trim() ||
+                        !sprintStart ||
+                        !sprintEnd
+                      }
+                    >
+                      {createSprint.isPending ? 'Creating…' : 'Create sprint'}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={inviteModalOpen} onOpenChange={setInviteModalOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="h-9 gap-2"
+                    onClick={async () => {
+                      const base = window.location.origin
+                      const res = await createInvite.mutateAsync()
+                      const url = `${base}/invite/${res.code}`
+                      setGeneratedInviteUrl(url)
+                      setInviteModalOpen(true)
+                    }}
+                  >
+                    <UserPlus className="size-4" />
+                    Invite members
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Invite members to this project</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 pt-2">
+                    <p className="text-sm text-muted-foreground">
+                      Share this link with teammates. If they don&apos;t have an account yet,
+                      they&apos;ll be asked to register first and can then join this project
+                      using the same link.
+                    </p>
+                    <div className="space-y-1">
+                      <Label>Invite link</Label>
+                      <Input
+                        readOnly
+                        value={generatedInviteUrl}
+                        className="h-10"
+                        onFocus={(e) => e.target.select()}
+                      />
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" className="h-9">
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={8} className="w-44">
+                  <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/backlog`}>Backlog & Sprints</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/roadmap`}>Roadmap</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/calendar`}>Calendar</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/sprint-report`}>Sprint report</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/dashboard`}>Dashboard</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/members`}>View members</Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              {canManageRoles && project?.status !== 'COMPLETED' && (
+                <Button
+                  variant="outline"
+                  className="h-9 gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
+                  onClick={async () => {
+                    if (window.confirm('Are you sure you want to mark this project as completed?')) {
+                      await updateProject.mutateAsync({ id: projectId!, data: { status: 'COMPLETED' } })
+                    }
+                  }}
+                  disabled={updateProject.isPending}
+                >
+                  Project Complete
+                </Button>
+              )}
+              {project?.status === 'COMPLETED' && (
+                <Badge variant="secondary" className="h-9 px-3 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
+                  Completed
+                </Badge>
+              )}
+            </>
+          )}
+        />
 
         <div className="relative h-[calc(100vh-5rem)]">
           <div className="h-full overflow-auto pr-0 md:pr-0">
@@ -384,6 +634,36 @@ export default function ProjectPage() {
                 onDragEnd={handleDragEnd}
               >
                 <section className="px-4 py-4 sm:px-6 sm:py-6">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs font-medium text-muted-foreground">Sprint</p>
+                      <Select value={selectedSprintId} onValueChange={setSelectedSprintId}>
+                        <SelectTrigger className="h-9 w-[16rem] rounded-none">
+                          <SelectValue placeholder="All tasks" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ALL">All tasks</SelectItem>
+                          <SelectItem value="NONE">No sprint</SelectItem>
+                          {(sprints as any[]).map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {sprintRangeText && (
+                        <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className={['h-2 w-2 rounded-full', sprintStatusDotClass ?? 'bg-muted-foreground/50'].join(' ')} />
+                          <span>{sprintRangeText}</span>
+                        </span>
+                      )}
+                    </div>
+                    {selectedSprintId !== 'ALL' && (
+                      <p className="text-xs text-muted-foreground">
+                        Showing {displayedTasks.length} task{displayedTasks.length === 1 ? '' : 's'}
+                      </p>
+                    )}
+                  </div>
                   <div className="-mx-4 overflow-x-auto px-4 pb-3 sm:-mx-6 sm:px-6">
                     <div className="flex min-w-max gap-3">
                     {COLUMNS.map(status => (
@@ -392,6 +672,8 @@ export default function ProjectPage() {
                         status={status}
                         tasks={getColumnTasks(status)}
                         onTaskClick={setSelectedTask}
+                        onAddTask={handleOpenCreateTask}
+                        canAddTask={canCreateTask}
                       />
                     ))}
                     </div>

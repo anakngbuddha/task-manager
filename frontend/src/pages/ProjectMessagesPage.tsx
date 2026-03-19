@@ -9,18 +9,10 @@ import { useDirectSeen, useMarkDirectRead, useMarkProjectRead, useProjectSeen } 
 import { useSession } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import {
-  ArrowLeft,
-  Hash,
-  MessageCircle,
-  Paperclip,
-  SendHorizonal,
-  Smile,
-  AtSign,
-  MessageSquareDashed,
-} from 'lucide-react'
+import { ArrowLeft, Hash, MessageCircle, Paperclip, SendHorizonal, Smile, AtSign, MessageSquareDashed } from 'lucide-react'
 import { io, type Socket } from 'socket.io-client'
 import { cn } from '@/lib/utils'
+import { useUserStatuses, STATUS_CONFIG, type UserStatus } from '@/hooks/useUserStatus'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -228,6 +220,8 @@ function MessageBubble({ content, createdAt, isMine, isFirstInGroup, senderName,
 
 // ─── Input Bar ────────────────────────────────────────────────────────────────
 
+type MentionMember = { id: string; name?: string | null; email?: string | null }
+
 interface InputBarProps {
   value: string
   onChange: (v: string) => void
@@ -235,18 +229,68 @@ interface InputBarProps {
   disabled?: boolean
   placeholder?: string
   isPending?: boolean
-  onMentionClick?: () => void
+  members?: MentionMember[]
 }
 
-function InputBar({ value, onChange, onSubmit, disabled, placeholder, isPending, onMentionClick }: InputBarProps) {
+function InputBar({ value, onChange, onSubmit, disabled, placeholder, isPending, members = [] }: InputBarProps) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null) // null = picker closed
+  const [mentionStart, setMentionStart] = useState(0) // caret position of the opening @
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const text = e.target.value
+    onChange(text)
+
+    // Detect @ followed by optional partial name at the CURRENT caret
+    const caret = e.target.selectionStart
+    const textBefore = text.slice(0, caret)
+    const match = textBefore.match(/@(\w*)$/) // @ followed by word chars (or nothing)
+    if (match) {
+      setMentionQuery(match[1].toLowerCase())
+      setMentionStart(caret - match[0].length)
+    } else {
+      setMentionQuery(null)
+    }
+  }
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (mentionQuery !== null && e.key === 'Escape') {
+      setMentionQuery(null)
+      return
+    }
+    if (e.key === 'Enter' && !e.shiftKey && mentionQuery === null) {
       e.preventDefault()
       onSubmit(e as any)
     }
   }
+
+  const insertMention = (displayName: string) => {
+    const caret = ref.current?.selectionStart ?? value.length
+    // Replace @partial with @DisplayName
+    const before = value.slice(0, mentionStart)
+    const after = value.slice(caret)
+    const inserted = `@${displayName} `
+    const next = before + inserted + after
+    onChange(next)
+    setMentionQuery(null)
+    setTimeout(() => {
+      const pos = mentionStart + inserted.length
+      ref.current?.setSelectionRange(pos, pos)
+      ref.current?.focus()
+    }, 0)
+  }
+
+  // Filter members for the picker
+  const filteredMembers = useMemo(() => {
+    if (mentionQuery === null) return []
+    const q = mentionQuery.toLowerCase()
+    return members.filter((m) => {
+      const n = (m.name ?? m.email ?? '').toLowerCase()
+      return n.includes(q)
+    })
+  }, [mentionQuery, members])
+
+  const showPicker = mentionQuery !== null && (filteredMembers.length > 0 || mentionQuery === '')
 
   // Auto-grow textarea
   useEffect(() => {
@@ -262,6 +306,9 @@ function InputBar({ value, onChange, onSubmit, disabled, placeholder, isPending,
     const end = ref.current.selectionEnd
     const next = value.slice(0, start) + text + value.slice(end)
     onChange(next)
+    // Trigger mention picker for the @ we just inserted
+    setMentionQuery('')
+    setMentionStart(start)
     setTimeout(() => {
       ref.current?.setSelectionRange(start + text.length, start + text.length)
       ref.current?.focus()
@@ -269,7 +316,50 @@ function InputBar({ value, onChange, onSubmit, disabled, placeholder, isPending,
   }
 
   return (
-    <form onSubmit={onSubmit} className="border-t bg-background/80 px-4 py-3 backdrop-blur">
+    <form onSubmit={onSubmit} className="relative border-t bg-background/80 px-4 py-3 backdrop-blur">
+      {/* Mention picker — floats above the input */}
+      {showPicker && (
+        <div className="absolute bottom-full left-4 right-4 mb-1 z-50 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+          <div className="px-2 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
+            Mention a member
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            {/* @everyone option */}
+            <button
+              type="button"
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+              onMouseDown={(e) => { e.preventDefault(); insertMention('everyone') }}
+            >
+              <span className="size-6 rounded-full bg-primary/20 text-center text-xs leading-6 font-bold text-primary">@</span>
+              <span className="font-medium">everyone</span>
+              <span className="ml-auto text-[0.68rem] text-muted-foreground">Notify all members</span>
+            </button>
+            {filteredMembers.map((m) => {
+              const display = m.name ?? m.email ?? 'Unknown'
+              const initials = getInitials(m.name, m.email)
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                  onMouseDown={(e) => { e.preventDefault(); insertMention(display) }}
+                >
+                  <Avatar size="sm">
+                    <AvatarFallback className="text-[0.6rem] font-semibold bg-muted text-muted-foreground">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span>{display}</span>
+                </button>
+              )
+            })}
+            {filteredMembers.length === 0 && mentionQuery !== '' && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">No members match &ldquo;{mentionQuery}&rdquo;</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col gap-2 rounded-xl border border-border bg-background shadow-sm ring-1 ring-transparent focus-within:ring-primary/30 transition-shadow">
         <textarea
           ref={ref}
@@ -277,8 +367,9 @@ function InputBar({ value, onChange, onSubmit, disabled, placeholder, isPending,
           className="w-full resize-none bg-transparent px-3 pt-3 pb-0 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
           placeholder={placeholder ?? 'Type a message… (Enter to send, Shift+Enter for new line)'}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKey}
+          onBlur={() => setTimeout(() => setMentionQuery(null), 150)}
           disabled={disabled}
         />
         <div className="flex items-center justify-between gap-2 px-2 pb-2">
@@ -377,6 +468,18 @@ export default function ProjectMessagesPage() {
     }
     return map
   }, [project?.members])
+
+  // Fetch real presence/status for all project members
+  const memberUserIds = useMemo(
+    () => (project?.members ?? []).map((m: any) => m?.user?.id).filter(Boolean) as string[],
+    [project?.members]
+  )
+  const { data: memberStatuses = [] } = useUserStatuses(memberUserIds)
+  const statusById = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const s of memberStatuses) map.set(s.id, s.status)
+    return map
+  }, [memberStatuses])
 
   useEffect(() => {
     if (!projectId || !session?.user?.id) return
@@ -572,7 +675,6 @@ export default function ProjectMessagesPage() {
 
     const elements: React.ReactNode[] = []
     let prevDate: Date | null = null
-    let prevSenderId: string | null = null
     const GROUPING_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
 
     for (let i = 0; i < messages.length; i++) {
@@ -622,7 +724,6 @@ export default function ProjectMessagesPage() {
       )
 
       prevDate = createdAt
-      prevSenderId = senderId
     }
 
     return elements
@@ -768,15 +869,20 @@ export default function ProjectMessagesPage() {
                         : 'text-foreground hover:bg-accent'
                     )}
                   >
-                    {/* Avatar with online dot */}
+                    {/* Avatar with real status dot */}
                     <div className="relative shrink-0">
                       <Avatar size="sm">
                         <AvatarFallback className="text-[0.625rem] font-semibold bg-accent text-accent-foreground">
                           {c.otherInitials}
                         </AvatarFallback>
                       </Avatar>
-                      {/* Online indicator (always shown as green — real presence would require socket tracking) */}
-                      <span className="absolute bottom-0 right-0 size-2 rounded-full bg-emerald-500 ring-1 ring-background" />
+                      <span
+                        className={cn(
+                          'absolute bottom-0 right-0 size-2 rounded-full ring-1 ring-background',
+                          STATUS_CONFIG[(statusById.get(c.otherId) as UserStatus) ?? 'OFFLINE']?.dotClass ?? 'bg-gray-400'
+                        )}
+                        title={STATUS_CONFIG[(statusById.get(c.otherId) as UserStatus) ?? 'OFFLINE']?.label}
+                      />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -815,7 +921,13 @@ export default function ProjectMessagesPage() {
                             {getInitials(u.name, u.email)}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="absolute bottom-0 right-0 size-2 rounded-full bg-slate-400 ring-1 ring-background" />
+                        <span
+                          className={cn(
+                            'absolute bottom-0 right-0 size-2 rounded-full ring-1 ring-background',
+                            STATUS_CONFIG[(statusById.get(u.id) as UserStatus) ?? 'OFFLINE']?.dotClass ?? 'bg-gray-400'
+                          )}
+                          title={STATUS_CONFIG[(statusById.get(u.id) as UserStatus) ?? 'OFFLINE']?.label}
+                        />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[0.8rem]">{u.name ?? u.email}</p>
@@ -874,6 +986,11 @@ export default function ProjectMessagesPage() {
                 : 'Select a conversation first…'
             }
             isPending={sendProjectMessage.isPending || sendDirect.isPending}
+            members={(project?.members ?? []).map((m: any) => ({
+              id: m.user?.id ?? m.userId,
+              name: m.user?.name,
+              email: m.user?.email,
+            }))}
           />
         </main>
       </div>

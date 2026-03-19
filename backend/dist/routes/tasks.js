@@ -12,7 +12,10 @@ const createTaskSchema = z.object({
     projectId: z.string(),
     assigneeId: z.string().optional(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-    deadline: z.string().datetime().optional(),
+    status: z.nativeEnum(TaskStatus).optional(),
+    // If null, task will not belong to any sprint.
+    sprintId: z.string().nullable().optional(),
+    deadline: z.string().datetime().nullable().optional(),
 });
 const updateTaskSchema = z.object({
     title: z.string().min(1).max(100).optional(),
@@ -20,6 +23,8 @@ const updateTaskSchema = z.object({
     status: z.nativeEnum(TaskStatus).optional(),
     priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
     assigneeId: z.string().optional(),
+    // If null, clear sprint assignment.
+    sprintId: z.string().nullable().optional(),
     deadline: z.string().datetime().nullable().optional(),
 });
 export async function taskRoutes(app) {
@@ -47,6 +52,16 @@ export async function taskRoutes(app) {
         }
         catch {
             return reply.status(403).send({ error: 'Forbidden' });
+        }
+        // Enforce that sprintId (if provided) belongs to the same project.
+        if (body.sprintId != null) {
+            const sprint = await prisma.sprint.findUnique({
+                where: { id: body.sprintId },
+                select: { id: true, projectId: true },
+            });
+            if (!sprint || sprint.projectId !== body.projectId) {
+                return reply.status(400).send({ error: 'Sprint not found for this project' });
+            }
         }
         const now = new Date();
         if (body.deadline) {
@@ -111,6 +126,16 @@ export async function taskRoutes(app) {
         catch {
             return reply.status(403).send({ error: 'Forbidden' });
         }
+        // Enforce that sprintId (if provided) belongs to the same project.
+        if (body.sprintId != null) {
+            const sprint = await prisma.sprint.findUnique({
+                where: { id: body.sprintId },
+                select: { id: true, projectId: true },
+            });
+            if (!sprint || sprint.projectId !== existing.projectId) {
+                return reply.status(400).send({ error: 'Sprint not found for this project' });
+            }
+        }
         if (body.deadline) {
             const deadlineDate = new Date(body.deadline);
             const now = new Date();
@@ -126,10 +151,30 @@ export async function taskRoutes(app) {
                 return reply.status(403).send({ error: 'Only MASTER_ADMIN can move tasks to READY' });
             }
         }
-        const updated = await taskService.update(id, {
-            ...body,
-            deadline: body.deadline ? new Date(body.deadline) : null,
-        });
+        const updateData = { ...body };
+        // Only convert/overwrite deadline if the client explicitly provided it.
+        if ('deadline' in body) {
+            updateData.deadline = body.deadline ? new Date(body.deadline) : null;
+        }
+        const prevStatus = existing.status;
+        const nextStatus = (updateData.status ?? existing.status);
+        const updated = await taskService.update(id, updateData);
+        const becameDone = prevStatus !== TaskStatus.DONE
+            && nextStatus === TaskStatus.DONE;
+        if (becameDone) {
+            await activityService.record({
+                projectId: updated.projectId,
+                actorId: req.authUser.id,
+                type: 'TASK_COMPLETED',
+                entityType: 'TASK',
+                entityId: updated.id,
+                metadata: {
+                    taskId: updated.id,
+                    assigneeId: updated.assigneeId ?? null,
+                    completedAt: new Date().toISOString(),
+                },
+            });
+        }
         await activityService.record({
             projectId: updated.projectId,
             actorId: req.authUser.id,

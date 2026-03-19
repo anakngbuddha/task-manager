@@ -177,7 +177,7 @@ function EventPill({ type }: { type: string }) {
 
 // ─── Single action row ────────────────────────────────────────────────────────
 
-function ActionRow({ event, actorName }: { event: ActivityEvent; actorName: string }) {
+function ActionRow({ event }: { event: ActivityEvent }) {
   const cfg = getCfg(event.type)
   const project = event.project?.name ?? 'a project'
   const href = getHref(event)
@@ -236,7 +236,7 @@ function UserGroupBlock({ group, isLast }: { group: UserGroup; isLast: boolean }
         <p className="text-[0.8rem] font-semibold text-foreground leading-tight mb-1">{name}</p>
         <div className="space-y-0.5">
           {group.events.map((e) => (
-            <ActionRow key={e.id} event={e} actorName={name} />
+            <ActionRow key={e.id} event={e} />
           ))}
         </div>
       </div>

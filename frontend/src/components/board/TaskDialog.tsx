@@ -7,9 +7,11 @@ import { Badge } from '@/components/ui/badge'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { useUpdateTask, useDeleteTask } from '@/hooks/useTasks'
+import { useTasks, useUpdateTask, useDeleteTask, useCreateTaskDependency, useDeleteTaskDependency } from '@/hooks/useTasks'
+import { useSprints } from '@/hooks/useSprints'
 import { useTaskComments, useAddTaskComment } from '@/hooks/useTaskComments'
-import { Pencil, X } from 'lucide-react'
+import { Pencil, X, Clock, Link as LinkIcon } from 'lucide-react'
+import { useCreateTaskTimeLog } from '@/hooks/useTimeLogs'
 
 const statusLabel: Record<string, string> = {
   TODO: 'To Do',
@@ -52,6 +54,13 @@ function isPastToday(value: string) {
   return sameDay && selected.getTime() < now.getTime()
 }
 
+function getTodayLocalDateForInput() {
+  const now = new Date()
+  const offset = now.getTimezoneOffset()
+  const local = new Date(now.getTime() - offset * 60_000)
+  return local.toISOString().slice(0, 10)
+}
+
 export default function TaskDialog({ task, projectId, projectMembers, open, onClose }: {
   task: any
   projectId: string
@@ -61,11 +70,13 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
 }) {
   const updateTask = useUpdateTask()
   const deleteTask = useDeleteTask()
+  const createTimeLog = useCreateTaskTimeLog(projectId)
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('')
   const [status, setStatus] = useState('')
+  const [sprintId, setSprintId] = useState<string>('NONE')
   const [deadline, setDeadline] = useState<string>('')
   const [deadlineError, setDeadlineError] = useState('')
   const [newComment, setNewComment] = useState('')
@@ -74,8 +85,29 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const [mentionQuery, setMentionQuery] = useState('')
   const [showMentions, setShowMentions] = useState(false)
 
+  const [logOpen, setLogOpen] = useState(false)
+  const [logHours, setLogHours] = useState<string>('0')
+  const [logMinutes, setLogMinutes] = useState<string>('30')
+  const [logNote, setLogNote] = useState('')
+  const [logDate, setLogDate] = useState(getTodayLocalDateForInput())
+  const [logError, setLogError] = useState('')
+
   const { data: comments = [] } = useTaskComments(task?.id)
   const addComment = useAddTaskComment()
+  const { data: sprints = [] } = useSprints(projectId)
+  const { data: allTasks = [] } = useTasks(projectId)
+  const createDependency = useCreateTaskDependency()
+  const deleteDependency = useDeleteTaskDependency()
+
+  const [depType, setDepType] = useState<'BLOCKS' | 'IS_BLOCKED_BY'>('IS_BLOCKED_BY')
+  const [depTargetId, setDepTargetId] = useState<string>('')
+
+  const selectedSprintName = useMemo(() => {
+    const id = task?.sprintId ? String(task.sprintId) : null
+    if (!id) return null
+    const sprint = (sprints as any[]).find((s) => String(s.id) === id)
+    return sprint?.name ?? null
+  }, [task?.sprintId, sprints])
 
   const renderWithMentions = (text: string) => {
     if (!text) return null
@@ -99,10 +131,16 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       setDescription(task.description ?? '')
       setPriority(task.priority)
       setStatus(task.status)
+      setSprintId(task?.sprintId ? String(task.sprintId) : 'NONE')
       setDeadline(task.deadline ? new Date(task.deadline).toISOString().slice(0, 16) : '')
       setNewComment('')
       setReplyToId(null)
       setReplyContent({})
+      setLogHours('0')
+      setLogMinutes('30')
+      setLogNote('')
+      setLogDate(getTodayLocalDateForInput())
+      setLogError('')
     }
   }, [task])
 
@@ -125,6 +163,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       description,
       priority,
       status,
+      sprintId: sprintId === 'NONE' ? null : sprintId,
       deadline: deadline ? new Date(deadline).toISOString() : null,
     })
     onClose()
@@ -223,6 +262,14 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                     >
                       {priority}
                     </Badge>
+                    {selectedSprintName && (
+                      <Badge
+                        variant="outline"
+                        className="rounded-none border-border/60 px-2 py-0.5 text-xs"
+                      >
+                        Sprint: {selectedSprintName}
+                      </Badge>
+                    )}
                     {task?.assignee && (
                       <span className="text-xs text-muted-foreground">
                         Assigned to <span className="text-foreground">{task.assignee.name ?? task.assignee.email}</span>
@@ -237,6 +284,18 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                   <Button variant="outline" size="sm" className="rounded-none" onClick={() => setMode('edit')}>
                     <Pencil className="size-4" />
                     Edit
+                  </Button>
+                )}
+                {mode === 'view' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="rounded-none"
+                    onClick={() => setLogOpen(true)}
+                    disabled={createTimeLog.isPending}
+                  >
+                    <Clock className="size-4" />
+                    Log Time
                   </Button>
                 )}
                 <Button
@@ -271,6 +330,72 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                 <p className="mt-2 text-sm text-muted-foreground">
                   {task?.deadline ? new Date(task.deadline).toLocaleString() : 'No deadline'}
                 </p>
+              </div>
+
+              <div className="border border-border/60 bg-card p-5">
+                <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1"><LinkIcon className="size-3" /> Dependencies</p>
+                <div className="space-y-3">
+                  {task?.blockedByTasks?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase font-semibold text-muted-foreground">Blocked By</p>
+                      {task.blockedByTasks.map((dep: any) => (
+                         <div key={dep.id} className="flex items-center justify-between text-sm bg-muted/30 p-2 border border-border/40">
+                           <span className="truncate pr-2">{dep.blockingTask?.title ?? 'Unknown task'}</span>
+                           <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => deleteDependency.mutate({ taskId: task.id, depId: dep.id, projectId })}>
+                             <X className="size-3" />
+                           </Button>
+                         </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {task?.blockingTasks?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase font-semibold text-muted-foreground">Blocks</p>
+                      {task.blockingTasks.map((dep: any) => (
+                         <div key={dep.id} className="flex items-center justify-between text-sm bg-muted/30 p-2 border border-border/40">
+                           <span className="truncate pr-2">{dep.blockedTask?.title ?? 'Unknown task'}</span>
+                           <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => deleteDependency.mutate({ taskId: task.id, depId: dep.id, projectId })}>
+                             <X className="size-3" />
+                           </Button>
+                         </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {(!task?.blockedByTasks?.length && !task?.blockingTasks?.length) && (
+                     <p className="text-xs text-muted-foreground italic mb-2">No dependencies set.</p>
+                  )}
+
+                  <div className="flex gap-2 items-center mt-3 pt-3 border-t border-border/40">
+                    <Select value={depType} onValueChange={(v: any) => setDepType(v)}>
+                      <SelectTrigger className="w-[120px] h-8 text-xs rounded-none"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="IS_BLOCKED_BY">Is blocked by</SelectItem>
+                        <SelectItem value="BLOCKS">Blocks</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Select value={depTargetId} onValueChange={setDepTargetId}>
+                      <SelectTrigger className="flex-1 h-8 text-xs rounded-none"><SelectValue placeholder="Select task..." /></SelectTrigger>
+                      <SelectContent>
+                        {allTasks.filter((t: any) => t.id !== task?.id).map((t: any) => (
+                           <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button 
+                      size="sm" 
+                      className="h-8 rounded-none px-3 text-xs" 
+                      disabled={!depTargetId || createDependency.isPending}
+                      onClick={async () => {
+                         await createDependency.mutateAsync({ taskId: task.id, targetTaskId: depTargetId, type: depType, projectId })
+                         setDepTargetId('')
+                      }}
+                    >
+                      {createDependency.isPending ? '...' : 'Add'}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -467,6 +592,20 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
               </div>
             </div>
             <div className="space-y-1">
+              <Label>Sprint</Label>
+              <Select value={sprintId} onValueChange={setSprintId}>
+                <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">No sprint</SelectItem>
+                  {(sprints as any[]).map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label>Deadline</Label>
               <Input
                 type="datetime-local"
@@ -510,6 +649,136 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
           </div>
         )}
       </DialogContent>
+
+      {/* Log time modal */}
+      <Dialog open={logOpen} onOpenChange={setLogOpen}>
+        <DialogContent className="sm:max-w-md rounded-none p-0" showCloseButton={false}>
+          <DialogHeader>
+            <div className="border-b px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <DialogTitle className="text-base">Log time</DialogTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {task?.title ? `for: ${task.title}` : 'for this task'}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-none"
+                  onClick={() => setLogOpen(false)}
+                  aria-label="Close"
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="min-h-[20rem] max-h-[70vh] overflow-auto px-5 py-6 space-y-4">
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault()
+                if (!task?.id) return
+
+                const h = Number(logHours)
+                const m = Number(logMinutes)
+                const totalMinutes = (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0)
+
+                if (totalMinutes <= 0) {
+                  setLogError('Enter a duration greater than 0')
+                  return
+                }
+
+                setLogError('')
+                const note = logNote.trim() ? logNote.trim() : undefined
+                const loggedAt = new Date(`${logDate}T00:00:00`).toISOString()
+
+                await createTimeLog.mutateAsync({
+                  taskId: task.id,
+                  durationMinutes: totalMinutes,
+                  note,
+                  loggedAt,
+                })
+
+                setLogHours('0')
+                setLogMinutes('30')
+                setLogNote('')
+                setLogDate(getTodayLocalDateForInput())
+                setLogOpen(false)
+              }}
+              className="space-y-4"
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label>Hours</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1}
+                    className="h-10 rounded-none"
+                    value={logHours}
+                    onChange={(e) => setLogHours(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Minutes</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={59}
+                    step={1}
+                    className="h-10 rounded-none"
+                    value={logMinutes}
+                    onChange={(e) => setLogMinutes(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Date</Label>
+                <Input
+                  type="date"
+                  className="h-10 rounded-none"
+                  value={logDate}
+                  onChange={(e) => setLogDate(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Note (optional)</Label>
+                <Input
+                  className="h-10 rounded-none"
+                  placeholder="What did you work on?"
+                  value={logNote}
+                  onChange={(e) => setLogNote(e.target.value)}
+                />
+              </div>
+
+              {logError && <p className="text-xs text-red-500">{logError}</p>}
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 rounded-none"
+                  onClick={() => setLogOpen(false)}
+                  disabled={createTimeLog.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 rounded-none"
+                  disabled={createTimeLog.isPending}
+                >
+                  {createTimeLog.isPending ? 'Logging…' : 'Log time'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

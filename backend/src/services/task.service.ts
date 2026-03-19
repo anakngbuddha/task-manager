@@ -5,7 +5,11 @@ export const taskService = {
   async getAll(projectId: string) {
     return prisma.task.findMany({
       where: { projectId },
-      include: { assignee: true },
+      include: { 
+        assignee: true,
+        blockingTasks: { include: { blockedTask: true } },
+        blockedByTasks: { include: { blockingTask: true } },
+      },
       orderBy: { createdAt: 'desc' },
     })
   },
@@ -23,6 +27,9 @@ export const taskService = {
     projectId: string
     assigneeId?: string
     priority?: Priority
+    status?: TaskStatus
+    sprintId?: string | null
+    startDate?: Date | null
     deadline?: Date | null
   }) {
     return prisma.task.create({
@@ -37,6 +44,8 @@ export const taskService = {
     status?: TaskStatus
     priority?: Priority
     assigneeId?: string
+    sprintId?: string | null
+    startDate?: Date | null
     deadline?: Date | null
   }) {
     return prisma.task.update({

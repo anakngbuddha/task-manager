@@ -2,32 +2,45 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useSession, signOut } from '@/lib/auth-client'
 import { useProjects } from '@/hooks/useProjects'
+import NotificationBell from '@/components/layout/NotificationBell'
+import { useMarkAllNotificationsRead, useMarkNotificationRead, useNotifications } from '@/hooks/useNotifications'
+import { useMyStatus, useUpdateStatus, STATUS_CONFIG, type UserStatus } from '@/hooks/useUserStatus'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   ChevronDown,
   ChevronRight,
   FolderKanban,
-  KeyRound,
   LayoutGrid,
   PanelLeft,
   Settings,
-  Users,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+const STATUS_ORDER: UserStatus[] = ['ONLINE', 'WORKING', 'BUSY', 'AWAY', 'IN_MEETING', 'OFFLINE']
 
 export default function Sidebar() {
   const { data: session } = useSession()
   const { data: projects = [] } = useProjects()
   const navigate = useNavigate()
   const location = useLocation()
+  const { data: notifData } = useNotifications(20)
+  const markRead = useMarkNotificationRead()
+  const markAllRead = useMarkAllNotificationsRead()
+  const { data: myStatusInfo } = useMyStatus()
+  const updateStatus = useUpdateStatus()
 
   const [expanded, setExpanded] = useState(true)
-  const [openSections, setOpenSections] = useState({
-    projects: true,
-    members: false,
-    profile: false,
-  })
+  const [openSections, setOpenSections] = useState({ projects: true })
 
   useEffect(() => {
     const raw = localStorage.getItem('sidebar:expanded')
@@ -40,8 +53,11 @@ export default function Sidebar() {
 
   const activeRoot = useMemo(() => {
     if (location.pathname.startsWith('/projects/')) return 'projects'
-    if (location.pathname.startsWith('/members')) return 'members'
-    if (location.pathname.startsWith('/settings') || location.pathname.startsWith('/change-password')) return 'profile'
+    if (
+      location.pathname.startsWith('/profile')
+      || location.pathname.startsWith('/settings')
+      || location.pathname.startsWith('/change-password')
+    ) return 'profile'
     if (location.pathname === '/') return 'dashboard'
     return ''
   }, [location.pathname])
@@ -54,6 +70,59 @@ export default function Sidebar() {
   const toggleSection = (section: keyof typeof openSections) => {
     setOpenSections((curr) => ({ ...curr, [section]: !curr[section] }))
   }
+
+  const currentStatus: UserStatus = (myStatusInfo?.status as UserStatus) ?? 'ONLINE'
+  const statusCfg = STATUS_CONFIG[currentStatus]
+  const userInitial = session?.user?.name?.charAt(0).toUpperCase() ?? 'U'
+
+  const StatusAvatar = ({ sizeCls = 'h-7 w-7', dotSizeCls = 'size-2.5' }: { sizeCls?: string; dotSizeCls?: string }) => (
+    <div className="relative shrink-0">
+      <Avatar className={sizeCls}>
+        <AvatarFallback className="text-xs bg-sidebar-accent text-sidebar-foreground">
+          {userInitial}
+        </AvatarFallback>
+      </Avatar>
+      <span
+        className={cn('absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-sidebar', dotSizeCls, statusCfg.dotClass)}
+        title={statusCfg.label}
+      />
+    </div>
+  )
+
+  const StatusDropdown = ({ side = 'top' as 'top' | 'right' | 'bottom' | 'left' }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="shrink-0 rounded-full outline-none ring-2 ring-transparent hover:ring-sidebar-accent/70 transition-all focus-visible:ring-sidebar-accent"
+          title={`${statusCfg.label} — click to change`}
+        >
+          <StatusAvatar />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side={side} align="start" className="w-52">
+        <DropdownMenuLabel className="text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
+          Set your status
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {STATUS_ORDER.map((s) => {
+          const cfg = STATUS_CONFIG[s]
+          const isActive = s === currentStatus
+          return (
+            <DropdownMenuItem
+              key={s}
+              className={cn('flex items-center gap-2.5 cursor-pointer', isActive && 'font-medium')}
+              onSelect={() => updateStatus.mutate(s)}
+            >
+              <span className={cn('shrink-0 size-2.5 rounded-full', cfg.dotClass)} />
+              {cfg.label}
+              {isActive && <span className="ml-auto text-[0.65rem] text-muted-foreground">✓</span>}
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 
   return (
     <aside
@@ -76,19 +145,35 @@ export default function Sidebar() {
               </div>
             </div>
 
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="shrink-0 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              onClick={() => setExpanded((v) => !v)}
-              aria-label="Collapse sidebar"
-              title="Collapse sidebar"
-            >
-              <PanelLeft className="size-4" />
-            </Button>
+            <div className="flex items-center gap-1">
+              <NotificationBell
+                notifData={notifData}
+                markAllRead={{ mutateAsync: () => markAllRead.mutateAsync() }}
+                markRead={{ mutateAsync: (id: string) => markRead.mutateAsync(id) }}
+                onNavigate={(to) => navigate(to)}
+                className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="shrink-0 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                onClick={() => setExpanded((v) => !v)}
+                aria-label="Collapse sidebar"
+                title="Collapse sidebar"
+              >
+                <PanelLeft className="size-4" />
+              </Button>
+            </div>
           </div>
         ) : (
-          <div className="flex w-full flex-col items-center gap-2">
+          <div className="flex w-full items-center justify-center gap-1">
+            <NotificationBell
+              notifData={notifData}
+              markAllRead={{ mutateAsync: () => markAllRead.mutateAsync() }}
+              markRead={{ mutateAsync: (id: string) => markRead.mutateAsync(id) }}
+              onNavigate={(to) => navigate(to)}
+              className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            />
             <Button
               variant="ghost"
               size="icon-sm"
@@ -99,15 +184,12 @@ export default function Sidebar() {
             >
               <PanelLeft className="size-4" />
             </Button>
-            <div className="grid size-9 place-items-center rounded-xl bg-sidebar-accent text-sidebar-foreground">
-              <FolderKanban className="size-5" />
-            </div>
           </div>
         )}
       </div>
 
       <nav className="flex-1 px-2 pb-3 pt-2">
-        {/* Dashboard (no dropdown) */}
+        {/* Dashboard */}
         <Link
           to="/"
           className={[
@@ -193,60 +275,9 @@ export default function Sidebar() {
           </div>
         )}
 
-        {expanded && (
-          <div className="mt-4 px-2 text-[0.7rem] font-semibold uppercase tracking-wider text-sidebar-foreground/60">
-            Team
-          </div>
-        )}
-
-        {/* Members */}
-        <button
-          type="button"
-          onClick={() => toggleSection('members')}
-          className={[
-            'mt-2 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
-            expanded ? 'justify-between' : 'justify-center',
-            activeRoot === 'members'
-              ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
-              : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground',
-          ].join(' ')}
-        >
-          <span className="flex items-center gap-2">
-            <Users className="size-4" />
-            {expanded && <span className="font-medium">Members</span>}
-          </span>
-          {expanded && (
-            openSections.members ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />
-          )}
-        </button>
-
-        {expanded && openSections.members && (
-          <div className="mt-1 space-y-1 pl-2">
-            <Link
-              to="/members?mode=view"
-              className="block rounded-md px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              View members
-            </Link>
-            <Link
-              to="/members?mode=add"
-              className="block rounded-md px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              Add members
-            </Link>
-            <Link
-              to="/members?mode=remove"
-              className="block rounded-md px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              Remove members
-            </Link>
-          </div>
-        )}
-
         {/* Profile */}
-        <button
-          type="button"
-          onClick={() => toggleSection('profile')}
+        <Link
+          to="/profile"
           className={[
             'mt-2 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
             expanded ? 'justify-between' : 'justify-center',
@@ -259,43 +290,20 @@ export default function Sidebar() {
             <Settings className="size-4" />
             {expanded && <span className="font-medium">Profile</span>}
           </span>
-          {expanded && (
-            openSections.profile ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />
-          )}
-        </button>
-
-        {expanded && openSections.profile && (
-          <div className="mt-1 space-y-1 pl-2">
-            <Link
-              to="/settings"
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              <Settings className="size-4" />
-              Settings
-            </Link>
-            <Link
-              to="/change-password"
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            >
-              <KeyRound className="size-4" />
-              Change password
-            </Link>
-          </div>
-        )}
+        </Link>
       </nav>
 
-      {/* Profile info fixed at bottom */}
+      {/* Profile + status at bottom */}
       <div className="border-t border-sidebar-border px-3 py-3">
         {expanded ? (
           <div className="flex items-center gap-2">
-            <Avatar className="h-7 w-7">
-              <AvatarFallback className="text-xs bg-sidebar-accent text-sidebar-foreground">
-                {session?.user?.name?.charAt(0).toUpperCase() ?? 'U'}
-              </AvatarFallback>
-            </Avatar>
+            <StatusDropdown side="top" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{session?.user?.name}</p>
-              <p className="truncate text-xs text-sidebar-foreground/70">{session?.user?.email}</p>
+              <p className="truncate text-xs text-sidebar-foreground/70">
+                <span className={cn('inline-block size-1.5 rounded-full mr-1 align-middle', statusCfg.dotClass)} />
+                {statusCfg.label}
+              </p>
             </div>
             <Button
               variant="destructive"
@@ -309,11 +317,7 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
-            <Avatar className="h-7 w-7">
-              <AvatarFallback className="text-xs bg-sidebar-accent text-sidebar-foreground">
-                {session?.user?.name?.charAt(0).toUpperCase() ?? 'U'}
-              </AvatarFallback>
-            </Avatar>
+            <StatusDropdown side="right" />
             <Button
               variant="destructive"
               size="icon-sm"

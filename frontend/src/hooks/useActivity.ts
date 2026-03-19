@@ -11,3 +11,14 @@ export function useActivity(take = 50) {
   })
 }
 
+export function useProjectActivity(projectId: string, take = 8) {
+  return useQuery({
+    queryKey: ['project-activity', projectId, take],
+    queryFn: async () => {
+      const { data } = await api.get(`/projects/${projectId}/activity`, { params: { take } })
+      return data
+    },
+    enabled: !!projectId,
+  })
+}
+

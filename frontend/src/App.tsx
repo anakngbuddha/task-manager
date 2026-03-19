@@ -5,12 +5,19 @@ import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import ProjectPage from './pages/ProjectPage'
 import ProjectMessagesPage from './pages/ProjectMessagesPage'
+import ProjectTimeReportPage from './pages/ProjectTimeReportPage'
+import ProjectSprintReportPage from './pages/ProjectSprintReportPage'
+import ProjectDashboardPage from './pages/ProjectDashboardPage'
+import SprintBacklogPage from './pages/SprintBacklogPage'
+import RoadmapPage from './pages/RoadmapPage'
+import CalendarPage from './pages/CalendarPage'
 import ActivityPage from './pages/ActivityPage'
 import SettingsPage from './pages/SettingsPage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
 import MembersPage from './pages/MembersPage'
 import InvitePage from './pages/InvitePage'
 import ProjectMembersPage from './pages/ProjectMembersPage'
+import ProfilePage from './pages/ProfilePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -58,6 +65,36 @@ export default function App() {
             <ProjectMembersPage />
           </ProtectedRoute>
         } />
+        <Route path="/projects/:id/time-report" element={
+          <ProtectedRoute>
+            <ProjectTimeReportPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/sprint-report" element={
+          <ProtectedRoute>
+            <ProjectSprintReportPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/dashboard" element={
+          <ProtectedRoute>
+            <ProjectDashboardPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/backlog" element={
+          <ProtectedRoute>
+            <SprintBacklogPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/roadmap" element={
+          <ProtectedRoute>
+            <RoadmapPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/calendar" element={
+          <ProtectedRoute>
+            <CalendarPage />
+          </ProtectedRoute>
+        } />
         <Route path="/settings" element={
           <ProtectedRoute>
             <SettingsPage />
@@ -71,6 +108,11 @@ export default function App() {
         <Route path="/members" element={
           <ProtectedRoute>
             <MembersPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/profile" element={
+          <ProtectedRoute>
+            <ProfilePage />
           </ProtectedRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />

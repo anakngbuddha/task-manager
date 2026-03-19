@@ -13,6 +13,8 @@ import { activityRoutes } from './routes/activity.js'
 import { notificationRoutes } from './routes/notifications.js'
 import { readReceiptRoutes } from './routes/readReceipts.js'
 import { sprintRoutes } from './routes/sprints.js'
+import { timeLogRoutes } from './routes/timeLogs.js'
+import { userRoutes } from './routes/users.js'
 import 'dotenv/config'
 
 const app = Fastify({ logger: true })
@@ -72,6 +74,9 @@ app.register(activityRoutes, { prefix: '/api' })
 app.register(notificationRoutes, { prefix: '/api' })
 app.register(readReceiptRoutes, { prefix: '/api' })
 app.register(sprintRoutes, { prefix: '/api' })
+app.register(timeLogRoutes, { prefix: '/api' })
+app.register(userRoutes, { prefix: '/api' })
+
 
 app.get('/health', async () => {
   return { status: 'ok' }

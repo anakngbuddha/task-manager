@@ -19,10 +19,13 @@ const priorityLabels: Record<string, string> = {
   URGENT: 'Urgent',
 }
 
+const SPRINT_BORDER = '#1D9E75'
+
 export default function TaskCard({ task, onClick }: {
   task: any
   onClick: (task: any) => void
 }) {
+  const isSprintTask = !!task?.sprintId
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(task.id) })
 
@@ -35,11 +38,15 @@ export default function TaskCard({ task, onClick }: {
   return (
     <Card
       ref={setNodeRef}
-      style={style}
+      style={{
+        ...style,
+        ...(isSprintTask ? { borderLeftColor: SPRINT_BORDER } : null),
+      }}
       className={[
         'group cursor-pointer rounded-xl border-border/60 bg-card/90',
         'transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-[0_14px_50px_-35px_rgba(0,0,0,.35)]',
         isDragging ? 'shadow-none' : '',
+        isSprintTask ? 'border-l-[3px] border-l-transparent' : 'border-l-[3px] border-l-transparent',
       ].join(' ')}
       onClick={() => {
         if (!isDragging) onClick(task)
@@ -65,7 +72,9 @@ export default function TaskCard({ task, onClick }: {
       </CardHeader>
       <CardContent className="space-y-2 px-3 pb-3 pt-0">
         {task.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2">{task.description}</p>
+          <p className="text-xs line-clamp-2 text-muted-foreground">
+            {task.description}
+          </p>
         )}
         {task.deadline && (
           <p className="text-[0.7rem] text-muted-foreground">
@@ -73,9 +82,30 @@ export default function TaskCard({ task, onClick }: {
           </p>
         )}
         <div className="flex items-center justify-between gap-2">
-          <Badge className={`text-[0.68rem] px-2 py-0.5 ${priorityColors[task.priority] ?? ''}`} variant="secondary">
-            {priorityLabels[task.priority] ?? task.priority}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge
+              className={`text-[0.68rem] px-2 py-0.5 ${priorityColors[task.priority] ?? ''}`}
+              variant="secondary"
+            >
+              {priorityLabels[task.priority] ?? task.priority}
+            </Badge>
+
+              {task.sprintId && (
+                <Badge
+                  className="text-[0.68rem] px-2 py-0.5"
+                  variant="secondary"
+                >
+                  {task.sprintName ?? 'Sprint'}
+                </Badge>
+              )}
+
+            {typeof task.timeTotalHours === 'number' && task.timeTotalHours > 0 && (
+              <Badge variant="secondary" className="text-[0.68rem] px-2 py-0.5 rounded-none">
+                {task.timeTotalHours.toFixed(1)}h
+              </Badge>
+            )}
+          </div>
+
           {task.assignee && (
             <Avatar className="h-6 w-6">
               <AvatarFallback className="text-[0.65rem]">

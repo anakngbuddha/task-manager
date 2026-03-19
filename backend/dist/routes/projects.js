@@ -1,17 +1,67 @@
 import { projectService } from '../services/project.service.js';
 import { authenticate } from '../middlewares/authenticate.js';
 import { z } from 'zod';
+import { requireProjectRole } from '../services/projectAuth.service.js';
+import { dashboardLayoutService, WIDGET_TYPES } from '../services/dashboardLayout.service.js';
+import { prisma } from '../lib/prisma.js';
+import { presenceService } from '../services/presence.service.js';
 const createProjectSchema = z.object({
     name: z.string().min(1).max(100),
 });
 const updateRoleSchema = z.object({
-    role: z.enum(['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']),
+    // Master admins can only assign these roles (no master-admin promotion via UI/API).
+    role: z.enum(['PROJECT_MANAGER', 'MEMBER']),
 });
 export async function projectRoutes(app) {
     app.get('/projects', {
         preHandler: authenticate,
     }, async (req) => {
         return projectService.getAllForUser(req.authUser.id);
+    });
+    app.get('/projects/dashboard', {
+        preHandler: authenticate,
+    }, async (req) => {
+        return projectService.getDashboardForUser(req.authUser.id);
+    });
+    // GET /api/projects/:projectId/dashboard-layout
+    app.get('/projects/:projectId/dashboard-layout', { preHandler: authenticate }, async (req, reply) => {
+        const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        const layout = await dashboardLayoutService.getOrCreateLayout(req.authUser.id, projectId);
+        return reply.status(200).send({ layout });
+    });
+    // PATCH /api/projects/:projectId/dashboard-layout
+    const widgetTypeSchema = z.enum(WIDGET_TYPES);
+    const dashboardLayoutSchema = z.object({
+        layout: z.array(z.object({
+            id: z.string(),
+            type: widgetTypeSchema,
+            position: z.object({
+                x: z.number().int().nonnegative(),
+                y: z.number().int().nonnegative(),
+            }),
+            size: z.object({
+                w: z.number().int().min(1).max(2),
+                h: z.number().int().min(1).max(12),
+            }),
+        })),
+    });
+    app.patch('/projects/:projectId/dashboard-layout', { preHandler: authenticate }, async (req, reply) => {
+        const { projectId } = req.params;
+        const body = dashboardLayoutSchema.parse(req.body);
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        const layout = await dashboardLayoutService.updateLayout(req.authUser.id, projectId, body.layout);
+        return reply.status(200).send({ layout });
     });
     app.get('/projects/:id', {
         preHandler: authenticate,
@@ -57,6 +107,10 @@ export async function projectRoutes(app) {
     }, async (req, reply) => {
         const { projectId, userId } = req.params;
         const { role } = updateRoleSchema.parse(req.body);
+        // Disallow changing your own role (prevents MASTER_ADMIN self-demotion, etc.)
+        if (req.authUser.id === userId) {
+            return reply.status(403).send({ error: 'You cannot change your own role' });
+        }
         const me = await projectService.getMemberRole(projectId, req.authUser.id);
         if (!me)
             return reply.status(403).send({ error: 'Forbidden' });
@@ -75,7 +129,8 @@ export async function projectRoutes(app) {
                 return reply.status(403).send({ error: 'Forbidden' });
         }
         // Prevent removing the last MASTER_ADMIN (simple guard)
-        if (target.role === 'MASTER_ADMIN' && role !== 'MASTER_ADMIN') {
+        // Note: we no longer allow assigning MASTER_ADMIN via this endpoint.
+        if (target.role === 'MASTER_ADMIN') {
             const admins = await projectService.listMembers(projectId);
             const adminCount = admins.filter((m) => m.role === 'MASTER_ADMIN').length;
             if (adminCount <= 1)
@@ -83,5 +138,46 @@ export async function projectRoutes(app) {
         }
         await projectService.updateMemberRole(projectId, userId, role);
         return { ok: true };
+    });
+    app.delete('/projects/:projectId/members/:userId', {
+        preHandler: authenticate,
+    }, async (req, reply) => {
+        const { projectId, userId } = req.params;
+        // Only MASTER_ADMIN can remove members
+        const me = await projectService.getMemberRole(projectId, req.authUser.id);
+        if (!me)
+            return reply.status(403).send({ error: 'Forbidden' });
+        if (me.role !== 'MASTER_ADMIN')
+            return reply.status(403).send({ error: 'Forbidden' });
+        if (req.authUser.id === userId) {
+            return reply.status(403).send({ error: 'You cannot remove yourself' });
+        }
+        const target = await projectService.getMemberRole(projectId, userId);
+        if (!target)
+            return reply.status(404).send({ error: 'Member not found' });
+        // Prevent removing the last MASTER_ADMIN
+        if (target.role === 'MASTER_ADMIN') {
+            const admins = await projectService.listMembers(projectId);
+            const adminCount = admins.filter((m) => m.role === 'MASTER_ADMIN').length;
+            if (adminCount <= 1)
+                return reply.status(400).send({ error: 'Project must have at least one MASTER_ADMIN' });
+        }
+        await prisma.projectMember.delete({
+            where: { userId_projectId: { userId, projectId } },
+        });
+        return reply.status(204).send();
+    });
+    app.get('/projects/:projectId/presence', {
+        preHandler: authenticate,
+    }, async (req, reply) => {
+        const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        const rows = await presenceService.listForProject(projectId);
+        return reply.status(200).send({ members: rows });
     });
 }

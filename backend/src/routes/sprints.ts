@@ -164,4 +164,23 @@ export async function sprintRoutes(app: FastifyInstance) {
       return sprintService.assignTasks(sprintId, projectId, taskIds)
     }
   )
+
+  // GET /projects/:projectId/sprints/:sprintId/burndown
+  app.get(
+    '/projects/:projectId/sprints/:sprintId/burndown',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      const { projectId, sprintId } = req.params as { projectId: string; sprintId: string }
+
+      try {
+        await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+      } catch {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+
+      const result = await sprintService.getBurndown(projectId, sprintId)
+      if (!result) return reply.status(404).send({ error: 'Sprint not found' })
+      return result
+    }
+  )
 }
