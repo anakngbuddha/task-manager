@@ -31,8 +31,8 @@ export const auth = betterAuth({
             httpOnly: true,
             // localhost:5174 -> localhost:3000 is same-site; Lax works in dev
             sameSite: isProd ? 'none' : 'lax',
-            // Partitioned cookies require Secure; keep it prod-only
-            partitioned: isProd,
+            // Partitioned cookies require Secure; but breaks cross-domain OAuth callbacks
+            partitioned: false,
         },
     },
 });
