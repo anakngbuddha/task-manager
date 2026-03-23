@@ -19,6 +19,7 @@ const createTaskSchema = z.object({
   sprintId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
   deadline: z.string().datetime().nullable().optional(),
+  githubPrUrl: z.string().url().nullable().optional(),
 })
 
 const updateTaskSchema = z.object({
@@ -31,6 +32,7 @@ const updateTaskSchema = z.object({
   sprintId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
   deadline: z.string().datetime().nullable().optional(),
+  githubPrUrl: z.string().url().nullable().optional(),
 })
 
 export async function taskRoutes(app: FastifyInstance) {
