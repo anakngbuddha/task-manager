@@ -13,6 +13,9 @@ import {
   Reply,
   Zap,
   Filter,
+  GitPullRequest,
+  GitMerge,
+  GitCommit,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -101,6 +104,34 @@ const EVENT_CONFIG: Record<string, EventConfig> = {
     pillText: 'text-pink-700 dark:text-pink-400',
     label: 'sent a direct message',
     filterKey: 'messages',
+  },
+  PR_OPENED: {
+    icon: GitPullRequest,
+    pillBg: 'bg-emerald-100 dark:bg-emerald-950/60',
+    pillText: 'text-emerald-700 dark:text-emerald-400',
+    label: 'opened a pull request',
+    filterKey: 'tasks',
+  },
+  PR_MERGED: {
+    icon: GitMerge,
+    pillBg: 'bg-violet-100 dark:bg-violet-950/60',
+    pillText: 'text-violet-700 dark:text-violet-400',
+    label: 'merged a pull request',
+    filterKey: 'tasks',
+  },
+  PR_CLOSED: {
+    icon: GitPullRequest,
+    pillBg: 'bg-destructive/10',
+    pillText: 'text-destructive',
+    label: 'closed a pull request',
+    filterKey: 'tasks',
+  },
+  PUSH_TO_REPO: {
+    icon: GitCommit,
+    pillBg: 'bg-blue-100 dark:bg-blue-950/60',
+    pillText: 'text-blue-700 dark:text-blue-400',
+    label: 'pushed to repository',
+    filterKey: 'tasks',
   },
 }
 
