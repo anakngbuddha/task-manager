@@ -591,6 +591,9 @@ export default function ProjectPage() {
                   <DropdownMenuItem asChild>
                     <Link to={`/projects/${projectId}/members`}>View members</Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/settings`}>Settings</Link>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 

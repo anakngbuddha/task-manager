@@ -15,6 +15,8 @@ import { readReceiptRoutes } from './routes/readReceipts.js'
 import { sprintRoutes } from './routes/sprints.js'
 import { timeLogRoutes } from './routes/timeLogs.js'
 import { userRoutes } from './routes/users.js'
+import { githubRoutes } from './routes/github.js'
+import { githubWebhookRoutes } from './routes/webhooks/github.js'
 import 'dotenv/config'
 
 const app = Fastify({ logger: true, trustProxy: true })
@@ -83,6 +85,8 @@ app.register(readReceiptRoutes, { prefix: '/api' })
 app.register(sprintRoutes, { prefix: '/api' })
 app.register(timeLogRoutes, { prefix: '/api' })
 app.register(userRoutes, { prefix: '/api' })
+app.register(githubRoutes, { prefix: '/api' })
+app.register(githubWebhookRoutes, { prefix: '/api' })
 
 
 app.get('/health', async () => {

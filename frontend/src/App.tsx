@@ -18,6 +18,7 @@ import MembersPage from './pages/MembersPage'
 import InvitePage from './pages/InvitePage'
 import ProjectMembersPage from './pages/ProjectMembersPage'
 import ProfilePage from './pages/ProfilePage'
+import ProjectSettingsPage from './pages/ProjectSettingsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -63,6 +64,11 @@ export default function App() {
         <Route path="/projects/:id/members" element={
           <ProtectedRoute>
             <ProjectMembersPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/settings" element={
+          <ProtectedRoute>
+            <ProjectSettingsPage />
           </ProtectedRoute>
         } />
         <Route path="/projects/:id/time-report" element={

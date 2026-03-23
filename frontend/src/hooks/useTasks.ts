@@ -46,6 +46,7 @@ export function useUpdateTask() {
       priority?: string
       sprintId?: string | null
       deadline?: string | null
+      githubPrUrl?: string | null
     }) => {
       const { data } = await api.patch(`/tasks/${id}`, payload)
       return data

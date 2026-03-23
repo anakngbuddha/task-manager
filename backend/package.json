@@ -4,12 +4,12 @@
   "description": "",
   "main": "index.js",
   "type": "module",
- "scripts": {
-  "postinstall": "node node_modules/prisma/build/index.js generate",
-  "dev": "tsx watch src/index.ts",
-  "build": "tsc",
-  "start": "node dist/index.js"
-},
+  "scripts": {
+    "postinstall": "node node_modules/prisma/build/index.js generate",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -18,9 +18,11 @@
     "@fastify/jwt": "^10.0.0",
     "@fastify/websocket": "^11.2.0",
     "@prisma/client": "^6.19.2",
+    "@types/jsonwebtoken": "^9.0.10",
     "better-auth": "^1.5.5",
     "dotenv": "^17.3.1",
     "fastify": "^5.8.2",
+    "jsonwebtoken": "^9.0.3",
     "prisma": "^6.19.2",
     "socket.io": "^4.8.3",
     "zod": "^4.3.6"

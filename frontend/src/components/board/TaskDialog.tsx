@@ -10,7 +10,7 @@ import {
 import { useTasks, useUpdateTask, useDeleteTask, useCreateTaskDependency, useDeleteTaskDependency } from '@/hooks/useTasks'
 import { useSprints } from '@/hooks/useSprints'
 import { useTaskComments, useAddTaskComment } from '@/hooks/useTaskComments'
-import { Pencil, X, Clock, Link as LinkIcon } from 'lucide-react'
+import { Pencil, X, Clock, Link as LinkIcon, ExternalLink } from 'lucide-react'
 import { useCreateTaskTimeLog } from '@/hooks/useTimeLogs'
 
 const statusLabel: Record<string, string> = {
@@ -91,6 +91,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const [logNote, setLogNote] = useState('')
   const [logDate, setLogDate] = useState(getTodayLocalDateForInput())
   const [logError, setLogError] = useState('')
+  const [githubPrUrl, setGithubPrUrl] = useState('')
 
   const { data: comments = [] } = useTaskComments(task?.id)
   const addComment = useAddTaskComment()
@@ -141,6 +142,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       setLogNote('')
       setLogDate(getTodayLocalDateForInput())
       setLogError('')
+      setGithubPrUrl(task.githubPrUrl ?? '')
     }
   }, [task])
 
@@ -165,6 +167,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       status,
       sprintId: sprintId === 'NONE' ? null : sprintId,
       deadline: deadline ? new Date(deadline).toISOString() : null,
+      githubPrUrl: githubPrUrl.trim() || null,
     })
     onClose()
   }
@@ -331,6 +334,26 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                   {task?.deadline ? new Date(task.deadline).toLocaleString() : 'No deadline'}
                 </p>
               </div>
+
+              {task?.githubPrUrl && (
+                <div className="border border-border/60 bg-card p-5">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <svg viewBox="0 0 16 16" className="size-3 fill-current" aria-hidden="true">
+                      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                    </svg>
+                    Linked Pull Request
+                  </p>
+                  <a
+                    href={task.githubPrUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+                  >
+                    {task.githubPrUrl}
+                    <ExternalLink className="size-3" />
+                  </a>
+                </div>
+              )}
 
               <div className="border border-border/60 bg-card p-5">
                 <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1"><LinkIcon className="size-3" /> Dependencies</p>
@@ -630,6 +653,15 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
               {deadlineError && (
                 <p className="text-xs text-red-500">{deadlineError}</p>
               )}
+            </div>
+            <div className="space-y-1">
+              <Label>GitHub PR URL</Label>
+              <Input
+                className="h-10 rounded-none"
+                placeholder="https://github.com/owner/repo/pull/123"
+                value={githubPrUrl}
+                onChange={e => setGithubPrUrl(e.target.value)}
+              />
             </div>
             <div className="flex gap-2 pt-2">
               <Button
