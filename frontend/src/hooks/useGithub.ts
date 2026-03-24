@@ -11,10 +11,11 @@ export function useGithubConnect() {
   })
 }
 
-export function useGithubInstallation(projectId: string) {
+export function useGithubInstallation(projectId?: string) {
   return useQuery({
-    queryKey: ['github-installation', projectId],
+    queryKey: ['github-installation', projectId ?? ''],
     queryFn: async () => {
+      if (!projectId) throw new Error('Missing projectId')
       const { data } = await api.get(`/projects/${projectId}/github`)
       return data
     },
@@ -23,10 +24,11 @@ export function useGithubInstallation(projectId: string) {
   })
 }
 
-export function useGithubRepos(projectId: string, enabled: boolean = true) {
+export function useGithubRepos(projectId?: string, enabled: boolean = true) {
   return useQuery({
-    queryKey: ['github-repos', projectId],
+    queryKey: ['github-repos', projectId ?? ''],
     queryFn: async () => {
+      if (!projectId) throw new Error('Missing projectId')
       const { data } = await api.get(`/projects/${projectId}/github/repos`)
       return data as {
         installationId: number
@@ -54,6 +56,26 @@ export function useLinkGithubInstallation() {
       queryClient.invalidateQueries({ queryKey: ['github-installation', projectId] })
       queryClient.invalidateQueries({ queryKey: ['github-repos', projectId] })
     },
+  })
+}
+
+/**
+ * Polls the backend every 2s for an unclaimed (pending) GitHub installation
+ * that arrived via webhook. The `enabled` flag controls whether polling runs.
+ */
+export function useGithubPendingInstallation(enabled: boolean) {
+  return useQuery({
+    queryKey: ['github-pending-installation'],
+    queryFn: async () => {
+      const { data, status } = await api.get('/github/pending-installation', {
+        validateStatus: (s) => s === 200 || s === 204,
+      })
+      if (status === 204) return null
+      return data as { installationId: number; repos: string[] }
+    },
+    enabled,
+    refetchInterval: enabled ? 2000 : false,
+    retry: false,
   })
 }
 

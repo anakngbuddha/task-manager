@@ -17,10 +17,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  BookOpen,
+  CalendarDays,
   ChevronDown,
   ChevronRight,
   FolderKanban,
   LayoutGrid,
+  LogOut,
   PanelLeft,
   Settings,
 } from 'lucide-react'
@@ -54,10 +57,12 @@ export default function Sidebar() {
   const activeRoot = useMemo(() => {
     if (location.pathname.startsWith('/projects/')) return 'projects'
     if (
-      location.pathname.startsWith('/profile')
-      || location.pathname.startsWith('/settings')
-      || location.pathname.startsWith('/change-password')
-    ) return 'profile'
+      location.pathname.startsWith('/profile') ||
+      location.pathname.startsWith('/settings') ||
+      location.pathname.startsWith('/change-password')
+    )
+      return 'profile'
+    if (location.pathname === '/calendar') return 'calendar'
     if (location.pathname === '/') return 'dashboard'
     return ''
   }, [location.pathname])
@@ -75,7 +80,13 @@ export default function Sidebar() {
   const statusCfg = STATUS_CONFIG[currentStatus]
   const userInitial = session?.user?.name?.charAt(0).toUpperCase() ?? 'U'
 
-  const StatusAvatar = ({ sizeCls = 'h-7 w-7', dotSizeCls = 'size-2.5' }: { sizeCls?: string; dotSizeCls?: string }) => (
+  const StatusAvatar = ({
+    sizeCls = 'h-7 w-7',
+    dotSizeCls = 'size-2.5',
+  }: {
+    sizeCls?: string
+    dotSizeCls?: string
+  }) => (
     <div className="relative shrink-0">
       <Avatar className={sizeCls}>
         <AvatarFallback className="text-xs bg-sidebar-accent text-sidebar-foreground">
@@ -83,7 +94,11 @@ export default function Sidebar() {
         </AvatarFallback>
       </Avatar>
       <span
-        className={cn('absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-sidebar', dotSizeCls, statusCfg.dotClass)}
+        className={cn(
+          'absolute -bottom-0.5 -right-0.5 rounded-full ring-2 ring-sidebar',
+          dotSizeCls,
+          statusCfg.dotClass
+        )}
         title={statusCfg.label}
       />
     </div>
@@ -116,7 +131,9 @@ export default function Sidebar() {
             >
               <span className={cn('shrink-0 size-2.5 rounded-full', cfg.dotClass)} />
               {cfg.label}
-              {isActive && <span className="ml-auto text-[0.65rem] text-muted-foreground">✓</span>}
+              {isActive && (
+                <span className="ml-auto text-[0.65rem] text-muted-foreground">✓</span>
+              )}
             </DropdownMenuItem>
           )
         })}
@@ -124,209 +141,219 @@ export default function Sidebar() {
     </DropdownMenu>
   )
 
+  // Shared nav-item style helper
+  const navItemCls = (active: boolean, isExpanded: boolean) =>
+    cn(
+      'flex w-full items-center rounded-md px-2 py-2 text-sm transition-colors',
+      isExpanded ? 'gap-2.5 justify-start' : 'justify-center',
+      active
+        ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
+        : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+    )
+
   return (
     <aside
-      className={[
-        'relative flex h-screen shrink-0 flex-col overflow-x-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground',
+      className={cn(
+        'relative flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground',
         'transition-[width] duration-200',
-        expanded ? 'w-64' : 'w-14',
-      ].join(' ')}
+        expanded ? 'w-72' : 'w-14'
+      )}
     >
-      <div className={['flex h-13 items-center', expanded ? 'px-3' : 'px-2'].join(' ')}>
+      {/* ── Header ── */}
+      <div className="flex h-14 shrink-0 items-center border-b border-sidebar-border/50 px-2 gap-1">
         {expanded ? (
-          <div className="flex w-full items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-3 overflow-hidden">
-              <div className="grid size-9 place-items-center rounded-xl bg-sidebar-accent text-sidebar-foreground">
-                <FolderKanban className="size-5" />
+          <>
+            {/* Brand */}
+            <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1">
+              <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-sidebar-accent text-sidebar-foreground">
+                <FolderKanban className="size-4" />
               </div>
               <div className="min-w-0">
-                <h1 className="truncate text-sm font-semibold">Task Manager</h1>
-                <p className="truncate text-xs text-sidebar-foreground/70">Workspace</p>
+                <h1 className="truncate text-sm font-semibold leading-tight">Task Manager</h1>
+                <p className="truncate text-[0.7rem] text-sidebar-foreground/60">Workspace</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
+            {/* Controls */}
+            <div className="flex items-center gap-0.5 shrink-0">
               <NotificationBell
                 notifData={notifData}
                 markAllRead={{ mutateAsync: () => markAllRead.mutateAsync() }}
                 markRead={{ mutateAsync: (id: string) => markRead.mutateAsync(id) }}
                 onNavigate={(to) => navigate(to)}
-                className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                className="text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
               />
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="shrink-0 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                onClick={() => setExpanded((v) => !v)}
+                className="shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                onClick={() => setExpanded(false)}
                 aria-label="Collapse sidebar"
-                title="Collapse sidebar"
               >
                 <PanelLeft className="size-4" />
               </Button>
             </div>
-          </div>
+          </>
         ) : (
-          <div className="flex w-full items-center justify-center gap-1">
-            <NotificationBell
-              notifData={notifData}
-              markAllRead={{ mutateAsync: () => markAllRead.mutateAsync() }}
-              markRead={{ mutateAsync: (id: string) => markRead.mutateAsync(id) }}
-              onNavigate={(to) => navigate(to)}
-              className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            />
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-              onClick={() => setExpanded(true)}
-              aria-label="Expand sidebar"
-              title="Expand sidebar"
-            >
-              <PanelLeft className="size-4" />
-            </Button>
-          </div>
+          /* Collapsed — single centered toggle */
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="mx-auto text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            onClick={() => setExpanded(true)}
+            aria-label="Expand sidebar"
+          >
+            <PanelLeft className="size-4 rotate-180" />
+          </Button>
         )}
       </div>
 
-      <nav className="flex-1 px-2 pb-3 pt-2">
+      {/* ── Nav ── */}
+      <nav className="flex-1 overflow-y-auto px-2 pb-3 pt-3 space-y-0.5">
         {/* Dashboard */}
         <Link
           to="/"
-          className={[
-            'flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
-            expanded ? 'justify-between' : 'justify-center',
-            activeRoot === 'dashboard'
-              ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
-              : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground',
-          ].join(' ')}
+          title={!expanded ? 'Dashboard' : undefined}
+          className={navItemCls(activeRoot === 'dashboard', expanded)}
         >
-          <span className="flex items-center gap-2">
-            <LayoutGrid className="size-4" />
-            {expanded && <span className="font-medium">Dashboard</span>}
-          </span>
+          <LayoutGrid className="size-4 shrink-0" />
+          {expanded && <span className="font-medium">Dashboard</span>}
         </Link>
 
+        {/* Activity */}
         <Link
           to="/activity"
-          className={[
-            'mt-1.5 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
-            expanded ? 'justify-between' : 'justify-center',
-            location.pathname === '/activity'
-              ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
-              : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground',
-          ].join(' ')}
+          title={!expanded ? 'Activity' : undefined}
+          className={navItemCls(location.pathname === '/activity', expanded)}
         >
-          <span className="flex items-center gap-2">
-            <LayoutGrid className="size-4" />
-            {expanded && <span className="font-medium">Activity</span>}
-          </span>
+          <LayoutGrid className="size-4 shrink-0" />
+          {expanded && <span className="font-medium">Activity</span>}
         </Link>
 
-        {expanded && (
-          <div className="mt-4 px-2 text-[0.7rem] font-semibold uppercase tracking-wider text-sidebar-foreground/60">
-            Projects
-          </div>
-        )}
-
-        {/* Projects */}
-        <button
-          type="button"
-          onClick={() => toggleSection('projects')}
-          className={[
-            'mt-2 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
-            expanded ? 'justify-between' : 'justify-center',
-            activeRoot === 'projects'
-              ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
-              : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground',
-          ].join(' ')}
+        {/* Documentation */}
+        <Link
+          to="/docs"
+          title={!expanded ? 'Documentation' : undefined}
+          className={navItemCls(location.pathname === '/docs', expanded)}
         >
-          <span className="flex items-center gap-2">
-            <FolderKanban className="size-4" />
-            {expanded && <span className="font-medium">Projects</span>}
-          </span>
-          {expanded && (
-            openSections.projects ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />
-          )}
-        </button>
+          <BookOpen className="size-4 shrink-0" />
+          {expanded && <span className="font-medium">Documentation</span>}
+        </Link>
 
-        {expanded && openSections.projects && (
-          <div className="mt-1 space-y-1 pl-2">
-            {projects.length === 0 ? (
-              <p className="px-2 py-1.5 text-xs text-sidebar-foreground/60">No projects yet</p>
-            ) : (
-              projects.map((project: any) => (
-                <Link
-                  key={project.id}
-                  to={`/projects/${project.id}`}
-                  className={[
-                    'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
-                    location.pathname === `/projects/${project.id}`
-                      ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
-                      : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground',
-                  ].join(' ')}
-                >
-                  <span className="truncate">{project.name}</span>
-                  <Badge variant="secondary" className="ml-2 bg-sidebar-accent text-sidebar-foreground text-[0.7rem]">
-                    {project._count?.tasks ?? 0}
-                  </Badge>
-                </Link>
-              ))
+        {/* ── Projects ── */}
+        <div className="pt-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (!expanded) {
+                setExpanded(true)
+                return
+              }
+              toggleSection('projects')
+            }}
+            title={!expanded ? 'Projects' : undefined}
+            className={navItemCls(activeRoot === 'projects', expanded)}
+          >
+            <FolderKanban className="size-4 shrink-0" />
+            {expanded && (
+              <>
+                <span className="font-medium flex-1 text-left">Projects</span>
+                {openSections.projects ? (
+                  <ChevronDown className="size-3.5 text-sidebar-foreground/50" />
+                ) : (
+                  <ChevronRight className="size-3.5 text-sidebar-foreground/50" />
+                )}
+              </>
             )}
-          </div>
-        )}
+          </button>
+
+          {expanded && openSections.projects && (
+            <div className="mt-1 ml-2 space-y-0.5 border-l border-sidebar-border/50 pl-3">
+              {projects.length === 0 ? (
+                <p className="py-1.5 text-xs text-sidebar-foreground/50">No projects yet</p>
+              ) : (
+                projects.map((project: any) => (
+                  <Link
+                    key={project.id}
+                    to={`/projects/${project.id}`}
+                    className={cn(
+                      'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+                      location.pathname === `/projects/${project.id}`
+                        ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
+                        : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                    )}
+                  >
+                    <span className="truncate">{project.name}</span>
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 ml-1 bg-sidebar-accent/80 text-sidebar-foreground/70 text-[0.65rem] px-1.5 py-0"
+                    >
+                      {project._count?.tasks ?? 0}
+                    </Badge>
+                  </Link>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Calendar */}
+        <Link
+          to="/calendar"
+          title={!expanded ? 'Calendar' : undefined}
+          className={navItemCls(activeRoot === 'calendar', expanded)}
+        >
+          <CalendarDays className="size-4 shrink-0" />
+          {expanded && <span className="font-medium">Calendar</span>}
+        </Link>
 
         {/* Profile */}
-        <Link
-          to="/profile"
-          className={[
-            'mt-2 flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors',
-            expanded ? 'justify-between' : 'justify-center',
-            activeRoot === 'profile'
-              ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
-              : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground',
-          ].join(' ')}
-        >
-          <span className="flex items-center gap-2">
-            <Settings className="size-4" />
+        <div className="pt-1">
+          <Link
+            to="/profile"
+            title={!expanded ? 'Profile & Settings' : undefined}
+            className={navItemCls(activeRoot === 'profile', expanded)}
+          >
+            <Settings className="size-4 shrink-0" />
             {expanded && <span className="font-medium">Profile</span>}
-          </span>
-        </Link>
+          </Link>
+        </div>
       </nav>
 
-      {/* Profile + status at bottom */}
-      <div className="border-t border-sidebar-border px-3 py-3">
+      {/* ── Footer: user + sign out ── */}
+      <div className="border-t border-sidebar-border px-2 py-2.5">
         {expanded ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5 px-1">
             <StatusDropdown side="top" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{session?.user?.name}</p>
-              <p className="truncate text-xs text-sidebar-foreground/70">
-                <span className={cn('inline-block size-1.5 rounded-full mr-1 align-middle', statusCfg.dotClass)} />
+              <p className="truncate text-sm font-medium leading-tight">{session?.user?.name}</p>
+              <p className="truncate text-xs text-sidebar-foreground/60 mt-0.5">
                 {statusCfg.label}
               </p>
             </div>
             <Button
-              variant="destructive"
-              size="sm"
-              className="ml-auto h-8"
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
               onClick={handleSignOut}
               aria-label="Sign out"
+              title="Sign out"
             >
-              Sign out
+              <LogOut className="size-4" />
             </Button>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">
             <StatusDropdown side="right" />
             <Button
-              variant="destructive"
+              variant="ghost"
               size="icon-sm"
-              className="w-full"
+              className="h-8 w-8 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
               onClick={handleSignOut}
               aria-label="Sign out"
               title="Sign out"
             >
-              ⏻
+              <LogOut className="size-4" />
             </Button>
           </div>
         )}

@@ -18,7 +18,10 @@ import MembersPage from './pages/MembersPage'
 import InvitePage from './pages/InvitePage'
 import ProjectMembersPage from './pages/ProjectMembersPage'
 import ProfilePage from './pages/ProfilePage'
+import GitHubCallbackPage from './pages/GitHubCallbackPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
+import ProjectActivityPage from './pages/ProjectActivityPage'
+import DocumentationPage from './pages/DocumentationPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -51,6 +54,11 @@ export default function App() {
             <ActivityPage />
           </ProtectedRoute>
         } />
+        <Route path="/docs" element={
+          <ProtectedRoute>
+            <DocumentationPage />
+          </ProtectedRoute>
+        } />
         <Route path="/projects/:id" element={
           <ProtectedRoute>
             <ProjectPage />
@@ -69,6 +77,11 @@ export default function App() {
         <Route path="/projects/:id/settings" element={
           <ProtectedRoute>
             <ProjectSettingsPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/activity" element={
+          <ProtectedRoute>
+            <ProjectActivityPage />
           </ProtectedRoute>
         } />
         <Route path="/projects/:id/time-report" element={
@@ -96,7 +109,7 @@ export default function App() {
             <RoadmapPage />
           </ProtectedRoute>
         } />
-        <Route path="/projects/:id/calendar" element={
+        <Route path="/calendar" element={
           <ProtectedRoute>
             <CalendarPage />
           </ProtectedRoute>
@@ -121,6 +134,7 @@ export default function App() {
             <ProfilePage />
           </ProtectedRoute>
         } />
+        <Route path="/github/callback" element={<GitHubCallbackPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js'
-import { TaskStatus, Priority } from '@prisma/client'
+import { Priority } from '@prisma/client'
 
 export const taskService = {
   async getAll(projectId: string) {
@@ -27,7 +27,7 @@ export const taskService = {
     projectId: string
     assigneeId?: string
     priority?: Priority
-    status?: TaskStatus
+    status?: string
     sprintId?: string | null
     startDate?: Date | null
     deadline?: Date | null
@@ -41,7 +41,7 @@ export const taskService = {
   async update(id: string, data: {
     title?: string
     description?: string
-    status?: TaskStatus
+    status?: string
     priority?: Priority
     assigneeId?: string
     sprintId?: string | null

@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js'
-import { TaskStatus } from '@prisma/client'
 
+type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'READY'
 const TASK_STATUSES: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
 
 export const projectService = {
@@ -188,7 +188,7 @@ export const projectService = {
     })
   },
 
-  async update(id: string, data: { name?: string; status?: any }) {
+  async update(id: string, data: { name?: string; status?: any; boardColumns?: any }) {
     return prisma.project.update({
       where: { id },
       data,

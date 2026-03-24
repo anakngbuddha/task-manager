@@ -33,22 +33,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-function getTodayStartLocalForInput() {
+function getCurrentStartLocalForInput() {
   const now = new Date()
   const offset = now.getTimezoneOffset()
   const local = new Date(now.getTime() - offset * 60_000)
-  local.setHours(0, 0, 0, 0)
   return local.toISOString().slice(0, 16)
 }
 
-function isPastToday(value: string) {
+function isPastTime(value: string) {
   const selected = new Date(value)
   const now = new Date()
-  const sameDay =
-    selected.getFullYear() === now.getFullYear() &&
-    selected.getMonth() === now.getMonth() &&
-    selected.getDate() === now.getDate()
-  return sameDay && selected.getTime() < now.getTime()
+  return selected.getTime() < now.getTime()
+}
+
+function normalizeStatus(input: string) {
+  return input.trim().toUpperCase().replace(/\s+/g, '_')
 }
 
 const COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
@@ -81,10 +80,11 @@ export default function ProjectPage() {
   const [newTitle, setNewTitle] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [newPriority, setNewPriority] = useState('MEDIUM')
-  const [newAssigneeId, setNewAssigneeId] = useState<string>('EVERYONE')
+  const [newAssigneeId, setNewAssigneeId] = useState<string>('')
   const [newDeadline, setNewDeadline] = useState('')
   const [deadlineError, setDeadlineError] = useState('')
   const [newStatus, setNewStatus] = useState<string>('TODO')
+  const [newCustomStatus, setNewCustomStatus] = useState('')
   const [newSprintId, setNewSprintId] = useState<string>('NONE')
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState('')
@@ -99,6 +99,7 @@ export default function ProjectPage() {
   const [sprintStart, setSprintStart] = useState('')
   const [sprintEnd, setSprintEnd] = useState('')
   const [sprintError, setSprintError] = useState('')
+  const [boardView, setBoardView] = useState<'SPRINT' | 'BACKLOG'>('SPRINT')
 
   const sensors = useSensors(useSensor(PointerSensor, {
     activationConstraint: { distance: 5 },
@@ -141,12 +142,22 @@ export default function ProjectPage() {
   }, [tasksById, selectedTask])
 
   const displayedTasks = useMemo(() => {
-    if (selectedSprintId === 'ALL') return localTasks
-    if (selectedSprintId === 'NONE') return localTasks.filter((t: any) => t.sprintId == null)
-    return localTasks.filter(
-      (t: any) => t.sprintId != null && String(t.sprintId) === String(selectedSprintId),
-    )
-  }, [localTasks, selectedSprintId])
+    if (boardView === 'BACKLOG') {
+      return localTasks.filter((t: any) => !t.sprintId)
+    }
+    const activeSprint = sprints.find((s: any) => s.status === 'ACTIVE' || s.status === 'PLANNING')
+    const sid = selectedSprintId === 'ALL' ? activeSprint?.id : selectedSprintId
+    if (!sid || sid === 'NONE') return []
+    return localTasks.filter((t: any) => String(t.sprintId) === String(sid))
+  }, [localTasks, selectedSprintId, boardView, sprints])
+
+  const projectColumns = project?.boardColumns || COLUMNS
+  const firstProjectColumn = projectColumns[0] ?? 'TODO'
+  const isBoardReady = useMemo(() => {
+    if (!localTasks.length) return false
+    const lastCol = projectColumns[projectColumns.length - 1]
+    return localTasks.every((t: any) => t.status === lastCol)
+  }, [localTasks, projectColumns])
 
   const getColumnTasks = (status: string) => displayedTasks.filter((t: any) => t.status === status)
 
@@ -192,7 +203,7 @@ export default function ProjectPage() {
     const activeTask = tasksById.get(activeId)
     if (!activeTask) return
 
-    const newStatus = COLUMNS.includes(overId)
+    const newStatus = projectColumns.includes(overId)
       ? overId
       : tasksById.get(overId)?.status
 
@@ -210,7 +221,7 @@ export default function ProjectPage() {
     if (!over) return
 
     const task = tasksById.get(String(active.id))
-    const newStatus = COLUMNS.includes(String(over.id))
+    const newStatus = projectColumns.includes(String(over.id))
       ? String(over.id)
       : tasksById.get(String(over.id))?.status
 
@@ -237,7 +248,14 @@ export default function ProjectPage() {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newTitle.trim()) return
+    const resolvedStatus = newStatus === '__CUSTOM__'
+      ? normalizeStatus(newCustomStatus)
+      : newStatus
+
+    if (!newTitle.trim() || !newDescription.trim() || !newAssigneeId || !resolvedStatus || !newPriority || !newDeadline) {
+      setDeadlineError('All task fields are required to be filled out.')
+      return
+    }
 
     if (newDeadline) {
       const selected = new Date(newDeadline)
@@ -251,26 +269,28 @@ export default function ProjectPage() {
     setDeadlineError('')
     await createTask.mutateAsync({
       title: newTitle.trim(),
-      description: newDescription.trim() ? newDescription.trim() : undefined,
+      description: newDescription.trim(),
       projectId: projectId!,
       priority: newPriority,
-      assigneeId: newAssigneeId === 'EVERYONE' ? undefined : newAssigneeId,
-      status: newStatus,
+      assigneeId: newAssigneeId,
+      status: resolvedStatus,
       sprintId: newSprintId === 'NONE' ? null : newSprintId,
-      deadline: newDeadline ? new Date(newDeadline).toISOString() : null,
+      deadline: new Date(newDeadline).toISOString(),
     })
     setNewTitle('')
     setNewDescription('')
     setNewPriority('MEDIUM')
-    setNewAssigneeId('EVERYONE')
+    setNewAssigneeId('')
     setNewDeadline('')
-    setNewStatus('TODO')
+    setNewStatus(firstProjectColumn)
+    setNewCustomStatus('')
     setNewSprintId('NONE')
     setCreateOpen(false)
   }
 
   const prepareCreateTaskDefaults = (status: string) => {
     setNewStatus(status)
+    setNewCustomStatus('')
     // If user is already filtering by a specific sprint, default to it.
     setNewSprintId(selectedSprintId === 'ALL' ? 'NONE' : selectedSprintId)
   }
@@ -327,7 +347,7 @@ export default function ProjectPage() {
                   <Button
                     className="h-9 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
                     disabled={!canCreateTask}
-                    onClick={() => prepareCreateTaskDefaults('TODO')}
+                    onClick={() => prepareCreateTaskDefaults(firstProjectColumn)}
                   >
                     <Plus className="size-4" />
                     Add task
@@ -376,9 +396,8 @@ export default function ProjectPage() {
                       <div className="space-y-1">
                         <Label>Assign to</Label>
                         <Select value={newAssigneeId} onValueChange={setNewAssigneeId}>
-                          <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-10"><SelectValue placeholder="Select assignee" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="EVERYONE">Everyone</SelectItem>
                             {(project?.members ?? [])
                               .map((m: any) => m?.user)
                               .filter(Boolean)
@@ -398,11 +417,20 @@ export default function ProjectPage() {
                           <Select value={newStatus} onValueChange={setNewStatus}>
                             <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              {COLUMNS.map((s) => (
-                                <SelectItem key={s} value={s}>{STATUS_LABELS[s]}</SelectItem>
+                              {projectColumns.map((s: string) => (
+                                <SelectItem key={s} value={s}>{STATUS_LABELS[s] ?? s.replace(/_/g, ' ')}</SelectItem>
                               ))}
+                              <SelectItem value="__CUSTOM__">Custom status...</SelectItem>
                             </SelectContent>
                           </Select>
+                          {newStatus === '__CUSTOM__' && (
+                            <Input
+                              className="mt-2 h-10 rounded-none"
+                              placeholder="e.g. QA_TESTING"
+                              value={newCustomStatus}
+                              onChange={(e) => setNewCustomStatus(e.target.value)}
+                            />
+                          )}
                         </div>
                         <div className="space-y-1">
                           <Label>Sprint</Label>
@@ -426,7 +454,7 @@ export default function ProjectPage() {
                           type="datetime-local"
                           className="h-10"
                           value={newDeadline}
-                          min={getTodayStartLocalForInput()}
+                          min={getCurrentStartLocalForInput()}
                           onChange={e => {
                             const v = e.target.value
                             if (!v) {
@@ -434,8 +462,8 @@ export default function ProjectPage() {
                               setDeadlineError('')
                               return
                             }
-                            if (isPastToday(v)) {
-                              setDeadlineError('Time cannot be earlier than now for today')
+                            if (isPastTime(v)) {
+                              setDeadlineError('Time cannot be earlier than now')
                               return
                             }
                             setDeadlineError('')
@@ -491,7 +519,7 @@ export default function ProjectPage() {
                           type="datetime-local"
                           className="h-10"
                           value={sprintStart}
-                          min={getTodayStartLocalForInput()}
+                          min={getCurrentStartLocalForInput()}
                           onChange={(e) => setSprintStart(e.target.value)}
                         />
                       </div>
@@ -501,7 +529,7 @@ export default function ProjectPage() {
                           type="datetime-local"
                           className="h-10"
                           value={sprintEnd}
-                          min={sprintStart || getTodayStartLocalForInput()}
+                          min={sprintStart || getCurrentStartLocalForInput()}
                           onChange={(e) => setSprintEnd(e.target.value)}
                         />
                       </div>
@@ -576,10 +604,10 @@ export default function ProjectPage() {
                     <Link to={`/projects/${projectId}/backlog`}>Backlog & Sprints</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/roadmap`}>Roadmap</Link>
+                    <Link to={`/projects/${projectId}/activity`}>Project Logs</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/calendar`}>Calendar</Link>
+                    <Link to={`/projects/${projectId}/roadmap`}>Roadmap</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link to={`/projects/${projectId}/sprint-report`}>Sprint report</Link>
@@ -599,14 +627,15 @@ export default function ProjectPage() {
 
               {canManageRoles && project?.status !== 'COMPLETED' && (
                 <Button
+                  title={isBoardReady ? '' : `All tasks must be marked as ${STATUS_LABELS[projectColumns[projectColumns.length - 1]] || projectColumns[projectColumns.length - 1]} to complete the project.`}
                   variant="outline"
-                  className="h-9 gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/50"
+                  className="h-9 gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
                   onClick={async () => {
                     if (window.confirm('Are you sure you want to mark this project as completed?')) {
                       await updateProject.mutateAsync({ id: projectId!, data: { status: 'COMPLETED' } })
                     }
                   }}
-                  disabled={updateProject.isPending}
+                  disabled={updateProject.isPending || !isBoardReady}
                 >
                   Project Complete
                 </Button>
@@ -637,39 +666,53 @@ export default function ProjectPage() {
                 onDragEnd={handleDragEnd}
               >
                 <section className="px-4 py-4 sm:px-6 sm:py-6">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs font-medium text-muted-foreground">Sprint</p>
-                      <Select value={selectedSprintId} onValueChange={setSelectedSprintId}>
-                        <SelectTrigger className="h-9 w-[16rem] rounded-none">
-                          <SelectValue placeholder="All tasks" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ALL">All tasks</SelectItem>
-                          <SelectItem value="NONE">No sprint</SelectItem>
-                          {(sprints as any[]).map((s) => (
-                            <SelectItem key={s.id} value={s.id}>
-                              {s.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {sprintRangeText && (
-                        <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className={['h-2 w-2 rounded-full', sprintStatusDotClass ?? 'bg-muted-foreground/50'].join(' ')} />
-                          <span>{sprintRangeText}</span>
-                        </span>
+                  <div className="flex flex-col gap-4 mb-4">
+                    <div className="flex bg-muted/50 p-1 rounded-lg w-fit border border-border/50">
+                      <button onClick={() => setBoardView('SPRINT')} className={boardView === 'SPRINT' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Sprint Tasks</button>
+                      <button onClick={() => setBoardView('BACKLOG')} className={boardView === 'BACKLOG' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Non-Sprint Tasks</button>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      {boardView === 'SPRINT' ? (
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-medium text-muted-foreground">Sprint Filter</p>
+                          <Select value={selectedSprintId} onValueChange={setSelectedSprintId}>
+                            <SelectTrigger className="h-9 w-[16rem] rounded-none">
+                              <SelectValue placeholder="All active sprints" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ALL">Current Active Sprint</SelectItem>
+                              <SelectItem value="NONE">No sprint</SelectItem>
+                              {(sprints as any[]).map((s) => (
+                                <SelectItem key={s.id} value={s.id}>
+                                  {s.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {sprintRangeText && (
+                            <span className="inline-flex items-center gap-2 text-xs text-muted-foreground ml-2">
+                              <span className={['h-2 w-2 rounded-full', sprintStatusDotClass ?? 'bg-muted-foreground/50'].join(' ')} />
+                              <span>{sprintRangeText}</span>
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                         <div className="text-sm text-muted-foreground flex items-center h-9">
+                           Showing tasks not assigned to any sprint.
+                         </div>
+                      )}
+                      
+                      {selectedSprintId !== 'ALL' && boardView === 'SPRINT' && (
+                        <p className="text-xs text-muted-foreground">
+                          Showing {displayedTasks.length} task{displayedTasks.length === 1 ? '' : 's'}
+                        </p>
                       )}
                     </div>
-                    {selectedSprintId !== 'ALL' && (
-                      <p className="text-xs text-muted-foreground">
-                        Showing {displayedTasks.length} task{displayedTasks.length === 1 ? '' : 's'}
-                      </p>
-                    )}
                   </div>
                   <div className="-mx-4 overflow-x-auto px-4 pb-3 sm:-mx-6 sm:px-6">
                     <div className="flex min-w-max gap-3">
-                    {COLUMNS.map(status => (
+                    {projectColumns.map((status: string) => (
                       <KanbanColumn
                         key={status}
                         status={status}

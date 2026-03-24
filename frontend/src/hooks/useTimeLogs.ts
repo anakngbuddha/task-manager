@@ -58,12 +58,14 @@ export function useCreateTaskTimeLog(projectId: string) {
     mutationFn: async (payload: {
       taskId: string
       durationMinutes: number
-      note?: string
+      title: string
+      description: string
       loggedAt?: string
     }) => {
       const { data } = await api.post(`/tasks/${payload.taskId}/time-logs`, {
         durationMinutes: payload.durationMinutes,
-        note: payload.note,
+        title: payload.title,
+        description: payload.description,
         loggedAt: payload.loggedAt,
       })
       return data as TimeLog

@@ -2,6 +2,7 @@ import 'dotenv/config'
 import app from './app.js'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
+import { startNotificationCron } from './jobs/notificationCron.js'
 
 const PORT = Number(process.env.PORT) || 3000
 
@@ -58,6 +59,7 @@ const start = async () => {
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' })
     httpServer.listen(3001)
+    startNotificationCron()
     console.log(`REST API running on http://localhost:${PORT}`)
     console.log(`Socket.io running on http://localhost:3001`)
   } catch (err) {

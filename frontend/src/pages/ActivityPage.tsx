@@ -191,16 +191,14 @@ interface DaySection {
 
 function EventPill({ type }: { type: string }) {
   const cfg = getCfg(type)
-  const Icon = cfg.icon
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.62rem] font-semibold shrink-0',
+        'inline-flex items-center rounded-full px-2 py-0.5 text-[0.62rem] font-semibold shrink-0',
         cfg.pillBg,
         cfg.pillText
       )}
     >
-      <Icon className="size-2.5" />
       {type.replace(/_/g, ' ').toLowerCase()}
     </span>
   )
@@ -238,6 +236,55 @@ function ActionRow({ event }: { event: ActivityEvent }) {
   }
 
   return <div className="py-1.5">{content}</div>
+}
+
+// ─── Flat feed row (no day/group separators) ──────────────────────────
+function FlatEventRow({ event }: { event: ActivityEvent }) {
+  const cfg = getCfg(event.type)
+  const project = event.project?.name ?? 'a project'
+  const href = getHref(event)
+  const createdAt = new Date(event.createdAt)
+  const actorName = event.actor?.name ?? event.actor?.email ?? 'Unknown'
+  const initials = getInitials(event.actor?.name, event.actor?.email)
+
+  const row = (
+    <div className="group flex items-start justify-between gap-3 px-1 py-3 border-b border-border/30 hover:bg-accent/40 transition-colors">
+      <div className="flex items-start gap-3 min-w-0">
+        <Avatar size="sm" className="shrink-0">
+          <AvatarFallback className="text-[0.625rem] font-bold bg-accent text-accent-foreground">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+
+        <div className="min-w-0 pt-0.5">
+          <div className="text-sm font-semibold text-foreground truncate">{actorName}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2 text-sm leading-snug text-foreground/80">
+            <span className="text-foreground/80">{cfg.label}</span>
+            <span className="text-muted-foreground">in</span>
+            <span className="font-medium text-foreground/90">{project}</span>
+            <EventPill type={event.type} />
+          </div>
+        </div>
+      </div>
+
+      <span
+        className="shrink-0 text-[0.7rem] text-muted-foreground tabular-nums whitespace-nowrap pt-0.5"
+        title={createdAt.toLocaleString()}
+      >
+        · {formatRelativeTime(createdAt)}
+      </span>
+    </div>
+  )
+
+  if (href) {
+    return (
+      <Link to={href} className="block">
+        {row}
+      </Link>
+    )
+  }
+
+  return row
 }
 
 // ─── User group ───────────────────────────────────────────────────────────────
@@ -335,34 +382,7 @@ export default function ActivityPage() {
     comments: (events as ActivityEvent[]).filter((e) => getCfg(e.type).filterKey === 'comments').length,
   }), [events])
 
-  // ─ Group: day → consecutive-same-user groups ─
-  const sections = useMemo<DaySection[]>(() => {
-    const result: DaySection[] = []
-    let currentDay = ''
-    let currentSection: DaySection | null = null
-    let currentGroup: UserGroup | null = null
-
-    for (const e of filtered) {
-      const dayKey = getDayKey(new Date(e.createdAt))
-
-      if (dayKey !== currentDay) {
-        currentDay = dayKey
-        currentSection = { dayKey, groups: [] }
-        result.push(currentSection)
-        currentGroup = null
-      }
-
-      // Group consecutive same-actor events together
-      if (currentGroup && currentGroup.actor?.id === e.actorId && currentSection) {
-        currentGroup.events.push(e)
-      } else {
-        currentGroup = { actor: e.actor, events: [e] }
-        currentSection!.groups.push(currentGroup)
-      }
-    }
-
-    return result
-  }, [filtered])
+  const flatEvents = filtered as ActivityEvent[]
 
   return (
     <div className="flex h-screen">
@@ -424,7 +444,7 @@ export default function ActivityPage() {
                 </div>
               ))}
             </div>
-          ) : sections.length === 0 ? (
+          ) : flatEvents.length === 0 ? (
             /* Empty */
             <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border/60 bg-card/40 py-16 text-center mt-4">
               <div className="grid size-12 place-items-center rounded-xl bg-muted">
@@ -451,20 +471,11 @@ export default function ActivityPage() {
               )}
             </div>
           ) : (
-            sections.map((section, si) => (
-              <div key={section.dayKey}>
-                <DayHeader label={section.dayKey} />
-                <div>
-                  {section.groups.map((group, gi) => (
-                    <UserGroupBlock
-                      key={`${group.actor?.id}-${gi}`}
-                      group={group}
-                      isLast={si === sections.length - 1 && gi === section.groups.length - 1}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))
+            <div className="space-y-0.5">
+              {flatEvents.map((event) => (
+                <FlatEventRow key={event.id} event={event} />
+              ))}
+            </div>
           )}
         </div>
       </main>

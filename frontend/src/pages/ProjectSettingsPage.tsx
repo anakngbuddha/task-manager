@@ -1,105 +1,53 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link, useSearchParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import Sidebar from '@/components/layout/Sidebar'
 import { PageHeader } from '@/components/layout/PageHeader'
-import { useProject } from '@/hooks/useProject'
+import { useProject, useUpdateProject } from '@/hooks/useProject'
 import {
-  useGithubConnect,
   useGithubInstallation,
   useGithubRepos,
-  useDisconnectGithub,
-  useLinkGithubInstallation,
 } from '@/hooks/useGithub'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
-  ExternalLink,
   GitBranch,
-  Unplug,
   Loader2,
-  Lock,
-  Globe,
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
+  X,
+  ExternalLink,
+  Lock,
+  Globe,
 } from 'lucide-react'
 
 export default function ProjectSettingsPage() {
   const { id: projectId } = useParams<{ id: string }>()
-  const [searchParams, setSearchParams] = useSearchParams()
   const { data: project } = useProject(projectId!)
-  const { data: connectData } = useGithubConnect()
   const {
     data: installation,
     isLoading: installLoading,
     isError: installError,
-    refetch: refetchInstallation,
   } = useGithubInstallation(projectId!)
   const { data: reposData, isLoading: reposLoading } = useGithubRepos(
     projectId!,
     !!installation,
   )
-  const disconnect = useDisconnectGithub()
-  const linkInstallation = useLinkGithubInstallation()
-  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
-  const [manualInstId, setManualInstId] = useState('')
-  const [linkError, setLinkError] = useState('')
+  const updateProject = useUpdateProject()
+  const [boardColumns, setBoardColumns] = useState<string[]>([])
+  const [newColumn, setNewColumn] = useState('')
+  const [isEditingColumns, setIsEditingColumns] = useState(false)
+
+  useEffect(() => {
+    if (project?.boardColumns) {
+      setBoardColumns(project.boardColumns)
+    } else {
+      setBoardColumns(['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY'])
+    }
+  }, [project])
 
   const isConnected = !!installation && !installError
-
-  // Auto-link if installation_id comes back in the URL (from GitHub redirect)
-  useEffect(() => {
-    const instIdParam = searchParams.get('installation_id')
-    if (instIdParam && projectId && !isConnected) {
-      const instId = parseInt(instIdParam, 10)
-      if (!isNaN(instId)) {
-        linkInstallation
-          .mutateAsync({ projectId, installationId: instId })
-          .then(() => {
-            // Clean up the URL
-            searchParams.delete('installation_id')
-            searchParams.delete('setup_action')
-            setSearchParams(searchParams, { replace: true })
-            refetchInstallation()
-          })
-          .catch(() => {
-            setLinkError('Failed to link installation automatically')
-          })
-      }
-    }
-  }, [searchParams, projectId])
-
-  const handleConnect = () => {
-    if (connectData?.url) {
-      // Open in same tab so GitHub redirects back here with installation_id
-      window.location.href = connectData.url
-    }
-  }
-
-  const handleManualLink = async () => {
-    const instId = parseInt(manualInstId, 10)
-    if (isNaN(instId) || instId <= 0) {
-      setLinkError('Please enter a valid installation ID (number)')
-      return
-    }
-    setLinkError('')
-    try {
-      await linkInstallation.mutateAsync({
-        projectId: projectId!,
-        installationId: instId,
-      })
-      setManualInstId('')
-      refetchInstallation()
-    } catch {
-      setLinkError('Failed to link installation. Check the ID and try again.')
-    }
-  }
-
-  const handleDisconnect = async () => {
-    await disconnect.mutateAsync(projectId!)
-    setConfirmDisconnect(false)
-  }
 
   return (
     <div className="flex h-screen">
@@ -227,50 +175,15 @@ export default function ProjectSettingsPage() {
                       )}
                     </div>
 
-                    {/* Disconnect */}
                     <div className="border-t border-border/40 pt-4">
-                      {confirmDisconnect ? (
-                        <div className="flex items-center gap-3">
-                          <p className="text-sm text-destructive flex-1">
-                            Are you sure? This will remove the GitHub link from
-                            this project.
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            onClick={() => setConfirmDisconnect(false)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            className="h-8 gap-1.5"
-                            onClick={handleDisconnect}
-                            disabled={disconnect.isPending}
-                          >
-                            {disconnect.isPending ? (
-                              <Loader2 className="size-3.5 animate-spin" />
-                            ) : (
-                              <Unplug className="size-3.5" />
-                            )}
-                            {disconnect.isPending
-                              ? 'Disconnecting…'
-                              : 'Confirm Disconnect'}
-                          </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
-                          onClick={() => setConfirmDisconnect(true)}
-                        >
-                          <Unplug className="size-3.5" />
-                          Disconnect GitHub
+                      <p className="text-xs text-muted-foreground">
+                        Manage your GitHub connection from <span className="font-medium text-foreground">Profile</span>.
+                      </p>
+                      <div className="mt-3">
+                        <Button asChild variant="outline" size="sm" className="h-8 rounded-none">
+                          <Link to="/profile">Go to Profile</Link>
                         </Button>
-                      )}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -287,95 +200,102 @@ export default function ProjectSettingsPage() {
                         Install the GitHub App to automatically sync pull
                         request events with your tasks.
                       </p>
-                      <Button
-                        className="mt-4 h-9 gap-2"
-                        onClick={handleConnect}
-                      >
-                        <svg
-                          viewBox="0 0 16 16"
-                          className="size-4 fill-current"
-                          aria-hidden="true"
-                        >
-                          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-                        </svg>
-                        Connect GitHub
-                      </Button>
-                    </div>
-
-                    {/* Manual link fallback */}
-                    <div className="border border-border/40 rounded-lg p-4 space-y-3">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Already installed? Link manually
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        If you already installed the GitHub App, enter the
-                        installation ID from the GitHub URL. You can find it at{' '}
-                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.68rem]">
-                          github.com/settings/installations/{'<ID>'}
-                        </code>
-                      </p>
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          placeholder="Installation ID"
-                          className="h-9 w-48"
-                          value={manualInstId}
-                          onChange={(e) => setManualInstId(e.target.value)}
-                        />
-                        <Button
-                          size="sm"
-                          className="h-9"
-                          onClick={handleManualLink}
-                          disabled={
-                            linkInstallation.isPending || !manualInstId.trim()
-                          }
-                        >
-                          {linkInstallation.isPending
-                            ? 'Linking…'
-                            : 'Link Installation'}
+                      <div className="mt-4 flex justify-center">
+                        <Button asChild className="h-9 gap-2 rounded-none" size="sm">
+                          <Link to="/profile">Connect in Profile</Link>
                         </Button>
                       </div>
-                      {linkError && (
-                        <p className="text-xs text-destructive">{linkError}</p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2 text-xs text-muted-foreground">
-                      <p className="font-semibold text-foreground text-sm">
-                        How it works
-                      </p>
-                      <ul className="list-disc pl-5 space-y-1">
-                        <li>
-                          Click "Connect GitHub" to install the{' '}
-                          <strong>wsi-taska</strong> GitHub App
-                        </li>
-                        <li>
-                          After installing, you'll be redirected back here
-                          automatically
-                        </li>
-                        <li>
-                          Set the{' '}
-                          <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.7rem]">
-                            GitHub PR URL
-                          </code>{' '}
-                          field on a task to link it to a pull request
-                        </li>
-                        <li>
-                          PR <strong>opened</strong> → task moves to{' '}
-                          <em>In Progress</em>
-                        </li>
-                        <li>
-                          PR <strong>merged</strong> → task moves to{' '}
-                          <em>Done</em>
-                        </li>
-                        <li>
-                          PR <strong>closed</strong> (not merged) → task moves
-                          to <em>In Review</em>
-                        </li>
-                      </ul>
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Board Columns Card */}
+            <div className="overflow-hidden border border-border/60 bg-card mt-6">
+              <div className="flex items-center justify-between border-b border-border/40 px-6 py-4">
+                <div>
+                  <h3 className="text-sm font-semibold">Board Columns</h3>
+                  <p className="text-xs text-muted-foreground">Customize the task statuses available for this project</p>
+                </div>
+              </div>
+              <div className="px-6 py-5">
+                <div className="space-y-4">
+                  {boardColumns.map((col, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                       <Input 
+                         value={col} 
+                         disabled={!isEditingColumns}
+                         onChange={(e) => {
+                           const newCols = [...boardColumns]
+                           newCols[idx] = e.target.value.toUpperCase().replace(/\s+/g, '_')
+                           setBoardColumns(newCols)
+                         }}
+                         className="h-9 font-mono text-sm"
+                       />
+                       {isEditingColumns && (
+                         <Button variant="ghost" size="icon-sm" className="text-destructive shrink-0" onClick={() => {
+                           setBoardColumns(boardColumns.filter((_, i) => i !== idx))
+                         }}>
+                           <X className="size-4" />
+                         </Button>
+                       )}
+                    </div>
+                  ))}
+                  {isEditingColumns && (
+                    <div className="flex items-center gap-2 pt-2">
+                      <Input 
+                        placeholder="Add new column (e.g. QA_TESTING)" 
+                        value={newColumn}
+                        onChange={(e) => setNewColumn(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
+                        className="h-9 font-mono text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newColumn.trim()) {
+                            e.preventDefault()
+                            if (!boardColumns.includes(newColumn.trim())) {
+                              setBoardColumns([...boardColumns, newColumn.trim()])
+                              setNewColumn('')
+                            }
+                          }
+                        }}
+                      />
+                      <Button 
+                        size="sm" 
+                        variant="secondary"
+                        disabled={!newColumn.trim() || boardColumns.includes(newColumn.trim())}
+                        onClick={() => {
+                          setBoardColumns([...boardColumns, newColumn.trim()])
+                          setNewColumn('')
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  )}
+                  
+                  <div className="pt-4 flex justify-end gap-2 border-t border-border/40">
+                    {isEditingColumns ? (
+                      <>
+                        <Button variant="outline" size="sm" onClick={() => {
+                          setIsEditingColumns(false)
+                          setBoardColumns(project?.boardColumns || ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY'])
+                          setNewColumn('')
+                        }}>Cancel</Button>
+                        <Button size="sm" onClick={async () => {
+                          await updateProject.mutateAsync({ id: projectId!, data: { boardColumns } })
+                          setIsEditingColumns(false)
+                          setNewColumn('')
+                        }} disabled={updateProject.isPending || boardColumns.length === 0}>
+                          {updateProject.isPending ? 'Saving...' : 'Save Columns'}
+                        </Button>
+                      </>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => setIsEditingColumns(true)}>
+                        Edit Columns
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

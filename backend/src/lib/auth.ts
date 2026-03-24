@@ -28,10 +28,13 @@ export const auth = betterAuth({
       enabled: false,
     },
     defaultCookieAttributes: {
-      secure: true,
+      // Local dev over http://localhost cannot persist secure cookies.
+      secure: isProd,
       httpOnly: true,
-      sameSite: 'none',
-      partitioned: true,
+      // sameSite 'none' requires secure=true; use lax in local dev.
+      sameSite: isProd ? 'none' : 'lax',
+      // Keep CHIPS/partitioned cookies only for secure production contexts.
+      partitioned: isProd,
     },
   },
 })

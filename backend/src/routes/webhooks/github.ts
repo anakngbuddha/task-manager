@@ -3,7 +3,7 @@ import { verifyWebhookSignature } from '../../lib/githubApp.js'
 import { prisma } from '../../lib/prisma.js'
 import { activityService } from '../../services/activity.service.js'
 import { notificationService } from '../../services/notification.service.js'
-import { TaskStatus } from '@prisma/client'
+import { addPendingInstallation, removePendingInstallation } from '../../lib/pendingInstallations.js'
 
 // Extend Fastify request to carry rawBody
 declare module 'fastify' {
@@ -73,26 +73,29 @@ async function handleInstallation(payload: any) {
   const installationId: number = payload.installation?.id
   if (!installationId) return
 
+  const repos: string[] = payload.repositories
+    ? payload.repositories.map((r: any) => r.full_name)
+    : []
+
   if (payload.action === 'created') {
-    // If an installation row already exists (via callback), update it.
-    // Otherwise the webhook fires before the callback — we store a stub.
-    await prisma.githubInstallation.upsert({
+    // If this installation is already claimed by a real user, just update repos.
+    const existing = await prisma.githubInstallation.findUnique({
       where: { installationId },
-      update: {
-        repos: payload.repositories
-          ? payload.repositories.map((r: any) => r.full_name)
-          : undefined,
-      },
-      create: {
-        installationId,
-        userId: 'system', // placeholder — will be overwritten by the callback
-        projectId: 'pending', // placeholder
-        repos: payload.repositories
-          ? payload.repositories.map((r: any) => r.full_name)
-          : [],
-      },
     })
+    if (existing) {
+      await prisma.githubInstallation.update({
+        where: { installationId },
+        data: { repos },
+      })
+    } else {
+      // Not yet claimed — put it in the in-memory pending store so the
+      // frontend can poll and auto-claim it (no FK constraints here).
+      addPendingInstallation(installationId, repos)
+    }
   } else if (payload.action === 'deleted') {
+    // Remove from pending store first (might still be unclaimed)
+    removePendingInstallation(installationId)
+
     const existing = await prisma.githubInstallation.findUnique({
       where: { installationId },
     })
@@ -116,20 +119,20 @@ async function handlePullRequest(payload: any) {
 
   if (tasks.length === 0) return
 
-  let newStatus: TaskStatus | null = null
+  let newStatus: string | null = null
   let activityType: string
 
   const action: string = payload.action
   const merged: boolean = payload.pull_request?.merged === true
 
   if (action === 'opened' || action === 'reopened') {
-    newStatus = TaskStatus.IN_PROGRESS
+    newStatus = 'IN_PROGRESS'
     activityType = 'PR_OPENED'
   } else if (action === 'closed' && merged) {
-    newStatus = TaskStatus.DONE
+    newStatus = 'DONE'
     activityType = 'PR_MERGED'
   } else if (action === 'closed' && !merged) {
-    newStatus = TaskStatus.IN_REVIEW
+    newStatus = 'IN_REVIEW'
     activityType = 'PR_CLOSED'
   } else {
     return // ignore other PR actions

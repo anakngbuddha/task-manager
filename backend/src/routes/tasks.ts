@@ -6,26 +6,55 @@ import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
 import { prisma } from '../lib/prisma.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
-import { TaskStatus } from '@prisma/client'
+
+const DEFAULT_BOARD_COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY'] as const
+
+function normalizeStatus(input: string) {
+  return input.trim().toUpperCase().replace(/\s+/g, '_')
+}
+
+async function ensureProjectHasStatus(projectId: string, status: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, boardColumns: true },
+  })
+  if (!project) return null
+
+  const currentColumns = Array.isArray(project.boardColumns) && project.boardColumns.length > 0
+    ? project.boardColumns.map((s) => String(s))
+    : [...DEFAULT_BOARD_COLUMNS]
+
+  if (currentColumns.includes(status)) {
+    return { project, statusList: currentColumns }
+  }
+
+  const updatedColumns = [...currentColumns, status]
+  await prisma.project.update({
+    where: { id: projectId },
+    data: { boardColumns: updatedColumns },
+  })
+
+  return { project, statusList: updatedColumns }
+}
 
 const createTaskSchema = z.object({
   title: z.string().min(1).max(100),
-  description: z.string().optional(),
+  description: z.string().min(1, 'Description is required'),
   projectId: z.string(),
-  assigneeId: z.string().optional(),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  status: z.nativeEnum(TaskStatus).optional(),
-  // If null, task will not belong to any sprint.
-  sprintId: z.string().nullable().optional(),
+  assigneeId: z.string().min(1, 'Assignee is required'),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
+  status: z.string().min(1, 'Status is required'),
+  // If explicitly 'null', task will not belong to any sprint.
+  sprintId: z.string().nullable(),
   startDate: z.string().datetime().nullable().optional(),
-  deadline: z.string().datetime().nullable().optional(),
+  deadline: z.string().datetime({ message: 'Valid deadline is required' }),
   githubPrUrl: z.string().url().nullable().optional(),
 })
 
 const updateTaskSchema = z.object({
   title: z.string().min(1).max(100).optional(),
   description: z.string().optional(),
-  status: z.nativeEnum(TaskStatus).optional(),
+  status: z.string().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
   assigneeId: z.string().optional(),
   // If null, clear sprint assignment.
@@ -64,10 +93,15 @@ export async function taskRoutes(app: FastifyInstance) {
     preHandler: authenticate,
   }, async (req, reply) => {
     const body = createTaskSchema.parse(req.body)
+    const normalizedStatus = normalizeStatus(body.status)
     try {
       await requireProjectRole(body.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
     } catch {
       return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    if (!(await ensureProjectHasStatus(body.projectId, normalizedStatus))) {
+      return reply.status(404).send({ error: 'Project not found' })
     }
 
     // Enforce that sprintId (if provided) belongs to the same project.
@@ -91,6 +125,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
     const task = await taskService.create({
       ...body,
+      status: normalizedStatus,
       startDate: body.startDate ? new Date(body.startDate) : null,
       deadline: body.deadline ? new Date(body.deadline) : null,
     })
@@ -174,7 +209,9 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
-    if (String(body.status) === 'READY') {
+    const normalizedStatus = typeof body.status === 'string' ? normalizeStatus(body.status) : undefined
+
+    if (normalizedStatus === 'READY') {
       try {
         await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN'])
       } catch {
@@ -182,7 +219,16 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
+    if (normalizedStatus) {
+      if (!(await ensureProjectHasStatus(existing.projectId, normalizedStatus))) {
+        return reply.status(404).send({ error: 'Project not found' })
+      }
+    }
+
     const updateData: any = { ...body }
+    if (normalizedStatus) {
+      updateData.status = normalizedStatus
+    }
     // Only convert/overwrite dates if the client explicitly provided them.
     if ('deadline' in body) {
       updateData.deadline = body.deadline ? new Date(body.deadline) : null

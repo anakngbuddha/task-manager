@@ -35,7 +35,7 @@ export const activityService = {
       where: { projectId: { in: projectIds } },
       include: {
         project: true,
-        actor: { select: { id: true, name: true, email: true } },
+        actor: { select: { id: true, name: true, email: true, avatar: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: opts?.take ?? 50,
@@ -47,7 +47,7 @@ export const activityService = {
       where: { projectId },
       include: {
         project: true,
-        actor: { select: { id: true, name: true, email: true } },
+        actor: { select: { id: true, name: true, email: true, avatar: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: opts?.take ?? 50,

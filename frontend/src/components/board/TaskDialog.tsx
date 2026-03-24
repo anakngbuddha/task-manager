@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/select'
 import { useTasks, useUpdateTask, useDeleteTask, useCreateTaskDependency, useDeleteTaskDependency } from '@/hooks/useTasks'
 import { useSprints } from '@/hooks/useSprints'
+import { useProject } from '@/hooks/useProject'
 import { useTaskComments, useAddTaskComment } from '@/hooks/useTaskComments'
 import { Pencil, X, Clock, Link as LinkIcon, ExternalLink } from 'lucide-react'
 import { useCreateTaskTimeLog } from '@/hooks/useTimeLogs'
@@ -36,22 +37,17 @@ const priorityBadge: Record<string, string> = {
   URGENT: 'bg-red-100 text-red-700',
 }
 
-function getTodayStartLocalForInput() {
+function getCurrentStartLocalForInput() {
   const now = new Date()
   const offset = now.getTimezoneOffset()
   const local = new Date(now.getTime() - offset * 60_000)
-  local.setHours(0, 0, 0, 0)
   return local.toISOString().slice(0, 16)
 }
 
-function isPastToday(value: string) {
+function isPastTime(value: string) {
   const selected = new Date(value)
   const now = new Date()
-  const sameDay =
-    selected.getFullYear() === now.getFullYear() &&
-    selected.getMonth() === now.getMonth() &&
-    selected.getDate() === now.getDate()
-  return sameDay && selected.getTime() < now.getTime()
+  return selected.getTime() < now.getTime()
 }
 
 function getTodayLocalDateForInput() {
@@ -59,6 +55,10 @@ function getTodayLocalDateForInput() {
   const offset = now.getTimezoneOffset()
   const local = new Date(now.getTime() - offset * 60_000)
   return local.toISOString().slice(0, 10)
+}
+
+function normalizeStatus(input: string) {
+  return input.trim().toUpperCase().replace(/\s+/g, '_')
 }
 
 export default function TaskDialog({ task, projectId, projectMembers, open, onClose }: {
@@ -76,6 +76,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('')
   const [status, setStatus] = useState('')
+  const [customStatus, setCustomStatus] = useState('')
   const [sprintId, setSprintId] = useState<string>('NONE')
   const [deadline, setDeadline] = useState<string>('')
   const [deadlineError, setDeadlineError] = useState('')
@@ -88,7 +89,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const [logOpen, setLogOpen] = useState(false)
   const [logHours, setLogHours] = useState<string>('0')
   const [logMinutes, setLogMinutes] = useState<string>('30')
-  const [logNote, setLogNote] = useState('')
+  const [logTitle, setLogTitle] = useState('')
+  const [logDescription, setLogDescription] = useState('')
   const [logDate, setLogDate] = useState(getTodayLocalDateForInput())
   const [logError, setLogError] = useState('')
   const [githubPrUrl, setGithubPrUrl] = useState('')
@@ -97,6 +99,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const addComment = useAddTaskComment()
   const { data: sprints = [] } = useSprints(projectId)
   const { data: allTasks = [] } = useTasks(projectId)
+  const { data: project } = useProject(projectId)
   const createDependency = useCreateTaskDependency()
   const deleteDependency = useDeleteTaskDependency()
 
@@ -132,6 +135,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       setDescription(task.description ?? '')
       setPriority(task.priority)
       setStatus(task.status)
+      setCustomStatus('')
       setSprintId(task?.sprintId ? String(task.sprintId) : 'NONE')
       setDeadline(task.deadline ? new Date(task.deadline).toISOString().slice(0, 16) : '')
       setNewComment('')
@@ -139,7 +143,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       setReplyContent({})
       setLogHours('0')
       setLogMinutes('30')
-      setLogNote('')
+      setLogTitle('')
+      setLogDescription('')
       setLogDate(getTodayLocalDateForInput())
       setLogError('')
       setGithubPrUrl(task.githubPrUrl ?? '')
@@ -147,6 +152,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   }, [task])
 
   const handleSave = async () => {
+    const resolvedStatus = status === '__CUSTOM__' ? normalizeStatus(customStatus) : status
+    if (!resolvedStatus) return
     if (deadline) {
       const selected = new Date(deadline)
       const now = new Date()
@@ -164,7 +171,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       title,
       description,
       priority,
-      status,
+      status: resolvedStatus,
       sprintId: sprintId === 'NONE' ? null : sprintId,
       deadline: deadline ? new Date(deadline).toISOString() : null,
       githubPrUrl: githubPrUrl.trim() || null,
@@ -593,13 +600,20 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                 <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="TODO">To Do</SelectItem>
-                    <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                    <SelectItem value="IN_REVIEW">In Review</SelectItem>
-                    <SelectItem value="DONE">Done</SelectItem>
-                    <SelectItem value="READY">Ready</SelectItem>
+                    {(project?.boardColumns || ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']).map((s: string) => (
+                      <SelectItem key={s} value={s}>{statusLabel[s] ?? s.replace(/_/g, ' ')}</SelectItem>
+                    ))}
+                    <SelectItem value="__CUSTOM__">Custom status...</SelectItem>
                   </SelectContent>
                 </Select>
+                {status === '__CUSTOM__' && (
+                  <Input
+                    className="mt-2 h-10 rounded-none"
+                    placeholder="e.g. QA_TESTING"
+                    value={customStatus}
+                    onChange={(e) => setCustomStatus(e.target.value)}
+                  />
+                )}
               </div>
               <div className="space-y-1">
                 <Label>Priority</Label>
@@ -634,7 +648,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                 type="datetime-local"
                 className="h-10 rounded-none"
                 value={deadline}
-                min={getTodayStartLocalForInput()}
+                min={getCurrentStartLocalForInput()}
                 onChange={e => {
                   const v = e.target.value
                   if (!v) {
@@ -642,8 +656,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                     setDeadlineError('')
                     return
                   }
-                  if (isPastToday(v)) {
-                    setDeadlineError('Time cannot be earlier than now for today')
+                  if (isPastTime(v)) {
+                    setDeadlineError('Time cannot be earlier than now')
                     return
                   }
                   setDeadlineError('')
@@ -723,19 +737,30 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                 }
 
                 setLogError('')
-                const note = logNote.trim() ? logNote.trim() : undefined
+                const resolvedTitle = logTitle.trim()
+                const resolvedDescription = logDescription.trim()
+                if (!resolvedTitle) {
+                  setLogError('Title is required')
+                  return
+                }
+                if (!resolvedDescription) {
+                  setLogError('Description is required')
+                  return
+                }
                 const loggedAt = new Date(`${logDate}T00:00:00`).toISOString()
 
                 await createTimeLog.mutateAsync({
                   taskId: task.id,
                   durationMinutes: totalMinutes,
-                  note,
+                  title: resolvedTitle,
+                  description: resolvedDescription,
                   loggedAt,
                 })
 
                 setLogHours('0')
                 setLogMinutes('30')
-                setLogNote('')
+                setLogTitle('')
+                setLogDescription('')
                 setLogDate(getTodayLocalDateForInput())
                 setLogOpen(false)
               }}
@@ -778,12 +803,22 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
               </div>
 
               <div className="space-y-1">
-                <Label>Note (optional)</Label>
+                <Label>Title</Label>
                 <Input
                   className="h-10 rounded-none"
-                  placeholder="What did you work on?"
-                  value={logNote}
-                  onChange={(e) => setLogNote(e.target.value)}
+                  placeholder="e.g. API bugfix, Testing, Code review"
+                  value={logTitle}
+                  onChange={(e) => setLogTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label>Description</Label>
+                <Input
+                  className="h-10 rounded-none"
+                  placeholder="What did you do? (required)"
+                  value={logDescription}
+                  onChange={(e) => setLogDescription(e.target.value)}
                 />
               </div>
 
