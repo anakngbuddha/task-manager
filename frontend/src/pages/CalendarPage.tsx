@@ -49,6 +49,10 @@ type CalendarItem = {
   status?: string
 }
 
+type PendingCombinedItem =
+  | (Schedule & { kind: 'SCHEDULE'; sortDate: Date })
+  | (PendingDeadlineItem & { kind: 'DEADLINE'; sortDate: Date })
+
 export default function CalendarPage() {
   const [tab, setTab] = useState<'calendar' | 'pending'>('calendar')
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -121,10 +125,14 @@ export default function CalendarPage() {
 
   const pendingItems = useMemo(() => {
     const now = new Date()
-    const sched = schedules
+    const sched: PendingCombinedItem[] = schedules
       .filter((s: Schedule) => new Date(s.scheduledAt).getTime() > now.getTime())
       .map((s: Schedule) => ({ ...s, kind: 'SCHEDULE' as const, sortDate: new Date(s.scheduledAt) }))
-    const dl = deadlines.map((d: PendingDeadlineItem) => ({ ...d, kind: 'DEADLINE' as const, sortDate: new Date(d.deadline) }))
+    const dl: PendingCombinedItem[] = deadlines.map((d) => ({
+      ...d,
+      kind: 'DEADLINE' as const,
+      sortDate: new Date(d.deadline),
+    }))
     const combined = [...sched, ...dl]
     combined.sort((a, b) => a.sortDate.getTime() - b.sortDate.getTime())
     return combined
