@@ -87,6 +87,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const [status, setStatus] = useState('')
   const [customStatus, setCustomStatus] = useState('')
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
+  const [newSubtaskDescription, setNewSubtaskDescription] = useState('')
   const [sprintId, setSprintId] = useState<string>('NONE')
   const [deadline, setDeadline] = useState<string>('')
   const [deadlineError, setDeadlineError] = useState('')
@@ -461,7 +462,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                      <p className="text-xs text-muted-foreground italic mb-2">No subtasks.</p>
                   )}
 
-                  <div className="flex gap-2 items-center mt-3 pt-3 border-t border-border/40">
+                  <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-border/40">
                     <Input 
                       placeholder="What needs to be done?" 
                       className="h-8 text-xs rounded-none" 
@@ -472,34 +473,59 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                            e.preventDefault()
                            await createTask.mutateAsync({
                              title: newSubtaskTitle.trim(),
-                             description: '',
+                             description: newSubtaskDescription.trim(),
                              projectId: projectId,
                              status: 'TODO',
                              priority: 'MEDIUM',
                              parentId: task.id,
                            })
                            setNewSubtaskTitle('')
+                           setNewSubtaskDescription('')
                          }
                       }}
                     />
-                    <Button 
-                      size="sm" 
-                      className="h-8 rounded-none px-3 text-xs" 
-                      disabled={!newSubtaskTitle.trim() || createTask.isPending}
-                      onClick={async () => {
-                         await createTask.mutateAsync({
-                           title: newSubtaskTitle.trim(),
-                           description: '',
-                           projectId: projectId,
-                           status: 'TODO',
-                           priority: 'MEDIUM',
-                           parentId: task.id,
-                         })
-                         setNewSubtaskTitle('')
-                      }}
-                    >
-                      {createTask.isPending ? '...' : 'Add'}
-                    </Button>
+                    <div className="flex gap-2 items-center">
+                      <Input 
+                        placeholder="Description (optional)" 
+                        className="h-8 text-xs rounded-none flex-1" 
+                        value={newSubtaskDescription}
+                        onChange={(e) => setNewSubtaskDescription(e.target.value)}
+                        onKeyDown={async (e) => {
+                           if (e.key === 'Enter' && newSubtaskTitle.trim()) {
+                             e.preventDefault()
+                             await createTask.mutateAsync({
+                               title: newSubtaskTitle.trim(),
+                               description: newSubtaskDescription.trim(),
+                               projectId: projectId,
+                               status: 'TODO',
+                               priority: 'MEDIUM',
+                               parentId: task.id,
+                             })
+                             setNewSubtaskTitle('')
+                             setNewSubtaskDescription('')
+                           }
+                        }}
+                      />
+                      <Button 
+                        size="sm" 
+                        className="h-8 rounded-none px-3 text-xs shrink-0" 
+                        disabled={!newSubtaskTitle.trim() || createTask.isPending}
+                        onClick={async () => {
+                           await createTask.mutateAsync({
+                             title: newSubtaskTitle.trim(),
+                             description: newSubtaskDescription.trim(),
+                             projectId: projectId,
+                             status: 'TODO',
+                             priority: 'MEDIUM',
+                             parentId: task.id,
+                           })
+                           setNewSubtaskTitle('')
+                           setNewSubtaskDescription('')
+                        }}
+                      >
+                        {createTask.isPending ? '...' : 'Add'}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -51,9 +51,9 @@ async function ensureProjectHasStatus(projectId: string, status: string) {
 
 const createTaskSchema = z.object({
   title: z.string().min(1).max(100),
-  description: z.string().min(1, 'Description is required'),
+  description: z.string().optional(),
   projectId: z.string(),
-  assigneeId: z.string().min(1, 'Assignee is required').nullable(),
+  assigneeId: z.string().min(1, 'Assignee is required').nullable().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   status: z.string().min(1, 'Status is required'),
   // If explicitly 'null', task will not belong to any sprint.
@@ -69,7 +69,7 @@ const updateTaskSchema = z.object({
   description: z.string().optional(),
   status: z.string().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']).optional(),
-  assigneeId: z.string().optional(),
+  assigneeId: z.string().nullable().optional(),
   // If null, clear sprint assignment.
   sprintId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
