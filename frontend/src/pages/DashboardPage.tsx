@@ -170,7 +170,7 @@ export default function DashboardPage() {
               </div>
 
               <ProjectListCard
-                projects={dashboard.projects}
+                projects={dashboard.projects as any}
                 onCreateClick={() => setOpen(true)}
               />
 

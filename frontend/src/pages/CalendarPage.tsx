@@ -555,7 +555,7 @@ export default function CalendarPage() {
                          </div>
                          <div className="pt-2">
                            <Button className="w-full rounded-none" onClick={() => {
-                             navigate(`/projects/${d.projectId}?taskId=${d.id}`)
+                             navigate(`/projects/${d.project?.id}?taskId=${d.id}`)
                              setViewItem(null)
                            }}>
                              Go to Project Board

@@ -411,7 +411,7 @@ export default function ProjectPage() {
                         status={status}
                         tasks={getColumnTasks(status)}
                         onTaskClick={setSelectedTask}
-                        onAddTask={(status: string) => {
+                        onAddTask={() => {
                           setCreateOpen(true)
                         }}
                         canAddTask={canCreateTask}

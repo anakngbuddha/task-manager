@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, Link, useLocation } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
 import Sidebar from '@/components/layout/Sidebar'
 import { useProject } from '@/hooks/useProject'
 import { useProjectMessages, useSendProjectMessage } from '@/hooks/useProjectMessages'
