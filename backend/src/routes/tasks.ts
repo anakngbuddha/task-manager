@@ -28,26 +28,39 @@ async function ensureProjectHasStatus(projectId: string, status: string) {
     return { project, statusList: currentColumns }
   }
 
-  const updatedColumns = [...currentColumns, status]
-  await prisma.project.update({
-    where: { id: projectId },
-    data: { boardColumns: updatedColumns },
+  // Atomic: re-read and append inside a transaction to avoid lost-update race
+  const updated = await prisma.$transaction(async (tx) => {
+    const fresh = await tx.project.findUnique({
+      where: { id: projectId },
+      select: { boardColumns: true },
+    })
+    const cols = Array.isArray(fresh?.boardColumns) && fresh!.boardColumns.length > 0
+      ? fresh!.boardColumns.map((s) => String(s))
+      : [...DEFAULT_BOARD_COLUMNS]
+    if (cols.includes(status)) return cols
+    const newCols = [...cols, status]
+    await tx.project.update({
+      where: { id: projectId },
+      data: { boardColumns: newCols },
+    })
+    return newCols
   })
 
-  return { project, statusList: updatedColumns }
+  return { project, statusList: updated }
 }
 
 const createTaskSchema = z.object({
   title: z.string().min(1).max(100),
   description: z.string().min(1, 'Description is required'),
   projectId: z.string(),
-  assigneeId: z.string().min(1, 'Assignee is required'),
+  assigneeId: z.string().min(1, 'Assignee is required').nullable(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'URGENT']),
   status: z.string().min(1, 'Status is required'),
   // If explicitly 'null', task will not belong to any sprint.
-  sprintId: z.string().nullable(),
+  sprintId: z.string().nullable().optional(),
+  parentId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
-  deadline: z.string().datetime({ message: 'Valid deadline is required' }),
+  deadline: z.string().datetime({ message: 'Valid deadline is required' }).nullable().optional(),
   githubPrUrl: z.string().url().nullable().optional(),
 })
 
@@ -67,8 +80,13 @@ const updateTaskSchema = z.object({
 export async function taskRoutes(app: FastifyInstance) {
   app.get('/projects/:projectId/tasks', {
     preHandler: authenticate,
-  }, async (req) => {
+  }, async (req, reply) => {
     const { projectId } = req.params as { projectId: string }
+    try {
+      await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     return taskService.getAll(projectId)
   })
 
@@ -86,6 +104,11 @@ export async function taskRoutes(app: FastifyInstance) {
       },
     })
     if (!task) return reply.status(404).send({ error: 'Task not found' })
+    try {
+      await requireProjectRole(task.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     return task
   })
 
@@ -123,11 +146,54 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
+    if (body.assigneeId === 'EVERYONE') {
+      const members = await prisma.projectMember.findMany({
+        where: { projectId: body.projectId },
+        select: { userId: true },
+      })
+      if (members.length === 0) {
+        return reply.status(400).send({ error: 'No members in project' })
+      }
+      const tasks = await Promise.all(members.map(async (m) => {
+        return taskService.create({
+          ...body,
+          assigneeId: m.userId,
+          status: normalizedStatus,
+          startDate: body.startDate ? new Date(body.startDate) : null,
+          deadline: body.deadline ? new Date(body.deadline) : null,
+          parentId: body.parentId ?? null,
+        })
+      }))
+      
+      await activityService.record({
+        projectId: tasks[0].projectId,
+        actorId: req.authUser.id,
+        type: 'TASK_CREATED',
+        entityType: 'TASK',
+        entityId: tasks[0].id,
+        metadata: { title: tasks[0].title, bulk: true },
+      })
+
+      await Promise.all(tasks.map(t => notificationService.create({
+        userId: t.assigneeId!,
+        projectId: t.projectId,
+        type: 'TASK_ASSIGNED',
+        title: 'New task assigned to you',
+        body: t.title,
+        href: `/projects/${t.projectId}`,
+        data: { taskId: t.id },
+      })))
+
+      return reply.status(201).send(tasks[0])
+    }
+
     const task = await taskService.create({
       ...body,
+      assigneeId: body.assigneeId ?? undefined,
       status: normalizedStatus,
       startDate: body.startDate ? new Date(body.startDate) : null,
       deadline: body.deadline ? new Date(body.deadline) : null,
+      parentId: body.parentId ?? null,
     })
 
     await activityService.record({
@@ -199,7 +265,7 @@ export async function taskRoutes(app: FastifyInstance) {
       const deadlineDate = new Date(body.deadline)
       const now = new Date()
       if (deadlineDate.getTime() < now.getTime()) {
-        throw new Error('Deadline cannot be in the past')
+        return reply.status(400).send({ error: 'Deadline cannot be in the past' })
       }
     }
 
@@ -277,14 +343,15 @@ export async function taskRoutes(app: FastifyInstance) {
     }
 
     // If status changed, notify the assignee (or all members if unassigned)
-    if (body.status && body.status !== existing.status) {
+    if (normalizedStatus && normalizedStatus !== existing.status) {
       const statusLabel: Record<string, string> = {
         TODO: 'To Do',
         IN_PROGRESS: 'In Progress',
+        IN_REVIEW: 'In Review',
         READY: 'Ready',
         DONE: 'Done',
       }
-      const label = statusLabel[String(body.status)] ?? String(body.status)
+      const label = statusLabel[normalizedStatus] ?? normalizedStatus
       const statusHref = `/projects/${updated.projectId}`
       const statusTitle = `Task "${updated.title}" moved to ${label}`
 
@@ -324,6 +391,13 @@ export async function taskRoutes(app: FastifyInstance) {
     preHandler: authenticate,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
+    const existing = await taskService.getById(id)
+    if (!existing) return reply.status(404).send({ error: 'Task not found' })
+    try {
+      await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     await taskService.delete(id)
     return reply.status(204).send()
   })
@@ -341,6 +415,10 @@ export async function taskRoutes(app: FastifyInstance) {
     const targetTask = await taskService.getById(targetTaskId)
     if (!existingTask || !targetTask) return reply.status(404).send({ error: 'Task not found' })
 
+    if (existingTask.projectId !== targetTask.projectId) {
+      return reply.status(400).send({ error: 'Cannot create dependencies across different projects' })
+    }
+
     try {
       await requireProjectRole(existingTask.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
     } catch {
@@ -352,6 +430,31 @@ export async function taskRoutes(app: FastifyInstance) {
     if (type === 'IS_BLOCKED_BY') {
       blockingTaskId = targetTaskId
       blockedTaskId = id
+    }
+
+    // Duplicate check
+    const existing = await prisma.taskDependency.findUnique({
+      where: { blockingTaskId_blockedTaskId: { blockingTaskId, blockedTaskId } },
+    })
+    if (existing) {
+      return reply.status(409).send({ error: 'This dependency already exists' })
+    }
+
+    // Cycle detection: check if blockedTask already (transitively) blocks blockingTask
+    const visited = new Set<string>()
+    const queue = [blockingTaskId]
+    while (queue.length > 0) {
+      const current = queue.pop()!
+      if (current === blockedTaskId) {
+        return reply.status(400).send({ error: 'This dependency would create a cycle' })
+      }
+      if (visited.has(current)) continue
+      visited.add(current)
+      const upstreamDeps = await prisma.taskDependency.findMany({
+        where: { blockedTaskId: current },
+        select: { blockingTaskId: true },
+      })
+      for (const d of upstreamDeps) queue.push(d.blockingTaskId)
     }
 
     const dep = await prisma.taskDependency.create({

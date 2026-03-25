@@ -2,21 +2,16 @@ import { FastifyInstance } from 'fastify'
 import { authenticate } from '../middlewares/authenticate.js'
 import { prisma } from '../lib/prisma.js'
 import { getInstallationToken } from '../lib/githubApp.js'
-import { peekPendingInstallations, removePendingInstallation } from '../lib/pendingInstallations.js'
-
-const GITHUB_APP_SLUG = process.env.GITHUB_APP_SLUG || 'wsi-taska'
+import { peekPendingInstallations, removePendingInstallation, registerExpectingUser, isUserExpecting, clearExpectingUser } from '../lib/pendingInstallations.js'
+import { requireProjectRole } from '../services/projectAuth.service.js'
 
 const INSTALLATION_URL =
   process.env.GITHUB_INSTALLATION_URL ||
-  `https://github.com/apps/${GITHUB_APP_SLUG}/installations/new`
+  'https://github.com/apps/wsi-taska/installations/new'
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.replace(/\/$/, '') ||
   'https://task-manager-mauve-eta.vercel.app'
-
-const BACKEND_URL =
-  process.env.BETTER_AUTH_URL?.replace(/\/$/, '') ||
-  'http://localhost:3000'
 
 export async function githubRoutes(app: FastifyInstance) {
   // ── Connect button URL ────────────────────────────────────────────────
@@ -24,10 +19,8 @@ export async function githubRoutes(app: FastifyInstance) {
     '/github/connect',
     { preHandler: authenticate },
     async (req) => {
-      const callbackUrl = `${BACKEND_URL}/api/github/callback`
-      const stateParam = encodeURIComponent(callbackUrl)
-      const url = `${INSTALLATION_URL}?state=${stateParam}`
-      return { url }
+      registerExpectingUser(req.authUser.id)
+      return { url: INSTALLATION_URL }
     },
   )
 
@@ -38,12 +31,14 @@ export async function githubRoutes(app: FastifyInstance) {
   app.get(
     '/github/pending-installation',
     { preHandler: authenticate },
-    async (_req, reply) => {
+    async (req, reply) => {
+      if (!isUserExpecting(req.authUser.id)) {
+        return reply.status(204).send()
+      }
       const pending = peekPendingInstallations()
       if (pending.length === 0) {
         return reply.status(204).send()
       }
-      // Return the most recent one (first in the sorted array)
       const latest = pending[0]
       return reply.status(200).send({
         installationId: latest.installationId,
@@ -60,17 +55,16 @@ export async function githubRoutes(app: FastifyInstance) {
   app.get(
     '/github/callback',
     async (req, reply) => {
-      const { installation_id, setup_action } = req.query as {
+      const { installation_id } = req.query as {
         installation_id?: string
-        setup_action?: string
       }
 
       if (!installation_id) {
-        return reply.redirect(`${FRONTEND_URL}/github/callback?github_error=missing_id`)
+        return reply.redirect(`${FRONTEND_URL}/profile?github_error=missing_id`)
       }
 
       return reply.redirect(
-        `${FRONTEND_URL}/github/callback?installation_id=${installation_id}${setup_action ? `&setup_action=${setup_action}` : ''}`,
+        `${FRONTEND_URL}/profile?github_installation_id=${installation_id}`,
       )
     },
   )
@@ -87,11 +81,10 @@ export async function githubRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'installationId (number) is required' })
       }
 
-      const membership = await prisma.projectMember.findFirst({
-        where: { userId: req.authUser.id, projectId },
-      })
-      if (!membership) {
-        return reply.status(403).send({ error: 'Not a member of this project' })
+      try {
+        await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+      } catch {
+        return reply.status(403).send({ error: 'Forbidden' })
       }
 
       const installation = await prisma.githubInstallation.upsert({
@@ -108,8 +101,8 @@ export async function githubRoutes(app: FastifyInstance) {
         include: { repositories: true },
       })
 
-      // Remove from pending store now that it's claimed
       removePendingInstallation(installationId)
+      clearExpectingUser(req.authUser.id)
 
       return reply.status(200).send(installation)
     },
@@ -161,11 +154,9 @@ export async function githubRoutes(app: FastifyInstance) {
     async (req, reply) => {
       const { projectId } = req.params as { projectId: string }
 
-      const membership = await prisma.projectMember.findFirst({
-        where: { userId: req.authUser.id, projectId },
-        select: { userId: true },
-      })
-      if (!membership) {
+      try {
+        await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+      } catch {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 

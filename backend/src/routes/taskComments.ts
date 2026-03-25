@@ -5,20 +5,36 @@ import { taskCommentService } from '../services/taskComment.service.js'
 import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
 import { prisma } from '../lib/prisma.js'
+import { requireProjectRole } from '../services/projectAuth.service.js'
 
 const createCommentSchema = z.object({
   content: z.string().min(1).max(1000),
   parentId: z.string().optional(),
 })
 
+async function requireTaskMembership(taskId: string, userId: string, reply: any) {
+  const task = await prisma.task.findUnique({ where: { id: taskId }, select: { projectId: true } })
+  if (!task) { reply.status(404).send({ error: 'Task not found' }); return null }
+  try {
+    await requireProjectRole(task.projectId, userId, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+  } catch {
+    reply.status(403).send({ error: 'Forbidden' }); return null
+  }
+  return task
+}
+
 export async function taskCommentRoutes(app: FastifyInstance) {
-  app.get('/tasks/:taskId/comments', { preHandler: authenticate }, async (req) => {
+  app.get('/tasks/:taskId/comments', { preHandler: authenticate }, async (req, reply) => {
     const { taskId } = req.params as { taskId: string }
+    const task = await requireTaskMembership(taskId, req.authUser.id, reply)
+    if (!task) return
     return taskCommentService.listForTask(taskId)
   })
 
-  app.post('/tasks/:taskId/comments', { preHandler: authenticate }, async (req) => {
+  app.post('/tasks/:taskId/comments', { preHandler: authenticate }, async (req, reply) => {
     const { taskId } = req.params as { taskId: string }
+    const taskCheck = await requireTaskMembership(taskId, req.authUser.id, reply)
+    if (!taskCheck) return
     const body = createCommentSchema.parse(req.body)
 
     const created = await taskCommentService.create({

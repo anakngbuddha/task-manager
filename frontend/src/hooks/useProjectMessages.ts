@@ -11,6 +11,7 @@ export function useProjectMessages(projectId: string | undefined) {
     },
     enabled: !!projectId,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
 }
 

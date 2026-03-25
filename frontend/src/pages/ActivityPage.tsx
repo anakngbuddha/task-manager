@@ -41,6 +41,15 @@ function formatRelativeTime(date: Date): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+function getDayKey(date: Date): string {
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (date.toDateString() === today.toDateString()) return 'Today'
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+}
+
 // ─── Event config ─────────────────────────────────────────────────────────────
 
 interface EventConfig {
@@ -168,6 +177,16 @@ interface ActivityEvent {
   metadata?: Record<string, any>
 }
 
+interface UserGroup {
+  actor: ActivityEvent['actor']
+  events: ActivityEvent[]
+}
+
+interface DaySection {
+  dayKey: string
+  groups: UserGroup[]
+}
+
 // ─── Inline event pill ────────────────────────────────────────────────────────
 
 function EventPill({ type }: { type: string }) {
@@ -183,6 +202,40 @@ function EventPill({ type }: { type: string }) {
       {type.replace(/_/g, ' ').toLowerCase()}
     </span>
   )
+}
+
+// ─── Single action row ────────────────────────────────────────────────────────
+
+function ActionRow({ event }: { event: ActivityEvent }) {
+  const cfg = getCfg(event.type)
+  const project = event.project?.name ?? 'a project'
+  const href = getHref(event)
+  const createdAt = new Date(event.createdAt)
+
+  const content = (
+    <p className="text-sm leading-snug text-foreground/80">
+      <span className="font-medium text-foreground">{cfg.label}</span>{' '}
+      <span className="text-muted-foreground">in</span>{' '}
+      <span className="font-medium text-foreground">{project}</span>{' '}
+      <EventPill type={event.type} />
+      <span className="ml-1.5 text-[0.7rem] text-muted-foreground tabular-nums" title={createdAt.toLocaleString()}>
+        · {formatRelativeTime(createdAt)}
+      </span>
+    </p>
+  )
+
+  if (href) {
+    return (
+      <Link
+        to={href}
+        className="group/row -mx-3 flex items-start gap-0 rounded-lg px-3 py-1.5 transition-colors hover:bg-accent/60"
+      >
+        {content}
+      </Link>
+    )
+  }
+
+  return <div className="py-1.5">{content}</div>
 }
 
 // ─── Flat feed row (no day/group separators) ──────────────────────────
@@ -232,6 +285,55 @@ function FlatEventRow({ event }: { event: ActivityEvent }) {
   }
 
   return row
+}
+
+// ─── User group ───────────────────────────────────────────────────────────────
+
+function UserGroupBlock({ group, isLast }: { group: UserGroup; isLast: boolean }) {
+  const actor = group.actor
+  const name = actor?.name ?? actor?.email ?? 'Unknown'
+  const initials = getInitials(actor?.name, actor?.email)
+
+  return (
+    <div className={cn('flex gap-3', !isLast && 'mb-5')}>
+      {/* Avatar column */}
+      <div className="flex flex-col items-center shrink-0">
+        <Avatar size="sm">
+          <AvatarFallback className="text-[0.625rem] font-bold bg-accent text-accent-foreground">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+        {/* Spine — only show if multiple actions in group */}
+        {group.events.length > 1 && (
+          <div className="mt-1 w-px flex-1 bg-border/50" />
+        )}
+      </div>
+
+      {/* Content column */}
+      <div className="flex-1 min-w-0 pt-0.5">
+        <p className="text-[0.8rem] font-semibold text-foreground leading-tight mb-1">{name}</p>
+        <div className="space-y-0.5">
+          {group.events.map((e) => (
+            <ActionRow key={e.id} event={e} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Day header ───────────────────────────────────────────────────────────────
+
+function DayHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 py-3">
+      <div className="h-px flex-1 bg-border/40" />
+      <span className="shrink-0 rounded-full border border-border/60 bg-background px-3 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground shadow-sm">
+        {label}
+      </span>
+      <div className="h-px flex-1 bg-border/40" />
+    </div>
+  )
 }
 
 // ─── Filter pill ──────────────────────────────────────────────────────────────

@@ -7,12 +7,20 @@ import { Badge } from '@/components/ui/badge'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { useTasks, useUpdateTask, useDeleteTask, useCreateTaskDependency, useDeleteTaskDependency } from '@/hooks/useTasks'
+import { useTasks, useUpdateTask, useDeleteTask, useCreateTaskDependency, useDeleteTaskDependency, useCreateTask } from '@/hooks/useTasks'
 import { useSprints } from '@/hooks/useSprints'
 import { useProject } from '@/hooks/useProject'
 import { useTaskComments, useAddTaskComment } from '@/hooks/useTaskComments'
 import { Pencil, X, Clock, Link as LinkIcon, ExternalLink } from 'lucide-react'
 import { useCreateTaskTimeLog } from '@/hooks/useTimeLogs'
+
+function sanitizeUrl(url: string): string {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') return url
+  } catch { /* invalid URL */ }
+  return '#'
+}
 
 const statusLabel: Record<string, string> = {
   TODO: 'To Do',
@@ -70,6 +78,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
 }) {
   const updateTask = useUpdateTask()
   const deleteTask = useDeleteTask()
+  const createTask = useCreateTask()
   const createTimeLog = useCreateTaskTimeLog(projectId)
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [title, setTitle] = useState('')
@@ -77,6 +86,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const [priority, setPriority] = useState('')
   const [status, setStatus] = useState('')
   const [customStatus, setCustomStatus] = useState('')
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
   const [sprintId, setSprintId] = useState<string>('NONE')
   const [deadline, setDeadline] = useState<string>('')
   const [deadlineError, setDeadlineError] = useState('')
@@ -351,7 +361,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                     Linked Pull Request
                   </p>
                   <a
-                    href={task.githubPrUrl}
+                    href={sanitizeUrl(task.githubPrUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="mt-2 inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
@@ -423,6 +433,72 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                       }}
                     >
                       {createDependency.isPending ? '...' : 'Add'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-border/60 bg-card p-5">
+                <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1">Subtasks</p>
+                <div className="space-y-3">
+                  {task?.subtasks?.length > 0 ? (
+                    <div className="space-y-2">
+                       {task.subtasks.map((st: any) => (
+                          <div key={st.id} className="flex items-center justify-between text-sm bg-muted/10 p-2 border border-border/40">
+                             <div className="flex items-center gap-3">
+                                <Badge variant="outline" className={`text-[10px] uppercase rounded-sm px-1.5 ${st.status === 'DONE' ? 'bg-emerald-500/20 text-emerald-700 border-emerald-500/30' : ''}`}>{st.status}</Badge>
+                                <span className={st.status === 'DONE' ? 'line-through text-muted-foreground' : ''}>{st.title}</span>
+                             </div>
+                             <div className="flex items-center gap-2">
+                               {st.assignee && (
+                                 <span className="text-[10px] text-muted-foreground">@{st.assignee.name || st.assignee.email}</span>
+                               )}
+                             </div>
+                          </div>
+                       ))}
+                    </div>
+                  ) : (
+                     <p className="text-xs text-muted-foreground italic mb-2">No subtasks.</p>
+                  )}
+
+                  <div className="flex gap-2 items-center mt-3 pt-3 border-t border-border/40">
+                    <Input 
+                      placeholder="What needs to be done?" 
+                      className="h-8 text-xs rounded-none" 
+                      value={newSubtaskTitle}
+                      onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                      onKeyDown={async (e) => {
+                         if (e.key === 'Enter' && newSubtaskTitle.trim()) {
+                           e.preventDefault()
+                           await createTask.mutateAsync({
+                             title: newSubtaskTitle.trim(),
+                             description: '',
+                             projectId: projectId,
+                             status: 'TODO',
+                             priority: 'MEDIUM',
+                             parentId: task.id,
+                           })
+                           setNewSubtaskTitle('')
+                         }
+                      }}
+                    />
+                    <Button 
+                      size="sm" 
+                      className="h-8 rounded-none px-3 text-xs" 
+                      disabled={!newSubtaskTitle.trim() || createTask.isPending}
+                      onClick={async () => {
+                         await createTask.mutateAsync({
+                           title: newSubtaskTitle.trim(),
+                           description: '',
+                           projectId: projectId,
+                           status: 'TODO',
+                           priority: 'MEDIUM',
+                           parentId: task.id,
+                         })
+                         setNewSubtaskTitle('')
+                      }}
+                    >
+                      {createTask.isPending ? '...' : 'Add'}
                     </Button>
                   </div>
                 </div>

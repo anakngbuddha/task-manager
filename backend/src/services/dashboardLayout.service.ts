@@ -69,8 +69,11 @@ export const dashboardLayoutService = {
 
       return layout
     } catch (err: any) {
-      // If the table isn't migrated yet, don't break the UI—return a default layout.
-      return defaultLayout()
+      const msg = String(err?.message ?? '')
+      if (msg.includes("doesn't exist") || msg.includes('Unknown column') || msg.includes('no such table')) {
+        return defaultLayout()
+      }
+      throw err
     }
   },
 
@@ -83,8 +86,13 @@ export const dashboardLayoutService = {
           layout = VALUES(layout),
           updatedAt = NOW()
       `
-    } catch {
-      // Ignore if storage isn't ready yet (e.g. missing table).
+    } catch (err: any) {
+      const msg = String(err?.message ?? '')
+      if (msg.includes("doesn't exist") || msg.includes('Unknown column') || msg.includes('no such table')) {
+        // Table not migrated yet — ignore safely
+      } else {
+        throw err
+      }
     }
 
     return layout

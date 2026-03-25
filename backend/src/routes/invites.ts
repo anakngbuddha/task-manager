@@ -3,9 +3,10 @@ import { authenticate } from '../middlewares/authenticate.js'
 import { projectService } from '../services/project.service.js'
 import { prisma } from '../lib/prisma.js'
 import { randomBytes } from 'crypto'
+import { requireProjectRole } from '../services/projectAuth.service.js'
 
 function generateCode() {
-  return randomBytes(6).toString('base64url')
+  return randomBytes(24).toString('base64url')
 }
 
 export async function inviteRoutes(app: FastifyInstance) {
@@ -14,6 +15,12 @@ export async function inviteRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const { projectId } = req.params as { projectId: string }
     const userId = req.authUser.id
+
+    try {
+      await requireProjectRole(projectId, userId, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
 
     const project = await projectService.getById(projectId)
     if (!project) {
@@ -78,6 +85,10 @@ export async function inviteRoutes(app: FastifyInstance) {
 
     if (invite.expiresAt.getTime() < Date.now()) {
       return reply.status(400).send({ error: 'Invite has expired' })
+    }
+
+    if (invite.acceptedById) {
+      return reply.status(400).send({ error: 'Invite has already been used' })
     }
 
     await projectService.addMember(invite.projectId, userId).catch(() => {

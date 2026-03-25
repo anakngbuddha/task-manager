@@ -20,11 +20,17 @@ import { githubWebhookRoutes } from './routes/webhooks/github.js'
 import { scheduleRoutes } from './routes/schedules.js'
 import 'dotenv/config'
 
+if (!process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required')
+}
+
 const app = Fastify({ logger: true, trustProxy: true })
 
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
   'https://task-manager-mauve-eta.vercel.app',
 ]
 const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '')
@@ -66,10 +72,7 @@ app.addHook('onRequest', async (req, reply) => {
   if (req.url.startsWith('/api/auth')) {
     injectCORSHeaders(req.raw, reply.raw)
     const handler = toNodeHandler(auth)
-    await new Promise<void>((resolve) => {
-      handler(req.raw, reply.raw)
-      resolve()
-    })
+    await handler(req.raw, reply.raw)
     return reply.hijack()
   }
 })

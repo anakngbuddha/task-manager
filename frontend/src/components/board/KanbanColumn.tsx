@@ -2,12 +2,20 @@ import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import TaskCard from './TaskCard'
 
-const columnDot: Record<string, string> = {
-  TODO: 'bg-muted-foreground/45',
-  IN_PROGRESS: 'bg-blue-500',
-  IN_REVIEW: 'bg-amber-500',
-  DONE: 'bg-emerald-500',
-  READY: 'bg-primary',
+const columnTopBorder: Record<string, string> = {
+  TODO: 'border-t-blue-500',
+  IN_PROGRESS: 'border-t-purple-500',
+  IN_REVIEW: 'border-t-amber-500',
+  DONE: 'border-t-emerald-500',
+  READY: 'border-t-primary',
+}
+
+const columnTextColor: Record<string, string> = {
+  TODO: 'text-blue-600 dark:text-blue-400',
+  IN_PROGRESS: 'text-purple-600 dark:text-purple-400',
+  IN_REVIEW: 'text-amber-600 dark:text-amber-400',
+  DONE: 'text-emerald-600 dark:text-emerald-400',
+  READY: 'text-primary',
 }
 
 const columnLabels: Record<string, string> = {
@@ -29,17 +37,16 @@ export default function KanbanColumn({ status, tasks, onTaskClick, onAddTask, ca
 
   return (
     <div className="flex w-64 shrink-0 flex-col sm:w-72">
-      <div className="rounded-xl border border-border/60 bg-card/70 shadow-sm">
-        <div className="sticky top-0 z-10 border-b border-border/60 bg-card/85 px-3 py-2 backdrop-blur">
+      <div className={`rounded-lg bg-transparent flex flex-col h-full`}>
+        <div className={`sticky top-0 z-10 bg-card px-3 py-3 border-t-4 rounded-t-lg shadow-sm border-x border-x-border/40 ${columnTopBorder[status] || 'border-t-muted-foreground'}`}>
           <div className="flex items-center justify-between gap-2">
-            <div className="flex min-w-0 items-baseline gap-2">
-              <span className={['h-2 w-2 rounded-full translate-y-[1px]', columnDot[status] ?? 'bg-muted-foreground/45'].join(' ')} />
-              <p className="truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground leading-none">
-                {columnLabels[status]}
-              </p>
-              <span className="text-xs text-muted-foreground tabular-nums leading-none">
-                {tasks.length}
-              </span>
+            <p className={`text-[13px] font-semibold tracking-wide uppercase ${columnTextColor[status] || 'text-muted-foreground'}`}>
+              {columnLabels[status]} <span className="text-muted-foreground ml-1 font-medium tabular-nums">({tasks.length})</span>
+            </p>
+            <div className="flex items-center gap-1">
+              <button className="text-muted-foreground hover:text-foreground">
+                <span className="text-lg leading-none tracking-widest translate-y-[-4px] block">...</span>
+              </button>
             </div>
           </div>
         </div>
@@ -47,13 +54,13 @@ export default function KanbanColumn({ status, tasks, onTaskClick, onAddTask, ca
         <SortableContext items={tasks.map(t => String(t.id))} strategy={verticalListSortingStrategy}>
           <div
             ref={setNodeRef}
-            className={`min-h-32 space-y-2 overflow-auto p-3 transition-colors ${
-              isOver ? 'bg-accent/40 ring-1 ring-primary/25' : 'bg-transparent'
+            className={`min-h-[150px] space-y-3 overflow-auto py-3 transition-colors ${
+              isOver ? 'bg-accent/40 ring-1 ring-primary/25 rounded-b-lg' : 'bg-transparent'
             }`}
           >
             {tasks.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-border/70 bg-background/20 px-3 py-8 text-center text-xs text-muted-foreground">
-                <div className="mx-auto max-w-[10rem] leading-relaxed">
+              <div className="rounded-lg border-2 border-dashed border-border/70 bg-background/20 px-3 py-6 text-center text-xs text-muted-foreground">
+                <div className="mx-auto leading-relaxed">
                   Drop tasks here
                 </div>
               </div>
@@ -65,15 +72,14 @@ export default function KanbanColumn({ status, tasks, onTaskClick, onAddTask, ca
 
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border/60 bg-background/30 px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 bg-card py-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground shadow-sm transition-colors"
               onClick={() => {
                 if (!canAddTask) return
                 onAddTask?.(status)
               }}
               disabled={!canAddTask}
             >
-              <span className="text-base leading-none">+</span>
-              Add task
+              + Quick Add
             </button>
           </div>
         </SortableContext>

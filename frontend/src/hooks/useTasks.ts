@@ -22,6 +22,7 @@ export function useCreateTask() {
       assigneeId?: string
       status?: string
       sprintId?: string | null
+      parentId?: string | null
       priority?: string
       deadline?: string | null
     }) => {

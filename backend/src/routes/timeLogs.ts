@@ -39,7 +39,7 @@ export async function timeLogRoutes(app: FastifyInstance) {
       const { taskId } = req.params as { taskId: string }
 
       const createSchema = z.object({
-        durationMinutes: z.number().int().positive(),
+        durationMinutes: z.number().int().positive().max(14400),
         title: z.string().min(1).max(200),
         description: z.string().min(1).max(5000),
         loggedAt: z.string().datetime().optional(),
@@ -59,11 +59,12 @@ export async function timeLogRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
+      const note = body.title + '\n' + body.description
       const created = await timeLogService.create({
         taskId,
         userId: req.authUser.id,
         durationMinutes: body.durationMinutes,
-        note: body.description, // store description in existing `note` column
+        note,
         loggedAt: body.loggedAt ? new Date(body.loggedAt) : new Date(),
       })
 

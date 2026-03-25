@@ -11,6 +11,7 @@ export function useProjectSeen(projectId: string | undefined) {
     },
     enabled: !!projectId,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
 }
 
@@ -24,6 +25,7 @@ export function useDirectSeen(projectId: string | undefined, otherUserId: string
     },
     enabled: !!projectId && !!otherUserId,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import Sidebar from '@/components/layout/Sidebar'
 import { useSession } from '@/lib/auth-client'
 import { ContributionHeatmap } from '@/components/contributions/ContributionHeatmap'
@@ -18,8 +18,6 @@ import { Label } from '@/components/ui/label'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { GitBranch, Unplug, Loader2, Lock, Globe, ExternalLink, Link2 } from 'lucide-react'
-
-const GITHUB_STORAGE_KEY = 'github_installation_id'
 
 export default function ProfilePage() {
   const { data: session } = useSession()
@@ -47,113 +45,83 @@ export default function ProfilePage() {
 
   const [manualId, setManualId] = useState('')
   const [manualError, setManualError] = useState('')
-  const [autoLinking, setAutoLinking] = useState(false)
+  const autoLinkingRef = useRef(false)
   const [polling, setPolling] = useState(false)
-  const [pollTimeoutId, setPollTimeoutId] = useState<ReturnType<typeof setTimeout> | null>(null)
-
-  const doAutoLink = async (installationId: number) => {
-    if (!githubProjectId || autoLinking) return
-    setAutoLinking(true)
-    try {
-      await linkInstallation.mutateAsync({ projectId: githubProjectId, installationId })
-      setPolling(false)
-      if (pollTimeoutId) clearTimeout(pollTimeoutId)
-      refetchInstallation()
-      setManualError('')
-      const url = new URL(window.location.href)
-      url.searchParams.delete('github_installation_id')
-      window.history.replaceState({}, '', url.pathname + (url.search || ''))
-    } catch {
-      setManualId(String(installationId))
-      setManualError('Auto-link failed. You can try linking manually below.')
-    } finally {
-      setAutoLinking(false)
-      try { localStorage.removeItem(GITHUB_STORAGE_KEY) } catch {}
-    }
-  }
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     if (!githubConnectedFlag) return
     refetchInstallation()
   }, [githubConnectedFlag, refetchInstallation])
 
+  // Re-check installation when user switches back to this tab (after authorizing in new tab)
   useEffect(() => {
     const onFocus = () => { refetchInstallation() }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [refetchInstallation])
 
-  // Path 1: Auto-link from URL query param (direct redirect to this page)
+  // Auto-link when redirected from GitHub callback with installation_id
   useEffect(() => {
-    if (!githubInstallationIdParam || !githubProjectId || autoLinking) return
+    if (!githubInstallationIdParam || !githubProjectId || autoLinkingRef.current) return
     const instId = parseInt(githubInstallationIdParam, 10)
     if (Number.isNaN(instId)) return
-    doAutoLink(instId)
-  }, [githubInstallationIdParam, githubProjectId])
 
-  // Path 2: Cross-tab communication via localStorage
-  // When the GitHub callback page (opened in a new tab) writes the installation ID
-  // to localStorage, this tab picks it up via the 'storage' event.
-  useEffect(() => {
-    const handleStorageEvent = (e: StorageEvent) => {
-      if (e.key !== GITHUB_STORAGE_KEY || !e.newValue) return
-      try {
-        const { installationId } = JSON.parse(e.newValue)
-        const instId = parseInt(installationId, 10)
-        if (!Number.isNaN(instId)) {
-          doAutoLink(instId)
-        }
-      } catch {}
-    }
+    autoLinkingRef.current = true
+    linkInstallation
+      .mutateAsync({ projectId: githubProjectId, installationId: instId })
+      .then(() => {
+        refetchInstallation()
+        const url = new URL(window.location.href)
+        url.searchParams.delete('github_installation_id')
+        window.history.replaceState({}, '', url.pathname + '?github_connected=true')
+      })
+      .catch(() => {
+        setManualId(githubInstallationIdParam)
+        setManualError('Auto-link failed. You can try linking manually below.')
+      })
+      .finally(() => { autoLinkingRef.current = false })
+  }, [githubInstallationIdParam, githubProjectId, linkInstallation, refetchInstallation])
 
-    window.addEventListener('storage', handleStorageEvent)
-    return () => window.removeEventListener('storage', handleStorageEvent)
-  }, [githubProjectId, autoLinking])
-
-  // Path 2b: Check localStorage on mount/focus in case the storage event was missed
-  useEffect(() => {
-    const checkLocalStorage = () => {
-      try {
-        const raw = localStorage.getItem(GITHUB_STORAGE_KEY)
-        if (!raw) return
-        const { installationId, timestamp } = JSON.parse(raw)
-        if (Date.now() - timestamp > 5 * 60 * 1000) {
-          localStorage.removeItem(GITHUB_STORAGE_KEY)
-          return
-        }
-        const instId = parseInt(installationId, 10)
-        if (!Number.isNaN(instId) && !isConnected) {
-          doAutoLink(instId)
-        }
-      } catch {}
-    }
-
-    checkLocalStorage()
-
-    const onFocus = () => checkLocalStorage()
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [githubProjectId, isConnected, autoLinking])
-
-  // Path 3: Webhook polling fallback
+  // Poll for pending installation (from webhook) while polling === true
   const { data: pendingInstall } = useGithubPendingInstallation(polling && !isConnected)
 
+  // Auto-claim the pending installation when found via polling
   useEffect(() => {
-    if (!pendingInstall || !githubProjectId || autoLinking) return
-    doAutoLink(pendingInstall.installationId)
-  }, [pendingInstall, githubProjectId])
+    if (!pendingInstall || !githubProjectId || autoLinkingRef.current) return
+    autoLinkingRef.current = true
+    linkInstallation
+      .mutateAsync({ projectId: githubProjectId, installationId: pendingInstall.installationId })
+      .then(() => {
+        setPolling(false)
+        if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
+        refetchInstallation()
+      })
+      .catch(() => {
+        setManualId(String(pendingInstall.installationId))
+        setManualError('Auto-link failed. The Installation ID has been filled in below — click Link.')
+      })
+      .finally(() => { autoLinkingRef.current = false })
+  }, [pendingInstall, githubProjectId, linkInstallation, refetchInstallation])
 
-  const handleConnect = () => {
+  // Cleanup poll timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
+    }
+  }, [])
+
+  const handleConnect = useCallback(() => {
     if (!connectData?.url) return
-    window.open(connectData.url, '_blank', 'noreferrer')
+    window.open(connectData.url, '_blank', 'noopener,noreferrer')
     setPolling(true)
     setManualError('')
-    const tid = setTimeout(() => {
+    if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
+    pollTimeoutRef.current = setTimeout(() => {
       setPolling(false)
       setManualError('Auto-detection timed out. Please paste your GitHub Installation ID below.')
     }, 90_000)
-    setPollTimeoutId(tid)
-  }
+  }, [connectData?.url])
 
   const handleDisconnect = async () => {
     if (!githubProjectId) return
@@ -329,7 +297,7 @@ export default function ProfilePage() {
                         <Button
                           variant="outline"
                           className="mt-4 h-9 rounded-none"
-                          onClick={() => { setPolling(false); if (pollTimeoutId) clearTimeout(pollTimeoutId) }}
+                          onClick={() => { setPolling(false); if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current) }}
                         >
                           Cancel
                         </Button>

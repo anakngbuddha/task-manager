@@ -11,6 +11,7 @@ export function useProjectDirectInbox(projectId: string | undefined) {
     },
     enabled: !!projectId,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
 }
 

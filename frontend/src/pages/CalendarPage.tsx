@@ -14,10 +14,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, Plus, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, Clock, X } from 'lucide-react'
 import { useSchedules, useCreateSchedule, type ScheduleType, type Schedule } from '@/hooks/useSchedules'
 import { usePendingDeadlines, type PendingDeadlineItem } from '@/hooks/usePendingDeadlines'
 import { useProjects } from '@/hooks/useProjects'
+import { useNavigate } from 'react-router-dom'
 
 function toLocalInput(d: Date) {
   const offset = d.getTimezoneOffset()
@@ -49,14 +50,12 @@ type CalendarItem = {
   status?: string
 }
 
-type PendingCombinedItem =
-  | (Schedule & { kind: 'SCHEDULE'; sortDate: Date })
-  | (PendingDeadlineItem & { kind: 'DEADLINE'; sortDate: Date })
-
 export default function CalendarPage() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState<'calendar' | 'pending'>('calendar')
   const [currentDate, setCurrentDate] = useState(new Date())
   const [createOpen, setCreateOpen] = useState(false)
+  const [viewItem, setViewItem] = useState<CalendarItem | null>(null)
 
   const nextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))
   const prevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))
@@ -125,14 +124,10 @@ export default function CalendarPage() {
 
   const pendingItems = useMemo(() => {
     const now = new Date()
-    const sched: PendingCombinedItem[] = schedules
+    const sched = schedules
       .filter((s: Schedule) => new Date(s.scheduledAt).getTime() > now.getTime())
       .map((s: Schedule) => ({ ...s, kind: 'SCHEDULE' as const, sortDate: new Date(s.scheduledAt) }))
-    const dl: PendingCombinedItem[] = deadlines.map((d) => ({
-      ...d,
-      kind: 'DEADLINE' as const,
-      sortDate: new Date(d.deadline),
-    }))
+    const dl = deadlines.map((d: PendingDeadlineItem) => ({ ...d, kind: 'DEADLINE' as const, sortDate: new Date(d.deadline) }))
     const combined = [...sched, ...dl]
     combined.sort((a, b) => a.sortDate.getTime() - b.sortDate.getTime())
     return combined
@@ -146,7 +141,8 @@ export default function CalendarPage() {
   const [formDetails, setFormDetails] = useState('')
   const [formLocation, setFormLocation] = useState('')
   const [formProjectId, setFormProjectId] = useState('__none__')
-  const [formAttendees, setFormAttendees] = useState('')
+  const [formAttendees, setFormAttendees] = useState<string[]>([])
+  const [attendeeInput, setAttendeeInput] = useState('')
   const [formError, setFormError] = useState('')
 
   const resetForm = () => {
@@ -156,8 +152,53 @@ export default function CalendarPage() {
     setFormDetails('')
     setFormLocation('')
     setFormProjectId('__none__')
-    setFormAttendees('')
+    setFormAttendees([])
+    setAttendeeInput('')
     setFormError('')
+  }
+
+  const handleEmailInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      const emails = attendeeInput.split(',').map(s => s.trim()).filter(Boolean)
+      let hasError = false
+      const valid: string[] = []
+      for (const email of emails) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          setFormError('Invalid email format: ' + email)
+          hasError = true
+          break
+        }
+        if (!formAttendees.includes(email)) valid.push(email)
+      }
+      if (!hasError) {
+        setFormAttendees([...formAttendees, ...valid])
+        setAttendeeInput('')
+        setFormError('')
+      }
+    } else if (e.key === 'Backspace' && attendeeInput === '' && formAttendees.length > 0) {
+      setFormAttendees(formAttendees.slice(0, -1))
+    }
+  }
+
+  const handleEmailBlur = () => {
+    if (!attendeeInput.trim()) return
+    const emails = attendeeInput.split(',').map(s => s.trim()).filter(Boolean)
+    let hasError = false
+    const valid: string[] = []
+    for (const email of emails) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setFormError('Invalid email format: ' + email)
+        hasError = true
+        break
+      }
+      if (!formAttendees.includes(email)) valid.push(email)
+    }
+    if (!hasError) {
+      setFormAttendees([...formAttendees, ...valid])
+      setAttendeeInput('')
+      setFormError('')
+    }
   }
 
   const handleCreate = async () => {
@@ -169,7 +210,6 @@ export default function CalendarPage() {
     if (scheduledAt.getTime() <= Date.now()) { setFormError('Date must be in the future.'); return }
 
     try {
-      const emails = formAttendees.split(',').map(e => e.trim()).filter(Boolean)
       await createSchedule({
         title: t,
         type: formType,
@@ -177,7 +217,7 @@ export default function CalendarPage() {
         details: formDetails.trim() || undefined,
         location: formLocation.trim() || undefined,
         projectId: formProjectId !== '__none__' ? formProjectId : undefined,
-        attendees: emails.length ? emails.map(email => ({ email })) : undefined,
+        attendees: formAttendees.length ? formAttendees.map(email => ({ email })) : undefined,
       })
       setCreateOpen(false)
       resetForm()
@@ -279,8 +319,9 @@ export default function CalendarPage() {
                         {cell.items.map(it => (
                           <div
                             key={`${it.kind}:${it.id}`}
+                            onClick={() => setViewItem(it)}
                             className={cn(
-                              'text-[0.65rem] leading-tight px-1.5 py-0.5 rounded border truncate font-medium',
+                              'text-[0.65rem] leading-tight px-1.5 py-0.5 rounded border truncate font-medium cursor-pointer transition-opacity hover:opacity-80',
                               it.kind === 'SCHEDULE'
                                 ? SCHEDULE_TYPE_COLOR[it.type!]
                                 : it.status === 'IN_PROGRESS'
@@ -313,7 +354,7 @@ export default function CalendarPage() {
                       : new Date(it.deadline).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
                     return (
-                      <div key={`${it.kind}:${it.id}`} className="flex items-start justify-between gap-4 rounded-xl border bg-card px-4 py-3">
+                      <div key={`${it.kind}:${it.id}`} className="flex items-start justify-between gap-4 rounded-xl border bg-card px-4 py-3 cursor-pointer hover:border-primary/40 transition-colors" onClick={() => setViewItem({ id: it.id, kind: it.kind, title: it.title, date: it.sortDate, type: it.type })}>
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             {it.kind === 'SCHEDULE' ? (
@@ -405,11 +446,31 @@ export default function CalendarPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Attendees emails (optional)</Label>
-                <Input
-                  value={formAttendees}
-                  onChange={e => setFormAttendees(e.target.value)}
-                  placeholder="comma separated, e.g. a@x.com, b@x.com"
-                />
+                <div className="flex flex-wrap gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                  {formAttendees.map((email, i) => (
+                    <Badge key={i} variant="secondary" className="flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 font-normal h-6">
+                      {email}
+                      <button
+                        type="button"
+                        onClick={() => setFormAttendees(formAttendees.filter(e => e !== email))}
+                        className="text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                  <input
+                    className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground min-w-[150px]"
+                    placeholder={formAttendees.length === 0 ? "comma separated, e.g. a@x.com, b@x.com" : ""}
+                    value={attendeeInput}
+                    onChange={e => {
+                      setAttendeeInput(e.target.value)
+                      setFormError('')
+                    }}
+                    onKeyDown={handleEmailInputKeyDown}
+                    onBlur={handleEmailBlur}
+                  />
+                </div>
               </div>
               {formError && (
                 <p className="text-xs text-destructive -mt-1">{formError}</p>
@@ -421,6 +482,91 @@ export default function CalendarPage() {
                 </Button>
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* View Details Dialog */}
+        <Dialog open={!!viewItem} onOpenChange={(open) => !open && setViewItem(null)}>
+          <DialogContent className="sm:max-w-md rounded-none">
+            {viewItem && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>{viewItem.title}</DialogTitle>
+                  <DialogDescription>
+                    {viewItem.kind === 'SCHEDULE' ? 'Calendar Schedule Details' : 'Task Deadline Details'}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-2">
+                  {viewItem.kind === 'SCHEDULE' && (() => {
+                    const s = schedules.find((s: any) => s.id === viewItem.id)
+                    if (!s) return null
+                    return (
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between border-b pb-2">
+                          <span className="text-muted-foreground font-medium">Type</span>
+                          <Badge variant="secondary" className={cn('rounded-none px-2 py-0', SCHEDULE_TYPE_COLOR[s.type as ScheduleType])}>{SCHEDULE_TYPE_LABEL[s.type as ScheduleType]}</Badge>
+                        </div>
+                        <div className="flex justify-between border-b pb-2">
+                          <span className="text-muted-foreground font-medium">When</span>
+                          <span>{new Date(s.scheduledAt).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}</span>
+                        </div>
+                        {s.location && (
+                          <div className="flex justify-between border-b pb-2">
+                            <span className="text-muted-foreground font-medium">Location</span>
+                            <span>{s.location}</span>
+                          </div>
+                        )}
+                        {s.details && (
+                          <div className="border-b pb-2">
+                            <span className="text-muted-foreground font-medium block mb-1">Details</span>
+                            <span className="whitespace-pre-wrap">{s.details}</span>
+                          </div>
+                        )}
+                        {s.attendees && s.attendees.length > 0 && (
+                          <div className="border-b pb-2">
+                            <span className="text-muted-foreground font-medium block mb-1">Attendees</span>
+                            <div className="flex flex-wrap gap-1">
+                              {s.attendees.map((a: any) => (
+                                <Badge key={a.id} variant="outline" className="rounded-sm font-normal text-xs">{a.email}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+
+                  {viewItem.kind === 'DEADLINE' && (() => {
+                     const d = deadlines.find((dl: any) => dl.id === viewItem.id)
+                     if (!d) return null
+                     return (
+                       <div className="space-y-3 text-sm">
+                         <div className="flex justify-between border-b pb-2">
+                           <span className="text-muted-foreground font-medium">Project</span>
+                           <span>{d.project?.name ?? 'Unknown'}</span>
+                         </div>
+                         <div className="flex justify-between border-b pb-2">
+                           <span className="text-muted-foreground font-medium">Deadline</span>
+                           <span className="text-red-500 font-medium">{new Date(d.deadline).toLocaleString(undefined, { dateStyle: 'long', timeStyle: 'short' })}</span>
+                         </div>
+                         <div className="flex justify-between border-b pb-2">
+                           <span className="text-muted-foreground font-medium">Status</span>
+                           <Badge variant="outline" className="rounded-sm font-medium">{d.status}</Badge>
+                         </div>
+                         <div className="pt-2">
+                           <Button className="w-full rounded-none" onClick={() => {
+                             navigate(`/projects/${d.projectId}?taskId=${d.id}`)
+                             setViewItem(null)
+                           }}>
+                             Go to Project Board
+                           </Button>
+                         </div>
+                       </div>
+                     )
+                  })()}
+                </div>
+              </>
+            )}
           </DialogContent>
         </Dialog>
       </main>

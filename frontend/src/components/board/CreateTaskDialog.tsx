@@ -1,0 +1,337 @@
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Plus, X, ListTodo, AlignLeft } from 'lucide-react'
+
+const STATUS_LABELS: Record<string, string> = {
+  TODO: 'To Do',
+  IN_PROGRESS: 'In Progress',
+  IN_REVIEW: 'In Review',
+  DONE: 'Done',
+  READY: 'Ready',
+}
+
+function getCurrentStartLocalForInput() {
+  const now = new Date()
+  const offset = now.getTimezoneOffset()
+  const local = new Date(now.getTime() - offset * 60_000)
+  return local.toISOString().slice(0, 16)
+}
+
+function isPastTime(value: string) {
+  const selected = new Date(value)
+  const now = new Date()
+  return selected.getTime() < now.getTime()
+}
+
+function normalizeStatus(input: string) {
+  return input.trim().toUpperCase().replace(/\s+/g, '_')
+}
+
+interface CreateTaskDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onTriggerClick: () => void
+  canCreateTask: boolean
+  projectColumns: string[]
+  members: any[]
+  sprints: any[]
+  isPending: boolean
+  onSubmit: (data: {
+    title: string
+    description: string
+    priority: string
+    assigneeId: string
+    status: string
+    sprintId: string | null
+    deadline: string
+  }, subtasks?: string[]) => Promise<void>
+  defaultStatus: string
+  defaultSprintId: string
+}
+
+export default function CreateTaskDialog({
+  open,
+  onOpenChange,
+  onTriggerClick,
+  canCreateTask,
+  projectColumns,
+  members,
+  sprints,
+  isPending,
+  onSubmit,
+  defaultStatus,
+  defaultSprintId,
+}: CreateTaskDialogProps) {
+  const [newTitle, setNewTitle] = useState('')
+  const [newDescription, setNewDescription] = useState('')
+  const [newPriority, setNewPriority] = useState('MEDIUM')
+  const [newAssigneeId, setNewAssigneeId] = useState<string>('')
+  const [newDeadline, setNewDeadline] = useState('')
+  const [deadlineError, setDeadlineError] = useState('')
+  const [newStatus, setNewStatus] = useState<string>(defaultStatus)
+  const [newCustomStatus, setNewCustomStatus] = useState('')
+  const [newSprintId, setNewSprintId] = useState<string>(defaultSprintId)
+  
+  const [subtasks, setSubtasks] = useState<string[]>([])
+  const [subtaskInput, setSubtaskInput] = useState('')
+
+  const handleAddSubtask = () => {
+    if (subtaskInput.trim()) {
+      setSubtasks([...subtasks, subtaskInput.trim()])
+      setSubtaskInput('')
+    }
+  }
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const resolvedStatus = newStatus === '__CUSTOM__'
+      ? normalizeStatus(newCustomStatus)
+      : newStatus
+
+    if (!newTitle.trim() || !newDescription.trim() || !newAssigneeId || !resolvedStatus || !newPriority || !newDeadline) {
+      setDeadlineError('All task fields are required to be filled out.')
+      return
+    }
+
+    if (newDeadline) {
+      const selected = new Date(newDeadline)
+      const now = new Date()
+      if (selected.getTime() < now.getTime()) {
+        setDeadlineError('Deadline cannot be in the past')
+        return
+      }
+    }
+
+    setDeadlineError('')
+    await onSubmit({
+      title: newTitle.trim(),
+      description: newDescription.trim(),
+      priority: newPriority,
+      assigneeId: newAssigneeId,
+      status: resolvedStatus,
+      sprintId: newSprintId === 'NONE' ? null : newSprintId,
+      deadline: new Date(newDeadline).toISOString(),
+    }, subtasks)
+    
+    setNewTitle('')
+    setNewDescription('')
+    setNewPriority('MEDIUM')
+    setNewAssigneeId('')
+    setNewDeadline('')
+    setNewStatus(defaultStatus)
+    setNewCustomStatus('')
+    setNewSprintId('NONE')
+    setSubtasks([])
+    setSubtaskInput('')
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogTrigger asChild>
+        <Button
+          className="h-9 gap-2 shadow-sm"
+          disabled={!canCreateTask}
+          onClick={onTriggerClick}
+        >
+          <Plus className="size-4" />
+          Create Task
+        </Button>
+      </DialogTrigger>
+
+      <DialogContent className="sm:max-w-2xl xl:max-w-3xl p-0 overflow-hidden rounded-xl border border-border shadow-lg">
+        
+        <DialogHeader className="px-6 py-4 border-b bg-muted/20">
+          <DialogTitle className="text-lg font-semibold text-foreground">
+            Create task
+          </DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleCreateTask} className="flex flex-col max-h-[85vh] overflow-y-auto w-full scrollbar-thin scrollbar-thumb-muted">
+          <div className="p-5 sm:p-6 space-y-6">
+            
+            {/* Core Details */}
+            <div className="space-y-5">
+              <div>
+                <Label className="sr-only">Task Title</Label>
+                <Input
+                  autoFocus
+                  placeholder="Task title..."
+                  value={newTitle}
+                  onChange={e => setNewTitle(e.target.value)}
+                  className="h-12 text-lg sm:text-xl font-semibold bg-transparent border-0 border-b border-input shadow-none px-0 rounded-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-primary placeholder:text-muted-foreground/60 transition-colors"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
+                  <AlignLeft className="size-3.5" /> Description
+                </Label>
+                <textarea
+                  placeholder="What needs to be done?"
+                  value={newDescription}
+                  onChange={e => setNewDescription(e.target.value)}
+                  className="min-h-[100px] sm:min-h-[120px] w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 resize-y"
+                />
+              </div>
+            </div>
+
+            {/* Properties Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5 p-5 rounded-lg bg-muted/20 border border-border/50 shadow-sm">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground tracking-wide">Status</Label>
+                <Select value={newStatus} onValueChange={setNewStatus}>
+                  <SelectTrigger className="h-9 bg-background shadow-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {projectColumns.map((s: string) => (
+                      <SelectItem key={s} value={s}>{STATUS_LABELS[s] ?? s.replace(/_/g, ' ')}</SelectItem>
+                    ))}
+                    <SelectItem value="__CUSTOM__">Custom status...</SelectItem>
+                  </SelectContent>
+                </Select>
+                {newStatus === '__CUSTOM__' && (
+                  <Input
+                    className="mt-2 h-9 text-sm shadow-sm"
+                    placeholder="e.g. QA_TESTING"
+                    value={newCustomStatus}
+                    onChange={(e) => setNewCustomStatus(e.target.value)}
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground tracking-wide">Priority</Label>
+                <Select value={newPriority} onValueChange={setNewPriority}>
+                  <SelectTrigger className="h-9 bg-background shadow-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="URGENT">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground tracking-wide">Assignee</Label>
+                <Select value={newAssigneeId} onValueChange={setNewAssigneeId}>
+                  <SelectTrigger className="h-9 bg-background shadow-sm"><SelectValue placeholder="Select assignee" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EVERYONE">Everyone (All members)</SelectItem>
+                    {members
+                      .map((m: any) => m?.user)
+                      .filter(Boolean)
+                      .map((u: any) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name ?? u.email}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-muted-foreground tracking-wide">Sprint</Label>
+                <Select value={newSprintId} onValueChange={setNewSprintId}>
+                  <SelectTrigger className="h-9 bg-background shadow-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">No sprint</SelectItem>
+                    {(sprints as any[]).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs font-semibold text-muted-foreground tracking-wide">Deadline</Label>
+                <Input
+                  type="datetime-local"
+                  className="h-9 bg-background text-sm shadow-sm"
+                  value={newDeadline}
+                  min={getCurrentStartLocalForInput()}
+                  onChange={e => {
+                    const v = e.target.value
+                    if (!v) {
+                      setNewDeadline('')
+                      setDeadlineError('')
+                      return
+                    }
+                    if (isPastTime(v)) {
+                      setDeadlineError('Deadline cannot be in the past')
+                      return
+                    }
+                    setDeadlineError('')
+                    setNewDeadline(v)
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Subtasks Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <ListTodo className="size-4 text-muted-foreground" />
+                Subtasks
+              </div>
+              
+              <div className="space-y-2">
+                {subtasks.length > 0 ? (
+                  <div className="space-y-2 rounded-md border border-muted/50 p-2 sm:p-3 bg-muted/10">
+                    {subtasks.map((st, i) => (
+                      <div key={i} className="flex items-center justify-between group rounded-md border px-3 py-2 bg-background text-sm shadow-sm">
+                        <span className="font-medium text-foreground">{st}</span>
+                        <Button type="button" variant="ghost" size="icon-sm" onClick={() => setSubtasks(subtasks.filter((_, idx) => idx !== i))} className="h-6 w-6 text-muted-foreground hover:text-destructive">
+                          <X className="size-3.5" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                
+                <div className="flex gap-2 items-center">
+                  <Input 
+                    placeholder="Add a subtask..." 
+                    value={subtaskInput}
+                    onChange={e => setSubtaskInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleAddSubtask()
+                      }
+                    }}
+                    className="h-9 shadow-sm"
+                  />
+                  <Button type="button" variant="secondary" size="sm" onClick={handleAddSubtask} className="h-9 shrink-0 px-4 rounded-md">
+                    <Plus className="size-3.5 mr-1" /> Add
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <DialogFooter className="px-5 sm:px-6 py-4 border-t bg-muted/20 mt-auto">
+             <div className="flex w-full flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="w-full sm:w-auto text-center sm:text-left">
+                  {deadlineError && <p className="text-sm font-medium text-destructive">{deadlineError}</p>}
+                </div>
+                <div className="flex gap-3 w-full sm:w-auto mt-2 sm:mt-0">
+                  <Button type="button" variant="outline" className="w-full sm:w-auto min-w-[100px] shadow-sm" onClick={() => onOpenChange(false)}>Cancel</Button>
+                  <Button type="submit" disabled={isPending} className="w-full sm:w-auto px-6 font-medium shadow-sm">
+                    {isPending ? 'Creating...' : 'Create Task'}
+                  </Button>
+                </div>
+             </div>
+          </DialogFooter>
+        </form>
+
+      </DialogContent>
+    </Dialog>
+  )
+}

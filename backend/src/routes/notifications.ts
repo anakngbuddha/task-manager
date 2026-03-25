@@ -15,9 +15,13 @@ export async function notificationRoutes(app: FastifyInstance) {
     return { items, unread }
   })
 
-  app.post('/notifications/:id/read', { preHandler: authenticate }, async (req) => {
+  app.post('/notifications/:id/read', { preHandler: authenticate }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    await notificationService.markRead(req.authUser.id, id)
+    try {
+      await notificationService.markRead(req.authUser.id, id)
+    } catch {
+      return reply.status(404).send({ error: 'Notification not found' })
+    }
     return { ok: true }
   })
 

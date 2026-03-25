@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import {
-    DndContext, PointerSensor, useSensor, useSensors, closestCorners,
-    DragOverlay,
-  } from '@dnd-kit/core'
-  import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
+  DndContext, PointerSensor, useSensor, useSensors, closestCorners,
+  DragOverlay,
+} from '@dnd-kit/core'
+import type { DragEndEvent, DragOverEvent, DragStartEvent } from '@dnd-kit/core'
 import Sidebar from '@/components/layout/Sidebar'
 import { PageHeader } from '@/components/layout/PageHeader'
 import KanbanColumn from '@/components/board/KanbanColumn'
 import TaskCard from '@/components/board/TaskCard'
 import TaskDialog from '@/components/board/TaskDialog'
+import CreateTaskDialog from '@/components/board/CreateTaskDialog'
+import CreateSprintDialog from '@/components/board/CreateSprintDialog'
+import InviteMembersDialog from '@/components/board/InviteMembersDialog'
 import { useTasks, useUpdateTask, useCreateTask } from '@/hooks/useTasks'
 import { useProject, useUpdateProject } from '@/hooks/useProject'
 import { useProjectMembers } from '@/hooks/useProjectMembers'
@@ -18,13 +21,9 @@ import { useProjectTimeReport } from '@/hooks/useTimeLogs'
 import { useSession } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { CalendarPlus, FolderPlus, MessageCircle, MoreHorizontal, Plus, UserPlus } from 'lucide-react'
+import { MessageCircle, MoreHorizontal } from 'lucide-react'
 import { useCreateInvite } from '@/hooks/useInvites'
-import { Link } from 'react-router-dom'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,23 +31,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-
-function getCurrentStartLocalForInput() {
-  const now = new Date()
-  const offset = now.getTimezoneOffset()
-  const local = new Date(now.getTime() - offset * 60_000)
-  return local.toISOString().slice(0, 16)
-}
-
-function isPastTime(value: string) {
-  const selected = new Date(value)
-  const now = new Date()
-  return selected.getTime() < now.getTime()
-}
-
-function normalizeStatus(input: string) {
-  return input.trim().toUpperCase().replace(/\s+/g, '_')
-}
 
 const COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
 const STATUS_LABELS: Record<string, string> = {
@@ -61,6 +43,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function ProjectPage() {
   const { id: projectId } = useParams<{ id: string }>()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: session } = useSession()
   const { data: tasks = [], isLoading } = useTasks(projectId!)
   const { data: project } = useProject(projectId!)
@@ -72,33 +55,17 @@ export default function ProjectPage() {
   const createSprint = useCreateSprint(projectId!)
   const createInvite = useCreateInvite(projectId!)
   const updateProject = useUpdateProject()
-  // Messages are now in a dedicated page: /projects/:id/messages
 
   const [activeTask, setActiveTask] = useState<any>(null)
   const [selectedTask, setSelectedTask] = useState<any>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
-  const [newDescription, setNewDescription] = useState('')
-  const [newPriority, setNewPriority] = useState('MEDIUM')
-  const [newAssigneeId, setNewAssigneeId] = useState<string>('')
-  const [newDeadline, setNewDeadline] = useState('')
-  const [deadlineError, setDeadlineError] = useState('')
-  const [newStatus, setNewStatus] = useState<string>('TODO')
-  const [newCustomStatus, setNewCustomStatus] = useState('')
-  const [newSprintId, setNewSprintId] = useState<string>('NONE')
   const [inviteModalOpen, setInviteModalOpen] = useState(false)
-  const [generatedInviteUrl, setGeneratedInviteUrl] = useState('')
   const [localTasks, setLocalTasks] = useState<any[]>([])
   const dragStartRef = useRef<{ id: string; status: string } | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
 
   const [selectedSprintId, setSelectedSprintId] = useState<string>('ALL')
   const [createSprintOpen, setCreateSprintOpen] = useState(false)
-  const [sprintName, setSprintName] = useState('')
-  const [sprintGoal, setSprintGoal] = useState('')
-  const [sprintStart, setSprintStart] = useState('')
-  const [sprintEnd, setSprintEnd] = useState('')
-  const [sprintError, setSprintError] = useState('')
   const [boardView, setBoardView] = useState<'SPRINT' | 'BACKLOG'>('SPRINT')
 
   const sensors = useSensors(useSensor(PointerSensor, {
@@ -127,8 +94,6 @@ export default function ProjectPage() {
     )
   }, [taskTimeTotalHours])
 
-  // Chat rendering moved to dedicated messages page
-
   const tasksById = useMemo(() => {
     const map = new Map<string, any>()
     for (const t of localTasks) map.set(String(t.id), t)
@@ -140,6 +105,16 @@ export default function ProjectPage() {
     const next = tasksById.get(String(selectedTask.id))
     if (next) setSelectedTask(next)
   }, [tasksById, selectedTask])
+
+  useEffect(() => {
+    const tid = searchParams.get('taskId')
+    if (tid && tasksById.size > 0 && !selectedTask) {
+      const task = tasksById.get(tid)
+      if (task) {
+        setSelectedTask(task)
+      }
+    }
+  }, [searchParams, tasksById, selectedTask])
 
   const displayedTasks = useMemo(() => {
     if (boardView === 'BACKLOG') {
@@ -160,32 +135,6 @@ export default function ProjectPage() {
   }, [localTasks, projectColumns])
 
   const getColumnTasks = (status: string) => displayedTasks.filter((t: any) => t.status === status)
-
-  const handleCreateSprint = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!sprintName.trim() || !sprintStart || !sprintEnd) return
-
-    const start = new Date(sprintStart)
-    const end = new Date(sprintEnd)
-    if (end <= start) {
-      setSprintError('End date must be after start date')
-      return
-    }
-
-    setSprintError('')
-    await createSprint.mutateAsync({
-      name: sprintName.trim(),
-      goal: sprintGoal.trim() ? sprintGoal.trim() : undefined,
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-    })
-
-    setSprintName('')
-    setSprintGoal('')
-    setSprintStart('')
-    setSprintEnd('')
-    setCreateSprintOpen(false)
-  }
 
   const handleDragStart = (e: DragStartEvent) => {
     const t = tasksById.get(String(e.active.id)) ?? null
@@ -234,7 +183,6 @@ export default function ProjectPage() {
     if (newStatus === previousStatus) return
     if (newStatus === 'READY' && !canMoveToReady) return
 
-    // optimistic state already applied in onDragOver; ensure it's consistent
     setLocalTasks((prev) =>
       prev.map((t) => (String(t.id) === String(task.id) ? { ...t, status: newStatus } : t))
     )
@@ -244,60 +192,6 @@ export default function ProjectPage() {
       projectId: projectId!,
       status: newStatus,
     })
-  }
-
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const resolvedStatus = newStatus === '__CUSTOM__'
-      ? normalizeStatus(newCustomStatus)
-      : newStatus
-
-    if (!newTitle.trim() || !newDescription.trim() || !newAssigneeId || !resolvedStatus || !newPriority || !newDeadline) {
-      setDeadlineError('All task fields are required to be filled out.')
-      return
-    }
-
-    if (newDeadline) {
-      const selected = new Date(newDeadline)
-      const now = new Date()
-      if (selected.getTime() < now.getTime()) {
-        setDeadlineError('Deadline cannot be in the past')
-        return
-      }
-    }
-
-    setDeadlineError('')
-    await createTask.mutateAsync({
-      title: newTitle.trim(),
-      description: newDescription.trim(),
-      projectId: projectId!,
-      priority: newPriority,
-      assigneeId: newAssigneeId,
-      status: resolvedStatus,
-      sprintId: newSprintId === 'NONE' ? null : newSprintId,
-      deadline: new Date(newDeadline).toISOString(),
-    })
-    setNewTitle('')
-    setNewDescription('')
-    setNewPriority('MEDIUM')
-    setNewAssigneeId('')
-    setNewDeadline('')
-    setNewStatus(firstProjectColumn)
-    setNewCustomStatus('')
-    setNewSprintId('NONE')
-    setCreateOpen(false)
-  }
-
-  const prepareCreateTaskDefaults = (status: string) => {
-    setNewStatus(status)
-    setNewCustomStatus('')
-    // If user is already filtering by a specific sprint, default to it.
-    setNewSprintId(selectedSprintId === 'ALL' ? 'NONE' : selectedSprintId)
-  }
-
-  const handleOpenCreateTask = (status: string) => {
-    prepareCreateTaskDefaults(status)
-    setCreateOpen(true)
   }
 
   const myId = session?.user?.id
@@ -342,256 +236,58 @@ export default function ProjectPage() {
           subtitle="Drag tasks between columns to update status."
           actions={(
             <>
-              <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    className="h-9 gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
-                    disabled={!canCreateTask}
-                    onClick={() => prepareCreateTaskDefaults(firstProjectColumn)}
-                  >
-                    <Plus className="size-4" />
-                    Add task
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create new task</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleCreateTask} className="space-y-4 pt-2">
-                      <div className="space-y-1">
-                        <Label>Title</Label>
-                        <div className="relative">
-                          <FolderPlus className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input
-                            placeholder="Task title"
-                            value={newTitle}
-                            onChange={e => setNewTitle(e.target.value)}
-                            className="h-10 pl-10"
-                            autoFocus
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Description</Label>
-                        <Input
-                          placeholder="What needs to be done?"
-                          value={newDescription}
-                          onChange={e => setNewDescription(e.target.value)}
-                          className="h-10"
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label>Priority</Label>
-                        <Select value={newPriority} onValueChange={setNewPriority}>
-                          <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="LOW">Low</SelectItem>
-                            <SelectItem value="MEDIUM">Medium</SelectItem>
-                            <SelectItem value="HIGH">High</SelectItem>
-                            <SelectItem value="URGENT">Urgent</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Assign to</Label>
-                        <Select value={newAssigneeId} onValueChange={setNewAssigneeId}>
-                          <SelectTrigger className="h-10"><SelectValue placeholder="Select assignee" /></SelectTrigger>
-                          <SelectContent>
-                            {(project?.members ?? [])
-                              .map((m: any) => m?.user)
-                              .filter(Boolean)
-                              .map((u: any) => (
-                                <SelectItem key={u.id} value={u.id}>
-                                  {u.name ?? u.email}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      </div>
+              <CreateTaskDialog
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+                onTriggerClick={() => {
+                  setCreateOpen(true)
+                }}
+                canCreateTask={canCreateTask}
+                projectColumns={projectColumns}
+                members={project?.members ?? []}
+                sprints={sprints as any[]}
+                isPending={createTask.isPending}
+                onSubmit={async (data, subtasks) => {
+                  const created = await createTask.mutateAsync({
+                    ...data,
+                    projectId: projectId!,
+                  })
+                  if (subtasks && subtasks.length > 0 && created?.id) {
+                    for (const st of subtasks) {
+                      await createTask.mutateAsync({
+                        title: st,
+                        description: 'Subtask belonging to ' + data.title,
+                        priority: data.priority,
+                        status: firstProjectColumn,
+                        projectId: projectId!,
+                        parentId: created.id,
+                      })
+                    }
+                  }
+                }}
+                defaultStatus={firstProjectColumn}
+                defaultSprintId={selectedSprintId === 'ALL' ? 'NONE' : selectedSprintId}
+              />
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label>Status</Label>
-                          <Select value={newStatus} onValueChange={setNewStatus}>
-                            <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              {projectColumns.map((s: string) => (
-                                <SelectItem key={s} value={s}>{STATUS_LABELS[s] ?? s.replace(/_/g, ' ')}</SelectItem>
-                              ))}
-                              <SelectItem value="__CUSTOM__">Custom status...</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {newStatus === '__CUSTOM__' && (
-                            <Input
-                              className="mt-2 h-10 rounded-none"
-                              placeholder="e.g. QA_TESTING"
-                              value={newCustomStatus}
-                              onChange={(e) => setNewCustomStatus(e.target.value)}
-                            />
-                          )}
-                        </div>
-                        <div className="space-y-1">
-                          <Label>Sprint</Label>
-                          <Select value={newSprintId} onValueChange={setNewSprintId}>
-                            <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="NONE">No sprint</SelectItem>
-                              {(sprints as any[]).map((s) => (
-                                <SelectItem key={s.id} value={s.id}>
-                                  {s.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
+              <CreateSprintDialog
+                open={createSprintOpen}
+                onOpenChange={setCreateSprintOpen}
+                canManageRoles={canManageRoles}
+                isPending={createSprint.isPending}
+                onSubmit={async (data) => {
+                  await createSprint.mutateAsync(data)
+                }}
+              />
 
-                      <div className="space-y-1">
-                        <Label>Deadline</Label>
-                        <Input
-                          type="datetime-local"
-                          className="h-10"
-                          value={newDeadline}
-                          min={getCurrentStartLocalForInput()}
-                          onChange={e => {
-                            const v = e.target.value
-                            if (!v) {
-                              setNewDeadline('')
-                              setDeadlineError('')
-                              return
-                            }
-                            if (isPastTime(v)) {
-                              setDeadlineError('Time cannot be earlier than now')
-                              return
-                            }
-                            setDeadlineError('')
-                            setNewDeadline(v)
-                          }}
-                        />
-                        {deadlineError && (
-                          <p className="text-xs text-red-500">{deadlineError}</p>
-                        )}
-                      </div>
-                      <Button type="submit" className="h-10 w-full" disabled={createTask.isPending}>
-                        {createTask.isPending ? 'Creating...' : 'Create task'}
-                      </Button>
-                    </form>
-                </DialogContent>
-              </Dialog>
-
-              <Dialog open={createSprintOpen} onOpenChange={setCreateSprintOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="h-9 gap-2" disabled={!canManageRoles}>
-                    <CalendarPlus className="size-4" />
-                    Create Sprint
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Create sprint</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleCreateSprint} className="space-y-4 pt-2">
-                    <div className="space-y-1">
-                      <Label>Name</Label>
-                      <Input
-                        className="h-10"
-                        placeholder="Sprint name"
-                        value={sprintName}
-                        onChange={(e) => setSprintName(e.target.value)}
-                        autoFocus
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Goal</Label>
-                      <Input
-                        className="h-10"
-                        placeholder="What are we aiming to deliver?"
-                        value={sprintGoal}
-                        onChange={(e) => setSprintGoal(e.target.value)}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <Label>Start date</Label>
-                        <Input
-                          type="datetime-local"
-                          className="h-10"
-                          value={sprintStart}
-                          min={getCurrentStartLocalForInput()}
-                          onChange={(e) => setSprintStart(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>End date</Label>
-                        <Input
-                          type="datetime-local"
-                          className="h-10"
-                          value={sprintEnd}
-                          min={sprintStart || getCurrentStartLocalForInput()}
-                          onChange={(e) => setSprintEnd(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    {sprintError && (
-                      <p className="text-xs text-red-500">{sprintError}</p>
-                    )}
-                    <Button
-                      type="submit"
-                      className="h-10 w-full"
-                      disabled={
-                        createSprint.isPending ||
-                        !sprintName.trim() ||
-                        !sprintStart ||
-                        !sprintEnd
-                      }
-                    >
-                      {createSprint.isPending ? 'Creating…' : 'Create sprint'}
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
-
-              <Dialog open={inviteModalOpen} onOpenChange={setInviteModalOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="h-9 gap-2"
-                    onClick={async () => {
-                      const base = window.location.origin
-                      const res = await createInvite.mutateAsync()
-                      const url = `${base}/invite/${res.code}`
-                      setGeneratedInviteUrl(url)
-                      setInviteModalOpen(true)
-                    }}
-                  >
-                    <UserPlus className="size-4" />
-                    Invite members
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Invite members to this project</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-3 pt-2">
-                    <p className="text-sm text-muted-foreground">
-                      Share this link with teammates. If they don&apos;t have an account yet,
-                      they&apos;ll be asked to register first and can then join this project
-                      using the same link.
-                    </p>
-                    <div className="space-y-1">
-                      <Label>Invite link</Label>
-                      <Input
-                        readOnly
-                        value={generatedInviteUrl}
-                        className="h-10"
-                        onFocus={(e) => e.target.select()}
-                      />
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+              <InviteMembersDialog
+                open={inviteModalOpen}
+                onOpenChange={setInviteModalOpen}
+                onGenerateInvite={async () => {
+                  const base = import.meta.env.VITE_FRONTEND_URL || window.location.origin
+                  const res = await createInvite.mutateAsync()
+                  return `${base}/invite/${res.code}`
+                }}
+              />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -611,9 +307,6 @@ export default function ProjectPage() {
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link to={`/projects/${projectId}/sprint-report`}>Sprint report</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/dashboard`}>Dashboard</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
@@ -718,7 +411,9 @@ export default function ProjectPage() {
                         status={status}
                         tasks={getColumnTasks(status)}
                         onTaskClick={setSelectedTask}
-                        onAddTask={handleOpenCreateTask}
+                        onAddTask={(status: string) => {
+                          setCreateOpen(true)
+                        }}
                         canAddTask={canCreateTask}
                       />
                     ))}
@@ -766,7 +461,15 @@ export default function ProjectPage() {
           projectId={projectId!}
           projectMembers={project?.members ?? []}
           open={!!selectedTask}
-          onClose={() => setSelectedTask(null)}
+          onClose={() => {
+            setSelectedTask(null)
+            if (searchParams.has('taskId')) {
+              setSearchParams(prev => {
+                prev.delete('taskId')
+                return prev
+              })
+            }
+          }}
         />
       )}
     </div>

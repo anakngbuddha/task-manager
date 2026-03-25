@@ -5,24 +5,40 @@ import { projectDirectMessageService } from '../services/projectDirectMessage.se
 import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
 import { prisma } from '../lib/prisma.js'
+import { requireProjectRole } from '../services/projectAuth.service.js'
 
 const createDirectMessageSchema = z.object({
   content: z.string().min(1).max(2000),
 })
 
 export async function projectDirectMessageRoutes(app: FastifyInstance) {
-  app.get('/projects/:projectId/direct-inbox', { preHandler: authenticate }, async (req) => {
+  app.get('/projects/:projectId/direct-inbox', { preHandler: authenticate }, async (req, reply) => {
     const { projectId } = req.params as { projectId: string }
+    try {
+      await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     return projectDirectMessageService.listInbox(projectId, req.authUser.id)
   })
 
-  app.get('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req) => {
+  app.get('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req, reply) => {
     const { projectId, otherUserId } = req.params as { projectId: string; otherUserId: string }
+    try {
+      await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     return projectDirectMessageService.listConversation(projectId, req.authUser.id, otherUserId)
   })
 
-  app.post('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req) => {
+  app.post('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req, reply) => {
     const { projectId, otherUserId } = req.params as { projectId: string; otherUserId: string }
+    try {
+      await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     const body = createDirectMessageSchema.parse(req.body)
 
     const created = await projectDirectMessageService.create({

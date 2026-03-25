@@ -46,7 +46,13 @@ export async function scheduleRoutes(app: FastifyInstance) {
     '/schedules',
     { preHandler: authenticate },
     async (req, reply) => {
-      const body = createScheduleSchema.parse(req.body)
+      let body;
+      try {
+        body = createScheduleSchema.parse(req.body)
+      } catch (err: any) {
+        return reply.status(400).send({ error: 'Validation Error: ' + err.message })
+      }
+
       const user = req.authUser
 
       const scheduledAt = new Date(body.scheduledAt)
@@ -68,35 +74,44 @@ export async function scheduleRoutes(app: FastifyInstance) {
         attendeeInputs.unshift({ email: user.email, name: user.name ?? undefined, userId: user.id })
       }
 
-      const schedule = await prisma.schedule.create({
-        data: {
-          title: body.title,
-          type: body.type,
-          scheduledAt,
-          details: body.details ?? null,
-          location: body.location ?? null,
-          projectId: body.projectId ?? null,
-          creatorId: user.id,
-          attendees: {
-            create: attendeeInputs.map(a => ({
-              email: a.email,
-              name: a.name ?? null,
-              userId: a.userId ?? null,
-            })),
+      let schedule;
+      try {
+        schedule = await prisma.schedule.create({
+          data: {
+            title: body.title,
+            type: body.type,
+            scheduledAt,
+            details: body.details ?? null,
+            location: body.location ?? null,
+            projectId: body.projectId ?? null,
+            creatorId: user.id,
+            attendees: {
+              create: attendeeInputs.map(a => ({
+                email: a.email,
+                name: a.name ?? null,
+                userId: a.userId ?? null,
+              })),
+            },
           },
-        },
-        include: { attendees: true, creator: { select: { id: true, name: true, email: true } } },
-      })
+          include: { attendees: true, creator: { select: { id: true, name: true, email: true } } },
+        })
+      } catch (err: any) {
+        return reply.status(400).send({ error: 'Database Error: ' + err.message })
+      }
 
       if (body.projectId) {
-        await activityService.record({
-          projectId: body.projectId,
-          actorId: user.id,
-          type: 'SCHEDULE_CREATED',
-          entityType: 'SCHEDULE',
-          entityId: schedule.id,
-          metadata: { title: body.title, type: body.type },
-        })
+        try {
+          await activityService.record({
+            projectId: body.projectId,
+            actorId: user.id,
+            type: 'SCHEDULE_CREATED',
+            entityType: 'SCHEDULE',
+            entityId: schedule.id,
+            metadata: { title: body.title, type: body.type },
+          })
+        } catch (err: any) {
+          console.error('Failed to log activity:', err)
+        }
       }
 
       try {

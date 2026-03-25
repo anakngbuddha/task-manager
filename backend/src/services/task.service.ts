@@ -4,9 +4,10 @@ import { Priority } from '@prisma/client'
 export const taskService = {
   async getAll(projectId: string) {
     return prisma.task.findMany({
-      where: { projectId },
+      where: { projectId, parentId: null },
       include: { 
         assignee: true,
+        subtasks: { include: { assignee: true } },
         blockingTasks: { include: { blockedTask: true } },
         blockedByTasks: { include: { blockingTask: true } },
       },
@@ -17,7 +18,11 @@ export const taskService = {
   async getById(id: string) {
     return prisma.task.findUnique({
       where: { id },
-      include: { assignee: true, project: true },
+      include: { 
+        assignee: true, 
+        project: true,
+        subtasks: { include: { assignee: true } },
+      },
     })
   },
 
@@ -29,12 +34,13 @@ export const taskService = {
     priority?: Priority
     status?: string
     sprintId?: string | null
+    parentId?: string | null
     startDate?: Date | null
     deadline?: Date | null
   }) {
     return prisma.task.create({
       data,
-      include: { assignee: true },
+      include: { assignee: true, subtasks: true },
     })
   },
 

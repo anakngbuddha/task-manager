@@ -70,8 +70,9 @@ export function useCreateTaskTimeLog(projectId: string) {
       })
       return data as TimeLog
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['time-report', projectId] })
+      qc.invalidateQueries({ queryKey: ['task-time-logs', variables.taskId] })
     },
   })
 }

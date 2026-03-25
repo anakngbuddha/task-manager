@@ -7,7 +7,6 @@ import ProjectPage from './pages/ProjectPage'
 import ProjectMessagesPage from './pages/ProjectMessagesPage'
 import ProjectTimeReportPage from './pages/ProjectTimeReportPage'
 import ProjectSprintReportPage from './pages/ProjectSprintReportPage'
-import ProjectDashboardPage from './pages/ProjectDashboardPage'
 import SprintBacklogPage from './pages/SprintBacklogPage'
 import RoadmapPage from './pages/RoadmapPage'
 import CalendarPage from './pages/CalendarPage'
@@ -18,7 +17,6 @@ import MembersPage from './pages/MembersPage'
 import InvitePage from './pages/InvitePage'
 import ProjectMembersPage from './pages/ProjectMembersPage'
 import ProfilePage from './pages/ProfilePage'
-import GitHubCallbackPage from './pages/GitHubCallbackPage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import ProjectActivityPage from './pages/ProjectActivityPage'
 import DocumentationPage from './pages/DocumentationPage'
@@ -94,11 +92,6 @@ export default function App() {
             <ProjectSprintReportPage />
           </ProtectedRoute>
         } />
-        <Route path="/projects/:id/dashboard" element={
-          <ProtectedRoute>
-            <ProjectDashboardPage />
-          </ProtectedRoute>
-        } />
         <Route path="/projects/:id/backlog" element={
           <ProtectedRoute>
             <SprintBacklogPage />
@@ -134,7 +127,6 @@ export default function App() {
             <ProfilePage />
           </ProtectedRoute>
         } />
-        <Route path="/github/callback" element={<GitHubCallbackPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

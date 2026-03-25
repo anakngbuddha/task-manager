@@ -28,6 +28,15 @@ export async function projectRoutes(app: FastifyInstance) {
     return projectService.getDashboardForUser(req.authUser.id)
   })
 
+  app.get('/projects/pending-deadlines', {
+    preHandler: authenticate,
+  }, async (req) => {
+    const query = req.query as { daysAhead?: string; limit?: string }
+    const daysAhead = Math.min(Math.max(Number(query.daysAhead) || 14, 1), 90)
+    const limit = Math.min(Math.max(Number(query.limit) || 10, 1), 200)
+    return projectService.getPendingDeadlines(req.authUser.id, daysAhead, limit)
+  })
+
   // GET /api/projects/:projectId/dashboard-layout
   app.get(
     '/projects/:projectId/dashboard-layout',
@@ -87,6 +96,11 @@ export async function projectRoutes(app: FastifyInstance) {
     preHandler: authenticate,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
+    try {
+      await requireProjectRole(id, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     const project = await projectService.getById(id)
     if (!project) return reply.status(404).send({ error: 'Project not found' })
     return project
@@ -110,6 +124,11 @@ const updateProjectSchema = z.object({
     preHandler: authenticate,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
+    try {
+      await requireProjectRole(id, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     const data = updateProjectSchema.parse(req.body)
     return projectService.update(id, data)
   })
@@ -118,6 +137,11 @@ const updateProjectSchema = z.object({
     preHandler: authenticate,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
+    try {
+      await requireProjectRole(id, req.authUser.id, ['MASTER_ADMIN'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
     await projectService.delete(id)
     return reply.status(204).send()
   })

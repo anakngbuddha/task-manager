@@ -1,20 +1,31 @@
 import nodemailer from 'nodemailer'
 import type { ScheduleType } from '@prisma/client'
 
+const smtpPort = Number(process.env.EMAIL_PORT) || 587
+
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: Number(process.env.EMAIL_PORT) || 587,
-  secure: false,
+  port: smtpPort,
+  secure: smtpPort === 465,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
   tls: {
-    rejectUnauthorized: false,
+    rejectUnauthorized: process.env.NODE_ENV === 'production',
   },
 })
 
 const FROM = process.env.EMAIL_FROM || 'WSI TaskA <noreply@yourdomain.com>'
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
 
 function formatDate(date: Date): string {
   return date.toLocaleString('en-US', {
@@ -81,24 +92,26 @@ export async function sendScheduleInviteEmail(opts: {
   location?: string | null
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
+  const safeTitle = escapeHtml(opts.title)
+  const safeScheduledBy = escapeHtml(opts.scheduledBy)
   const rows = [
-    detailRow('Type', typeLabel),
-    detailRow('When', formatDate(opts.scheduledAt)),
-    opts.location ? detailRow('Location', opts.location) : '',
-    detailRow('Organized by', opts.scheduledBy),
+    detailRow('Type', escapeHtml(typeLabel)),
+    detailRow('When', escapeHtml(formatDate(opts.scheduledAt))),
+    opts.location ? detailRow('Location', escapeHtml(opts.location)) : '',
+    detailRow('Organized by', safeScheduledBy),
   ].join('')
 
   const detailsBlock = opts.details
-    ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${opts.details}</p>`
+    ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${escapeHtml(opts.details)}</p>`
     : ''
 
   const body = `
-    <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">You have been invited to the following ${typeLabel.toLowerCase()}:</p>
+    <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">You have been invited to the following ${escapeHtml(typeLabel.toLowerCase())}:</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
     ${detailsBlock}`
 
   const html = baseLayout(
-    `📅 Invitation: ${opts.title}`,
+    `📅 Invitation: ${safeTitle}`,
     '#0052CC',
     body,
     'You are receiving this because you were included in this schedule.',
@@ -125,26 +138,28 @@ export async function sendScheduleReminderEmail(opts: {
   timeUntil: '1 day' | '15 minutes'
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
+  const safeTitle = escapeHtml(opts.title)
+  const safeScheduledBy = escapeHtml(opts.scheduledBy)
   const rows = [
-    detailRow('Type', typeLabel),
-    detailRow('When', formatDate(opts.scheduledAt)),
-    opts.location ? detailRow('Location', opts.location) : '',
-    detailRow('Organized by', opts.scheduledBy),
+    detailRow('Type', escapeHtml(typeLabel)),
+    detailRow('When', escapeHtml(formatDate(opts.scheduledAt))),
+    opts.location ? detailRow('Location', escapeHtml(opts.location)) : '',
+    detailRow('Organized by', safeScheduledBy),
   ].join('')
 
   const detailsBlock = opts.details
-    ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${opts.details}</p>`
+    ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${escapeHtml(opts.details)}</p>`
     : ''
 
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
-      <strong>${opts.title}</strong> is starting in <strong>${opts.timeUntil}</strong>.
+      <strong>${safeTitle}</strong> is starting in <strong>${escapeHtml(opts.timeUntil)}</strong>.
     </p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
     ${detailsBlock}`
 
   const html = baseLayout(
-    `⏰ Reminder: ${opts.title} in ${opts.timeUntil}`,
+    `⏰ Reminder: ${safeTitle} in ${escapeHtml(opts.timeUntil)}`,
     '#FF991F',
     body,
     'You are receiving this because you were included in this schedule.',
@@ -169,21 +184,24 @@ export async function sendScheduleCancellationEmail(opts: {
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
 
+  const safeTitle = escapeHtml(opts.title)
+  const safeCancelledBy = escapeHtml(opts.cancelledBy)
+
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
-      The following ${typeLabel.toLowerCase()} has been <strong style="color:#DE350B;">cancelled</strong>:
+      The following ${escapeHtml(typeLabel.toLowerCase())} has been <strong style="color:#DE350B;">cancelled</strong>:
     </p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">
-      ${detailRow('Event', opts.title)}
-      ${detailRow('Was scheduled', formatDate(opts.scheduledAt))}
-      ${detailRow('Cancelled by', opts.cancelledBy)}
+      ${detailRow('Event', safeTitle)}
+      ${detailRow('Was scheduled', escapeHtml(formatDate(opts.scheduledAt)))}
+      ${detailRow('Cancelled by', safeCancelledBy)}
     </table>`
 
   const html = baseLayout(
-    `❌ Cancelled: ${opts.title}`,
+    `❌ Cancelled: ${safeTitle}`,
     '#DE350B',
     body,
-    'This schedule has been cancelled by ' + opts.cancelledBy + '.',
+    'This schedule has been cancelled by ' + safeCancelledBy + '.',
   )
 
   await transporter.sendMail({
@@ -205,24 +223,29 @@ export async function sendTaskDeadlineEmail(opts: {
   taskUrl: string
   timeUntil: '1 day' | '15 minutes'
 }) {
+  const safeUserName = escapeHtml(opts.userName)
+  const safeTaskTitle = escapeHtml(opts.taskTitle)
+  const safeProjectName = escapeHtml(opts.projectName)
+  const safeTaskUrl = escapeHtml(opts.taskUrl)
+
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
-      Hi ${opts.userName}, your task is due in <strong>${opts.timeUntil}</strong>.
+      Hi ${safeUserName}, your task is due in <strong>${escapeHtml(opts.timeUntil)}</strong>.
     </p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">
-      ${detailRow('Task', opts.taskTitle)}
-      ${detailRow('Project', opts.projectName)}
-      ${detailRow('Deadline', formatDate(opts.deadline))}
+      ${detailRow('Task', safeTaskTitle)}
+      ${detailRow('Project', safeProjectName)}
+      ${detailRow('Deadline', escapeHtml(formatDate(opts.deadline)))}
     </table>
     <p style="margin:20px 0 0;">
-      <a href="${opts.taskUrl}"
+      <a href="${safeTaskUrl}"
          style="display:inline-block;padding:10px 24px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:4px;font-size:14px;font-weight:500;">
         Open Task
       </a>
     </p>`
 
   const html = baseLayout(
-    `⚠️ Deadline approaching: ${opts.taskTitle}`,
+    `⚠️ Deadline approaching: ${safeTaskTitle}`,
     '#FF5630',
     body,
     'You are receiving this because this task is assigned to you.',

@@ -11,19 +11,17 @@ const updateStatusSchema = z.object({
 })
 
 export async function userRoutes(app: FastifyInstance) {
-  // Get current user profile (including status)
   app.get('/users/me', { preHandler: authenticate }, async (req) => {
-    const user = await (prisma.user.findUnique as any)({
+    const user = await prisma.user.findUnique({
       where: { id: req.authUser.id },
       select: { id: true, name: true, email: true, status: true, lastSeenAt: true },
     })
     return user
   })
 
-  // Update current user status
   app.patch('/users/me/status', { preHandler: authenticate }, async (req, reply) => {
     const { status } = updateStatusSchema.parse(req.body)
-    const user = await (prisma.user.update as any)({
+    const user = await prisma.user.update({
       where: { id: req.authUser.id },
       data: { status, lastSeenAt: new Date() },
       select: { id: true, status: true, lastSeenAt: true },
@@ -31,23 +29,21 @@ export async function userRoutes(app: FastifyInstance) {
     return reply.status(200).send(user)
   })
 
-  // Update lastSeenAt (ping endpoint for presence)
   app.post('/users/me/ping', { preHandler: authenticate }, async (req, reply) => {
-    await (prisma.user.update as any)({
+    await prisma.user.update({
       where: { id: req.authUser.id },
       data: { lastSeenAt: new Date() },
     })
     return reply.status(204).send()
   })
 
-  // Get status for a list of user IDs (for messages presence)
   app.get('/users/status', { preHandler: authenticate }, async (req) => {
-    const schema = z.object({ ids: z.string() }) // comma-separated
+    const schema = z.object({ ids: z.string() })
     const { ids } = schema.parse((req.query ?? {}) as any)
     const userIds = ids.split(',').filter(Boolean)
     if (userIds.length === 0) return []
 
-    const users = await (prisma.user.findMany as any)({
+    const users = await prisma.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, status: true, lastSeenAt: true },
     })

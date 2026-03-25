@@ -11,6 +11,7 @@ export function useProjectDirectMessages(projectId: string | undefined, otherUse
     },
     enabled: !!projectId && !!otherUserId,
     refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   })
 }
 

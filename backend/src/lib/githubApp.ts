@@ -1,22 +1,30 @@
 import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 
-const APP_ID = process.env.GITHUB_APP_ID!
-const PRIVATE_KEY = process.env.GITHUB_APP_PRIVATE_KEY!.replace(/\\n/g, '\n')
-const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET!
+const APP_ID = process.env.GITHUB_APP_ID
+const PRIVATE_KEY = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n')
+const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET
+
+function requireGithubConfig() {
+  if (!APP_ID || !PRIVATE_KEY || !WEBHOOK_SECRET) {
+    throw new Error('GitHub App environment variables (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET) are not set')
+  }
+  return { appId: APP_ID, privateKey: PRIVATE_KEY, webhookSecret: WEBHOOK_SECRET }
+}
 
 /**
  * Create a short-lived JWT to authenticate as the GitHub App itself.
  */
 function createAppJwt(): string {
+  const { appId, privateKey } = requireGithubConfig()
   const now = Math.floor(Date.now() / 1000)
   return jwt.sign(
     {
-      iat: now - 60, // allow 60s clock-drift
-      exp: now + 10 * 60, // 10 minutes
-      iss: APP_ID,
+      iat: now - 60,
+      exp: now + 10 * 60,
+      iss: appId,
     },
-    PRIVATE_KEY,
+    privateKey,
     { algorithm: 'RS256' },
   )
 }
@@ -52,9 +60,10 @@ export function verifyWebhookSignature(
   payload: string | Buffer,
   signature: string,
 ): boolean {
+  const { webhookSecret } = requireGithubConfig()
   const expected =
     'sha256=' +
-    crypto.createHmac('sha256', WEBHOOK_SECRET).update(payload).digest('hex')
+    crypto.createHmac('sha256', webhookSecret).update(payload).digest('hex')
   try {
     return crypto.timingSafeEqual(
       Buffer.from(expected),

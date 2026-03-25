@@ -7,418 +7,20 @@ import { useProjectDirectInbox } from '@/hooks/useProjectDirectInbox'
 import { useProjectDirectMessages, useSendProjectDirectMessage } from '@/hooks/useProjectDirectMessages'
 import { useDirectSeen, useMarkDirectRead, useMarkProjectRead, useProjectSeen } from '@/hooks/useReadReceipts'
 import { useSession } from '@/lib/auth-client'
-import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { ArrowLeft, Hash, MessageCircle, Paperclip, SendHorizonal, Smile, AtSign, MessageSquareDashed } from 'lucide-react'
+import { Hash, MessageCircle } from 'lucide-react'
 import { io, type Socket } from 'socket.io-client'
-import { cn } from '@/lib/utils'
-import { useUserStatuses, STATUS_CONFIG, type UserStatus } from '@/hooks/useUserStatus'
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function getInitials(name?: string | null, email?: string | null): string {
-  if (name) return name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()
-  if (email) return email[0].toUpperCase()
-  return '?'
-}
-
-function formatRelativeTime(date: Date): string {
-  const now = Date.now()
-  const diffMs = now - date.getTime()
-  const diffSec = Math.floor(diffMs / 1000)
-  const diffMin = Math.floor(diffSec / 60)
-  const diffHour = Math.floor(diffMin / 60)
-
-  if (diffSec < 60) return 'just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  if (diffHour < 24) return `${diffHour}h ago`
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-function formatFullTime(date: Date): string {
-  return date.toLocaleString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function getDayLabel(date: Date): string {
-  const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-
-  if (date.toDateString() === today.toDateString()) return 'Today'
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
-  return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-}
-
-function shouldShowDivider(curr: Date, prev: Date | null): boolean {
-  if (!prev) return true
-  return curr.toDateString() !== prev.toDateString()
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function DateDivider({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-3 py-2 px-2">
-      <div className="flex-1 h-px bg-border/60" />
-      <span className="shrink-0 text-[0.7rem] font-semibold text-muted-foreground uppercase tracking-wider px-2">
-        {label}
-      </span>
-      <div className="flex-1 h-px bg-border/60" />
-    </div>
-  )
-}
-
-function TypingIndicator({ text }: { text: string }) {
-  return (
-    <div className="flex items-end gap-2 px-4 pb-2">
-      <div className="rounded-2xl bg-muted px-3 py-2 text-xs text-muted-foreground shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="truncate">{text}</span>
-          <span className="inline-flex items-center gap-0.5">
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="grid size-16 place-items-center rounded-2xl bg-muted shadow-sm">
-        <MessageSquareDashed className="size-8 text-muted-foreground" />
-      </div>
-      <div>
-        <p className="text-sm font-medium text-foreground">{message}</p>
-        <p className="mt-1 text-xs text-muted-foreground">Start the conversation by typing a message below.</p>
-      </div>
-    </div>
-  )
-}
-
-// ─── Render mentions ──────────────────────────────────────────────────────────
-
-function RenderWithMentions({ text, isMine }: { text: string; isMine?: boolean }) {
-  if (!text) return null
-  const parts = text.split(/(\s+)/)
-  return (
-    <>
-      {parts.map((part, idx) =>
-        part.startsWith('@') && part.length > 1 ? (
-          <span
-            key={idx}
-            className={
-              isMine
-                ? 'font-semibold underline decoration-primary-foreground/60 underline-offset-2 opacity-90'
-                : 'text-primary font-semibold'
-            }
-          >
-            {part}
-          </span>
-        ) : (
-          <span key={idx}>{part}</span>
-        )
-      )}
-    </>
-  )
-}
-
-// ─── Message Bubble ───────────────────────────────────────────────────────────
-
-interface MessageBubbleProps {
-  content: string
-  createdAt: Date
-  isMine: boolean
-  isFirstInGroup: boolean
-  senderName: string
-  senderInitials: string
-}
-
-function MessageBubble({ content, createdAt, isMine, isFirstInGroup, senderName, senderInitials }: MessageBubbleProps) {
-  const [hovered, setHovered] = useState(false)
-  const relTime = formatRelativeTime(createdAt)
-  const fullTime = formatFullTime(createdAt)
-
-  if (isMine) {
-    return (
-      <div
-        className="group flex items-end justify-end gap-2"
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        {/* Timestamp (left of bubble, on hover) */}
-        <span
-          className={cn(
-            'shrink-0 text-[0.65rem] text-muted-foreground transition-opacity duration-150',
-            hovered ? 'opacity-100' : 'opacity-0'
-          )}
-          title={fullTime}
-        >
-          {relTime}
-        </span>
-        {/* Bubble */}
-        <div className="max-w-[72%] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-[0.875rem] text-primary-foreground shadow-sm">
-          <p className="whitespace-pre-wrap leading-relaxed">
-            <RenderWithMentions text={content} isMine={true} />
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div
-      className="group flex items-end gap-2"
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Avatar (only on first in group, else spacer) */}
-      <div className="shrink-0 w-8">
-        {isFirstInGroup ? (
-          <Avatar size="sm">
-            <AvatarFallback className="text-[0.625rem] font-semibold bg-accent text-accent-foreground">
-              {senderInitials}
-            </AvatarFallback>
-          </Avatar>
-        ) : null}
-      </div>
-
-      {/* Bubble */}
-      <div className="flex flex-col gap-0.5 max-w-[72%]">
-        {isFirstInGroup && (
-          <p className="ml-0.5 text-[0.7rem] font-semibold text-muted-foreground">{senderName}</p>
-        )}
-        <div className="rounded-2xl rounded-bl-sm bg-muted px-3.5 py-2 text-[0.875rem] text-foreground shadow-sm">
-          <p className="whitespace-pre-wrap leading-relaxed">
-            <RenderWithMentions text={content} isMine={false} />
-          </p>
-        </div>
-      </div>
-
-      {/* Timestamp (right of bubble, on hover) */}
-      <span
-        className={cn(
-          'shrink-0 self-end text-[0.65rem] text-muted-foreground transition-opacity duration-150',
-          hovered ? 'opacity-100' : 'opacity-0'
-        )}
-        title={fullTime}
-      >
-        {relTime}
-      </span>
-    </div>
-  )
-}
-
-// ─── Input Bar ────────────────────────────────────────────────────────────────
-
-type MentionMember = { id: string; name?: string | null; email?: string | null }
-
-interface InputBarProps {
-  value: string
-  onChange: (v: string) => void
-  onSubmit: (e: React.FormEvent) => void
-  disabled?: boolean
-  placeholder?: string
-  isPending?: boolean
-  members?: MentionMember[]
-}
-
-function InputBar({ value, onChange, onSubmit, disabled, placeholder, isPending, members = [] }: InputBarProps) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null) // null = picker closed
-  const [mentionStart, setMentionStart] = useState(0) // caret position of the opening @
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const text = e.target.value
-    onChange(text)
-
-    // Detect @ followed by optional partial name at the CURRENT caret
-    const caret = e.target.selectionStart
-    const textBefore = text.slice(0, caret)
-    const match = textBefore.match(/@(\w*)$/) // @ followed by word chars (or nothing)
-    if (match) {
-      setMentionQuery(match[1].toLowerCase())
-      setMentionStart(caret - match[0].length)
-    } else {
-      setMentionQuery(null)
-    }
-  }
-
-  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (mentionQuery !== null && e.key === 'Escape') {
-      setMentionQuery(null)
-      return
-    }
-    if (e.key === 'Enter' && !e.shiftKey && mentionQuery === null) {
-      e.preventDefault()
-      onSubmit(e as any)
-    }
-  }
-
-  const insertMention = (displayName: string) => {
-    const caret = ref.current?.selectionStart ?? value.length
-    // Replace @partial with @DisplayName
-    const before = value.slice(0, mentionStart)
-    const after = value.slice(caret)
-    const inserted = `@${displayName} `
-    const next = before + inserted + after
-    onChange(next)
-    setMentionQuery(null)
-    setTimeout(() => {
-      const pos = mentionStart + inserted.length
-      ref.current?.setSelectionRange(pos, pos)
-      ref.current?.focus()
-    }, 0)
-  }
-
-  // Filter members for the picker
-  const filteredMembers = useMemo(() => {
-    if (mentionQuery === null) return []
-    const q = mentionQuery.toLowerCase()
-    return members.filter((m) => {
-      const n = (m.name ?? m.email ?? '').toLowerCase()
-      return n.includes(q)
-    })
-  }, [mentionQuery, members])
-
-  const showPicker = mentionQuery !== null && (filteredMembers.length > 0 || mentionQuery === '')
-
-  // Auto-grow textarea
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.style.height = 'auto'
-      ref.current.style.height = Math.min(ref.current.scrollHeight, 140) + 'px'
-    }
-  }, [value])
-
-  const insertAtCursor = (text: string) => {
-    if (!ref.current) return
-    const start = ref.current.selectionStart
-    const end = ref.current.selectionEnd
-    const next = value.slice(0, start) + text + value.slice(end)
-    onChange(next)
-    // Trigger mention picker for the @ we just inserted
-    setMentionQuery('')
-    setMentionStart(start)
-    setTimeout(() => {
-      ref.current?.setSelectionRange(start + text.length, start + text.length)
-      ref.current?.focus()
-    }, 0)
-  }
-
-  return (
-    <form onSubmit={onSubmit} className="relative border-t bg-background/80 px-4 py-3 backdrop-blur">
-      {/* Mention picker — floats above the input */}
-      {showPicker && (
-        <div className="absolute bottom-full left-4 right-4 mb-1 z-50 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
-          <div className="px-2 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground border-b border-border/60">
-            Mention a member
-          </div>
-          <div className="max-h-56 overflow-y-auto py-1">
-            {/* @everyone option */}
-            <button
-              type="button"
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-              onMouseDown={(e) => { e.preventDefault(); insertMention('everyone') }}
-            >
-              <span className="size-6 rounded-full bg-primary/20 text-center text-xs leading-6 font-bold text-primary">@</span>
-              <span className="font-medium">everyone</span>
-              <span className="ml-auto text-[0.68rem] text-muted-foreground">Notify all members</span>
-            </button>
-            {filteredMembers.map((m) => {
-              const display = m.name ?? m.email ?? 'Unknown'
-              const initials = getInitials(m.name, m.email)
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                  onMouseDown={(e) => { e.preventDefault(); insertMention(display) }}
-                >
-                  <Avatar size="sm">
-                    <AvatarFallback className="text-[0.6rem] font-semibold bg-muted text-muted-foreground">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span>{display}</span>
-                </button>
-              )
-            })}
-            {filteredMembers.length === 0 && mentionQuery !== '' && (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No members match &ldquo;{mentionQuery}&rdquo;</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-2 rounded-xl border border-border bg-background shadow-sm ring-1 ring-transparent focus-within:ring-primary/30 transition-shadow">
-        <textarea
-          ref={ref}
-          rows={1}
-          className="w-full resize-none bg-transparent px-3 pt-3 pb-0 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
-          placeholder={placeholder ?? 'Type a message… (Enter to send, Shift+Enter for new line)'}
-          value={value}
-          onChange={handleChange}
-          onKeyDown={handleKey}
-          onBlur={() => setTimeout(() => setMentionQuery(null), 150)}
-          disabled={disabled}
-        />
-        <div className="flex items-center justify-between gap-2 px-2 pb-2">
-          {/* Action buttons */}
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              disabled={disabled}
-              title="Emoji"
-              className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
-            >
-              <Smile className="size-4" />
-            </button>
-            <button
-              type="button"
-              disabled={disabled}
-              title="Attach file"
-              className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
-            >
-              <Paperclip className="size-4" />
-            </button>
-            <button
-              type="button"
-              disabled={disabled}
-              title="Mention someone"
-              onClick={() => insertAtCursor('@')}
-              className="grid size-7 place-items-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-40"
-            >
-              <AtSign className="size-4" />
-            </button>
-          </div>
-
-          {/* Send button */}
-          <Button
-            type="submit"
-            size="sm"
-            className="h-7 px-3 gap-1.5 text-xs"
-            disabled={!value.trim() || disabled || isPending}
-          >
-            <SendHorizonal className="size-3.5" />
-            Send
-          </Button>
-        </div>
-      </div>
-    </form>
-  )
-}
-
-// ─── Main Page ────────────────────────────────────────────────────────────────
+import { useUserStatuses } from '@/hooks/useUserStatus'
+import MessageBubble, {
+  getInitials,
+  getDayLabel,
+  shouldShowDivider,
+  DateDivider,
+  TypingIndicator,
+  EmptyState,
+} from '@/components/messages/MessageBubble'
+import MessageInputBar from '@/components/messages/MessageInputBar'
+import ConversationSidebar from '@/components/messages/ConversationSidebar'
 
 export default function ProjectMessagesPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -469,7 +71,6 @@ export default function ProjectMessagesPage() {
     return map
   }, [project?.members])
 
-  // Fetch real presence/status for all project members
   const memberUserIds = useMemo(
     () => (project?.members ?? []).map((m: any) => m?.user?.id).filter(Boolean) as string[],
     [project?.members]
@@ -612,7 +213,6 @@ export default function ProjectMessagesPage() {
     })
   }, [inbox, membersById])
 
-  // Members we can start a new DM with (not self, not already in inbox)
   const newDmCandidates = useMemo(() => {
     const inboxIds = new Set(directConversations.map((c) => c.otherId))
     return (project?.members ?? [])
@@ -642,24 +242,17 @@ export default function ProjectMessagesPage() {
     return `Seen by ${names[0]}`
   }, [directSeen])
 
-  // Unread badge: project chat — messages newer than our lastReadAt
-  // We use a simple heuristic: if we're currently on project mode, it's read
   const projectUnreadCount = useMemo(() => {
     if (mode === 'project') return 0
-    // Count messages not authored by me since last read (we don't have lastReadAt on client, use last seen)
-    return 0 // Would need a dedicated API; show dot if there are messages from others
+    return 0
   }, [mode])
 
-  // Unread badge per DM conversation: count messages from other user with id > our lastRead message id
-  // Since we don't have per-user lastReadAt on the client, we derive from inbox.lastMessage
-  // A simple heuristic: if recipient is the last sender && current tab is not that conversation, show dot
   const unreadDms = useMemo(() => {
     const me = session?.user?.id
     if (!me) return new Set<string>()
     const unread = new Set<string>()
     for (const c of directConversations) {
       if (c.last?.senderId !== me && c.otherId !== directTargetId) {
-        // The last message was from the other person and we're not currently viewing it
         unread.add(c.otherId)
       }
     }
@@ -675,7 +268,7 @@ export default function ProjectMessagesPage() {
 
     const elements: React.ReactNode[] = []
     let prevDate: Date | null = null
-    const GROUPING_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
+    const GROUPING_THRESHOLD_MS = 5 * 60 * 1000
 
     for (let i = 0; i < messages.length; i++) {
       const m = messages[i]
@@ -683,12 +276,10 @@ export default function ProjectMessagesPage() {
       const isMine = senderId === session?.user?.id
       const createdAt = new Date(m.createdAt)
 
-      // Date divider
       if (shouldShowDivider(createdAt, prevDate)) {
         elements.push(<DateDivider key={`divider-${m.id}`} label={getDayLabel(createdAt)} />)
       }
 
-      // Grouping: first in group if sender changed OR time gap > threshold
       const prev = messages[i - 1]
       const prevCreatedAt = prev ? new Date(prev.createdAt) : null
       const timeDiff = prevCreatedAt ? createdAt.getTime() - prevCreatedAt.getTime() : Infinity
@@ -771,8 +362,6 @@ export default function ProjectMessagesPage() {
       </div>
     )
 
-  // ── No-conversation empty state ────────────────────────────────────────────
-
   const noConversationSelected = (
     <div className="flex h-full flex-col items-center justify-center gap-5 px-6 text-center">
       <div className="relative">
@@ -796,164 +385,28 @@ export default function ProjectMessagesPage() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* App-level sidebar */}
       <Sidebar />
 
-      {/* Messages area */}
       <div className="flex flex-1 overflow-hidden">
+        <ConversationSidebar
+          projectId={projectId!}
+          projectName={project?.name}
+          mode={mode}
+          directTargetId={directTargetId}
+          directConversations={directConversations}
+          newDmCandidates={newDmCandidates}
+          statusById={statusById}
+          unreadDms={unreadDms}
+          projectUnreadCount={projectUnreadCount}
+          onSelectProject={() => setMode('project')}
+          onSelectDirect={(userId) => { setMode('direct'); setDirectTargetId(userId) }}
+        />
 
-        {/* ── Conversation list sidebar ───────────────────────────────────── */}
-        <aside className="flex w-64 shrink-0 flex-col border-r bg-background/60 backdrop-blur">
-          {/* Header */}
-          <div className="flex items-center gap-2 border-b px-4 py-4">
-            <Link
-              to={`/projects/${projectId}`}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <ArrowLeft className="size-3.5" />
-              Back to board
-            </Link>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-
-            {/* Project Chat */}
-            <div>
-              <p className="mb-1.5 px-2 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                Project
-              </p>
-              <button
-                type="button"
-                onClick={() => setMode('project')}
-                className={cn(
-                  'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors text-left',
-                  mode === 'project'
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-foreground hover:bg-accent'
-                )}
-              >
-                <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                  <Hash className="size-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[0.8rem] font-medium">Project Chat</p>
-                  <p className="truncate text-[0.68rem] text-muted-foreground">
-                    {project?.name ?? 'All members'}
-                  </p>
-                </div>
-                {projectUnreadCount > 0 && (
-                  <span className="shrink-0 flex size-4 items-center justify-center rounded-full bg-primary text-[0.6rem] font-bold text-primary-foreground">
-                    {projectUnreadCount}
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* Direct Messages */}
-            <div>
-              <p className="mb-1.5 px-2 text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground">
-                Direct Messages
-              </p>
-
-              {/* Existing conversations */}
-              <div className="space-y-0.5">
-                {directConversations.map((c) => (
-                  <button
-                    key={c.otherId}
-                    type="button"
-                    onClick={() => { setMode('direct'); setDirectTargetId(c.otherId) }}
-                    className={cn(
-                      'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors text-left',
-                      mode === 'direct' && directTargetId === c.otherId
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-foreground hover:bg-accent'
-                    )}
-                  >
-                    {/* Avatar with real status dot */}
-                    <div className="relative shrink-0">
-                      <Avatar size="sm">
-                        <AvatarFallback className="text-[0.625rem] font-semibold bg-accent text-accent-foreground">
-                          {c.otherInitials}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span
-                        className={cn(
-                          'absolute bottom-0 right-0 size-2 rounded-full ring-1 ring-background',
-                          STATUS_CONFIG[(statusById.get(c.otherId) as UserStatus) ?? 'OFFLINE']?.dotClass ?? 'bg-gray-400'
-                        )}
-                        title={STATUS_CONFIG[(statusById.get(c.otherId) as UserStatus) ?? 'OFFLINE']?.label}
-                      />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[0.8rem] font-medium">{c.otherLabel}</p>
-                      {c.last?.content && (
-                        <p className="truncate text-[0.68rem] text-muted-foreground">{c.last.content}</p>
-                      )}
-                    </div>
-
-                    {/* Unread badge */}
-                    {unreadDms.has(c.otherId) && (
-                      <span className="shrink-0 size-2 rounded-full bg-primary" />
-                    )}
-                  </button>
-                ))}
-              </div>
-
-              {/* New DM candidates (teammates not yet in inbox) */}
-              {newDmCandidates.length > 0 && (
-                <div className="mt-2 space-y-0.5">
-                  {newDmCandidates.map((u: any) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => { setMode('direct'); setDirectTargetId(u.id) }}
-                      className={cn(
-                        'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors text-left',
-                        mode === 'direct' && directTargetId === u.id
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'text-foreground/70 hover:bg-accent hover:text-foreground'
-                      )}
-                    >
-                      <div className="relative shrink-0">
-                        <Avatar size="sm">
-                          <AvatarFallback className="text-[0.625rem] font-semibold bg-muted text-muted-foreground">
-                            {getInitials(u.name, u.email)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span
-                          className={cn(
-                            'absolute bottom-0 right-0 size-2 rounded-full ring-1 ring-background',
-                            STATUS_CONFIG[(statusById.get(u.id) as UserStatus) ?? 'OFFLINE']?.dotClass ?? 'bg-gray-400'
-                          )}
-                          title={STATUS_CONFIG[(statusById.get(u.id) as UserStatus) ?? 'OFFLINE']?.label}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[0.8rem]">{u.name ?? u.email}</p>
-                        <p className="truncate text-[0.68rem] text-muted-foreground">Start a conversation</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {directConversations.length === 0 && newDmCandidates.length === 0 && (
-                <p className="px-2 py-2 text-[0.72rem] text-muted-foreground">No teammates yet.</p>
-              )}
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Chat area ──────────────────────────────────────────────────── */}
         <main className="flex flex-1 min-w-0 flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.08),transparent_55%)]">
-
-          {/* Chat header */}
           <header className="flex items-center gap-3 border-b bg-background/80 px-5 py-3 backdrop-blur">
             {chatHeader}
           </header>
 
-          {/* Messages scroll area */}
           <div className="flex-1 overflow-y-auto px-4 py-3">
             {mode === 'project' ? (
               <div className="flex flex-col gap-1">
@@ -969,11 +422,9 @@ export default function ProjectMessagesPage() {
             <div ref={listEndRef} />
           </div>
 
-          {/* Typing indicator */}
           {typingText && <TypingIndicator text={typingText} />}
 
-          {/* Input bar */}
-          <InputBar
+          <MessageInputBar
             value={input}
             onChange={setInput}
             onSubmit={handleSend}
