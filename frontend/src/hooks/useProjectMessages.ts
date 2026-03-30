@@ -10,7 +10,7 @@ export function useProjectMessages(projectId: string | undefined) {
       return data
     },
     enabled: !!projectId,
-    refetchInterval: 5000,
+    refetchInterval: 3000,
     refetchIntervalInBackground: false,
   })
 }

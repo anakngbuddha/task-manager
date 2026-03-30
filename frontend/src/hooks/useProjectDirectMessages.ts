@@ -10,7 +10,7 @@ export function useProjectDirectMessages(projectId: string | undefined, otherUse
       return data
     },
     enabled: !!projectId && !!otherUserId,
-    refetchInterval: 5000,
+    refetchInterval: 3000,
     refetchIntervalInBackground: false,
   })
 }

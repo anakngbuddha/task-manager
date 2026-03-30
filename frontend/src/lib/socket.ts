@@ -1,29 +1,40 @@
-import { io } from 'socket.io-client'
+import { io, type Socket } from 'socket.io-client'
 
-// Derive socket URL from the API URL env var, falling back to same-origin in production
 function getSocketURL(): string {
   const apiUrl = import.meta.env.VITE_API_URL as string | undefined
   if (apiUrl) {
     try {
       const url = new URL(apiUrl)
-      // Strip /api path to get the base origin
       return url.origin
     } catch {
       return apiUrl.replace(/\/api\/?$/, '')
     }
   }
-  // In production (Vercel), use the Render backend directly
   if (import.meta.env.PROD) {
     return 'https://task-manager-390h.onrender.com'
   }
-  // Development fallback
   return 'http://localhost:3000'
 }
 
 export const SOCKET_URL = getSocketURL()
 
-export const socket = io(SOCKET_URL, {
+export const SOCKET_OPTIONS = {
   withCredentials: true,
   autoConnect: false,
-  transports: ['polling', 'websocket'],
+  transports: ['websocket', 'polling'] as ('websocket' | 'polling')[],
+  reconnection: true,
+  reconnectionAttempts: Infinity,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 8000,
+  randomizationFactor: 0.4,
+  timeout: 15000,
+  forceNew: false,
+}
+
+export function createSocket(): Socket {
+  return io(SOCKET_URL, { ...SOCKET_OPTIONS })
+}
+
+export const socket = io(SOCKET_URL, {
+  ...SOCKET_OPTIONS,
 })

@@ -5,6 +5,7 @@ import { activityService } from '../services/activity.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { prisma } from '../lib/prisma.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
+import { getIO } from '../lib/socketManager.js';
 const createMessageSchema = z.object({
     content: z.string().max(2000).optional().default(''),
     fileUrl: z.string().optional(),
@@ -104,6 +105,8 @@ export async function projectMessageRoutes(app) {
                 });
             }
         }
+        // Emit real-time event to all clients in the project room
+        getIO().to(projectId).emit('message:project', { projectId, messageId: created.id });
         return created;
     });
 }

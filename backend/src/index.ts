@@ -29,14 +29,18 @@ const start = async () => {
 
     await app.listen({ port: PORT, host: '0.0.0.0' })
 
-    // Attach Socket.io to Fastify's underlying HTTP server (same port)
     const io = new Server(app.server, {
       cors: {
         origin: ALLOWED_ORIGINS,
         credentials: true,
       },
-      // Allow polling + websocket transports
-      transports: ['polling', 'websocket'],
+      transports: ['websocket', 'polling'],
+      pingTimeout: 30000,
+      pingInterval: 10000,
+      connectTimeout: 15000,
+      allowUpgrades: true,
+      upgradeTimeout: 15000,
+      perMessageDeflate: false,
     })
 
     setIO(io)

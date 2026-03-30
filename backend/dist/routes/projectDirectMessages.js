@@ -5,6 +5,7 @@ import { activityService } from '../services/activity.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { prisma } from '../lib/prisma.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
+import { getIO, directRoom } from '../lib/socketManager.js';
 const createDirectMessageSchema = z.object({
     content: z.string().max(2000).optional().default(''),
     fileUrl: z.string().optional(),
@@ -66,6 +67,9 @@ export async function projectDirectMessageRoutes(app) {
             href: `/projects/${projectId}/messages?mode=direct&user=${encodeURIComponent(req.authUser.id)}`,
             data: { projectId, fromUserId: req.authUser.id },
         });
+        // Emit real-time event to the direct message room
+        const room = directRoom(projectId, req.authUser.id, otherUserId);
+        getIO().to(room).emit('message:direct', { projectId, senderId: req.authUser.id, recipientId: otherUserId });
         return created;
     });
 }

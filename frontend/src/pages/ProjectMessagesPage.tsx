@@ -11,8 +11,8 @@ import { useSession } from '@/lib/auth-client'
 import { api } from '@/lib/api'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Hash, MessageCircle } from 'lucide-react'
-import { io, type Socket } from 'socket.io-client'
-import { SOCKET_URL } from '@/lib/socket'
+import type { Socket } from 'socket.io-client'
+import { createSocket } from '@/lib/socket'
 import { useUserStatuses } from '@/hooks/useUserStatus'
 import MessageBubble, {
   getInitials,
@@ -67,6 +67,7 @@ export default function ProjectMessagesPage() {
   const typingTimerRef = useRef<number | null>(null)
   const [projectTyping, setProjectTyping] = useState<Record<string, string>>({})
   const [directTyping, setDirectTyping] = useState<Record<string, string>>({})
+  const [socketConnected, setSocketConnected] = useState(false)
 
   const membersById = useMemo(() => {
     const map = new Map<string, any>()
@@ -90,20 +91,40 @@ export default function ProjectMessagesPage() {
   useEffect(() => {
     if (!projectId || !session?.user?.id) return
 
-    // Clean up any existing socket before creating a new one
     if (socketRef.current) {
       socketRef.current.disconnect()
       socketRef.current = null
     }
 
-    const socket = io(SOCKET_URL, { withCredentials: true, reconnection: true, reconnectionDelay: 1000, transports: ['polling', 'websocket'] })
+    const socket = createSocket()
     socketRef.current = socket
 
     const joinRooms = () => {
+      setSocketConnected(true)
       socket.emit('join:project', projectId)
+      if (directTargetId) {
+        socket.emit('join:direct', { projectId, userId: session.user!.id, otherUserId: directTargetId })
+      }
     }
 
     socket.on('connect', joinRooms)
+
+    socket.on('reconnect', () => {
+      joinRooms()
+      queryClient.invalidateQueries({ queryKey: ['project-messages', projectId] })
+      if (directTargetId) {
+        queryClient.invalidateQueries({ queryKey: ['project-direct-messages', projectId, directTargetId] })
+      }
+    })
+
+    socket.on('disconnect', () => {
+      setSocketConnected(false)
+    })
+
+    socket.on('connect_error', (err) => {
+      console.warn('[socket] connection error:', err.message)
+      setSocketConnected(false)
+    })
 
     socket.on('typing:project', (payload: { userId: string; name: string; isTyping: boolean }) => {
       setProjectTyping((curr) => {
@@ -132,9 +153,13 @@ export default function ProjectMessagesPage() {
       queryClient.invalidateQueries({ queryKey: ['project-direct-messages', payload.projectId, payload.recipientId] })
     })
 
+    socket.connect()
+
     return () => {
+      socket.removeAllListeners()
       socket.disconnect()
       socketRef.current = null
+      setSocketConnected(false)
     }
   }, [projectId, session?.user?.id, queryClient])
 
@@ -470,8 +495,14 @@ export default function ProjectMessagesPage() {
         />
 
         <main className="flex flex-1 min-w-0 flex-col overflow-hidden bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.08),transparent_55%)]">
-          <header className="flex items-center gap-3 border-b bg-background/80 px-5 py-3 backdrop-blur">
-            {chatHeader}
+          <header className="flex items-center justify-between border-b bg-background/80 px-5 py-3 backdrop-blur">
+            <div className="flex items-center gap-3">{chatHeader}</div>
+            {!socketConnected && (
+              <span className="flex items-center gap-1.5 text-[0.65rem] text-amber-600 dark:text-amber-400">
+                <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Reconnecting...
+              </span>
+            )}
           </header>
 
           <div className="flex-1 overflow-y-auto px-4 py-3">
