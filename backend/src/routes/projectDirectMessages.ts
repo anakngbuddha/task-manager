@@ -53,28 +53,34 @@ export async function projectDirectMessageRoutes(app: FastifyInstance) {
       fileName: body.fileName,
     })
 
-    await activityService.record({
-      projectId,
-      actorId: req.authUser.id,
-      type: 'DIRECT_MESSAGE_SENT',
-      entityType: 'PROJECT',
-      entityId: projectId,
-      metadata: { otherUserId, messageId: created.id },
-    })
-
-    const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } })
-    await notificationService.create({
-      userId: otherUserId,
-      projectId,
-      type: 'DIRECT_MESSAGE',
-      title: `New message in ${project?.name ?? 'a project'}`,
-      body: body.content.slice(0, 120),
-      href: `/projects/${projectId}/messages?mode=direct&user=${encodeURIComponent(req.authUser.id)}`,
-      data: { projectId, fromUserId: req.authUser.id },
-    })
-
     const room = directRoom(projectId, req.authUser.id, otherUserId)
     getIO().to(room).emit('message:direct', created)
+
+    setImmediate(async () => {
+      try {
+        await activityService.record({
+          projectId,
+          actorId: req.authUser.id,
+          type: 'DIRECT_MESSAGE_SENT',
+          entityType: 'PROJECT',
+          entityId: projectId,
+          metadata: { otherUserId, messageId: created.id },
+        })
+
+        const project = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true } })
+        await notificationService.create({
+          userId: otherUserId,
+          projectId,
+          type: 'DIRECT_MESSAGE',
+          title: `New message in ${project?.name ?? 'a project'}`,
+          body: body.content.slice(0, 120),
+          href: `/projects/${projectId}/messages?mode=direct&user=${encodeURIComponent(req.authUser.id)}`,
+          data: { projectId, fromUserId: req.authUser.id },
+        })
+      } catch (err) {
+        console.error('Background notification error:', err)
+      }
+    })
 
     return created
   })

@@ -42,81 +42,85 @@ export async function projectMessageRoutes(app: FastifyInstance) {
       fileName: body.fileName,
     })
 
-    await activityService.record({
-      projectId,
-      actorId: req.authUser.id,
-      type: 'PROJECT_MESSAGE_SENT',
-      entityType: 'PROJECT',
-      entityId: projectId,
-      metadata: { messageId: created.id },
-    })
-
-    // Fetch project info + all members
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: {
-        name: true,
-        members: { select: { userId: true, user: { select: { id: true, name: true, email: true } } } },
-      },
-    })
-
-    const senderName = project?.members.find((m) => m.userId === req.authUser.id)?.user?.name ?? 'Someone'
-    const otherMembers = (project?.members ?? []).filter((m) => m.userId !== req.authUser.id)
-
-    // Parse @mentions: match @word_chars (no whitespace greediness)
-    const mentionedEveryone = /@everyone\b/i.test(body.content)
-    const mentionMatches = body.content.match(/@(\w+)/g) ?? []
-    const mentionedNames = mentionMatches
-      .map((m) => m.slice(1).toLowerCase())
-      .filter((n) => n !== 'everyone')
-
-    // Determine which members are mentioned (exact match on first name or full name without spaces)
-    const mentionedUserIds = new Set<string>()
-    if (mentionedEveryone) {
-      otherMembers.forEach((m) => mentionedUserIds.add(m.userId))
-    } else {
-      for (const member of otherMembers) {
-        const name = (member.user?.name ?? '').toLowerCase()
-        const email = (member.user?.email ?? '').toLowerCase()
-        const firstName = name.split(' ')[0]
-        const nameNoSpaces = name.replace(/\s+/g, '')
-        if (mentionedNames.some((n) => n === firstName || n === nameNoSpaces || n === email.split('@')[0])) {
-          mentionedUserIds.add(member.userId)
-        }
-      }
-    }
-
-    const msgHref = `/projects/${projectId}/messages`
-
-    // Send MENTION notifications
-    for (const uid of mentionedUserIds) {
-      await notificationService.create({
-        userId: uid,
-        projectId,
-        type: 'MENTION',
-        title: `${senderName} mentioned you in ${project?.name ?? 'a project'}`,
-        body: body.content.slice(0, 120),
-        href: msgHref,
-        data: { projectId, fromUserId: req.authUser.id, messageId: created.id },
-      })
-    }
-
-    // Send NEW_MESSAGE notifications to all non-mentioned non-sender members
-    for (const member of otherMembers) {
-      if (!mentionedUserIds.has(member.userId)) {
-        await notificationService.create({
-          userId: member.userId,
-          projectId,
-          type: 'NEW_MESSAGE',
-          title: `New message in ${project?.name ?? 'a project'}`,
-          body: `${senderName}: ${body.content.slice(0, 100)}`,
-          href: msgHref,
-          data: { projectId, fromUserId: req.authUser.id, messageId: created.id },
-        })
-      }
-    }
-
     getIO().to(projectId).emit('message:project', created)
+
+    // Fire-and-forget: notifications and activity recording happen after the
+    // response + socket event are already sent, so receivers see the message
+    // instantly without waiting for this work to finish.
+    setImmediate(async () => {
+      try {
+        await activityService.record({
+          projectId,
+          actorId: req.authUser.id,
+          type: 'PROJECT_MESSAGE_SENT',
+          entityType: 'PROJECT',
+          entityId: projectId,
+          metadata: { messageId: created.id },
+        })
+
+        const project = await prisma.project.findUnique({
+          where: { id: projectId },
+          select: {
+            name: true,
+            members: { select: { userId: true, user: { select: { id: true, name: true, email: true } } } },
+          },
+        })
+
+        const senderName = project?.members.find((m) => m.userId === req.authUser.id)?.user?.name ?? 'Someone'
+        const otherMembers = (project?.members ?? []).filter((m) => m.userId !== req.authUser.id)
+
+        const mentionedEveryone = /@everyone\b/i.test(body.content)
+        const mentionMatches = body.content.match(/@(\w+)/g) ?? []
+        const mentionedNames = mentionMatches
+          .map((m) => m.slice(1).toLowerCase())
+          .filter((n) => n !== 'everyone')
+
+        const mentionedUserIds = new Set<string>()
+        if (mentionedEveryone) {
+          otherMembers.forEach((m) => mentionedUserIds.add(m.userId))
+        } else {
+          for (const member of otherMembers) {
+            const name = (member.user?.name ?? '').toLowerCase()
+            const email = (member.user?.email ?? '').toLowerCase()
+            const firstName = name.split(' ')[0]
+            const nameNoSpaces = name.replace(/\s+/g, '')
+            if (mentionedNames.some((n) => n === firstName || n === nameNoSpaces || n === email.split('@')[0])) {
+              mentionedUserIds.add(member.userId)
+            }
+          }
+        }
+
+        const msgHref = `/projects/${projectId}/messages`
+
+        for (const uid of mentionedUserIds) {
+          await notificationService.create({
+            userId: uid,
+            projectId,
+            type: 'MENTION',
+            title: `${senderName} mentioned you in ${project?.name ?? 'a project'}`,
+            body: body.content.slice(0, 120),
+            href: msgHref,
+            data: { projectId, fromUserId: req.authUser.id, messageId: created.id },
+          })
+        }
+
+        for (const member of otherMembers) {
+          if (!mentionedUserIds.has(member.userId)) {
+            await notificationService.create({
+              userId: member.userId,
+              projectId,
+              type: 'NEW_MESSAGE',
+              title: `New message in ${project?.name ?? 'a project'}`,
+              body: `${senderName}: ${body.content.slice(0, 100)}`,
+              href: msgHref,
+              data: { projectId, fromUserId: req.authUser.id, messageId: created.id },
+            })
+          }
+        }
+      } catch (err) {
+        console.error('Background notification error:', err)
+      }
+    })
 
     return created
   })

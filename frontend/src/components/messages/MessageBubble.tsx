@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { MessageSquareDashed, FileText, Download } from 'lucide-react'
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { cn } from '@/lib/utils'
+import { resolveFileUrl } from '@/lib/api'
 
 export function getInitials(name?: string | null, email?: string | null): string {
   if (name) return name.split(' ').map((p) => p[0]).join('').slice(0, 2).toUpperCase()
@@ -133,6 +135,7 @@ export default function MessageBubble({ content, fileUrl, fileName, createdAt, i
   const fullTime = formatFullTime(createdAt)
   const isImage = fileUrl ? /\.(jpeg|jpg|gif|png|webp|svg|avif)$/i.test(fileUrl) : false
   const isVideo = fileUrl ? /\.(mp4|webm|ogg|mov)$/i.test(fileUrl) : false
+  const resolved = resolveFileUrl(fileUrl)
 
   if (isMine) {
     return (
@@ -155,10 +158,11 @@ export default function MessageBubble({ content, fileUrl, fileName, createdAt, i
             <div className={cn("overflow-hidden rounded-xl", content ? "mb-2" : "")}>
               <Dialog>
                 <DialogTrigger asChild>
-                  <img src={`http://localhost:3000${fileUrl}`} alt={fileName || "Attachment"} className="max-w-full max-h-64 object-contain cursor-pointer transition-transform hover:scale-[1.02]" />
+                  <img src={resolved} alt={fileName || "Attachment"} className="max-w-full max-h-64 object-contain cursor-pointer transition-transform hover:scale-[1.02]" />
                 </DialogTrigger>
-                <DialogContent className="max-w-[75vw] sm:max-w-[75vw] w-fit p-0 overflow-hidden border-none bg-transparent shadow-none flex justify-center" showCloseButton={false}>
-                  <img src={`http://localhost:3000${fileUrl}`} alt={fileName || "Attachment"} className="w-auto h-auto max-w-[75vw] max-h-[75vh] object-contain rounded-md" />
+                <DialogContent className="max-w-[75vw] sm:max-w-[75vw] w-fit p-0 overflow-hidden border-none bg-transparent shadow-none flex justify-center" showCloseButton={false} aria-describedby={undefined}>
+                  <VisuallyHidden><DialogTitle>Image preview</DialogTitle></VisuallyHidden>
+                  <img src={resolved} alt={fileName || "Attachment"} className="w-auto h-auto max-w-[75vw] max-h-[75vh] object-contain rounded-md" />
                 </DialogContent>
               </Dialog>
             </div>
@@ -166,7 +170,7 @@ export default function MessageBubble({ content, fileUrl, fileName, createdAt, i
           {fileUrl && isVideo && (
             <div className={cn("overflow-hidden rounded-xl", content ? "mb-2" : "")}>
               <video 
-                src={`http://localhost:3000${fileUrl}`} 
+                src={resolved} 
                 controls 
                 className="max-w-full max-h-64 object-contain rounded-md" 
               />
@@ -174,7 +178,7 @@ export default function MessageBubble({ content, fileUrl, fileName, createdAt, i
           )}
           {fileUrl && !isImage && !isVideo && (
             <a 
-              href={`http://localhost:3000${fileUrl}`} 
+              href={resolved} 
               target="_blank" 
               rel="noopener noreferrer" 
               download={fileName || "attachment"}
@@ -228,10 +232,11 @@ export default function MessageBubble({ content, fileUrl, fileName, createdAt, i
             <div className={cn("overflow-hidden rounded-xl", content ? "mb-2" : "")}>
               <Dialog>
                 <DialogTrigger asChild>
-                  <img src={`http://localhost:3000${fileUrl}`} alt={fileName || "Attachment"} className="max-w-full max-h-64 object-contain cursor-pointer transition-transform hover:scale-[1.02]" />
+                  <img src={resolved} alt={fileName || "Attachment"} className="max-w-full max-h-64 object-contain cursor-pointer transition-transform hover:scale-[1.02]" />
                 </DialogTrigger>
-                <DialogContent className="max-w-[75vw] sm:max-w-[75vw] w-fit p-0 overflow-hidden border-none bg-transparent shadow-none flex justify-center" showCloseButton={false}>
-                  <img src={`http://localhost:3000${fileUrl}`} alt={fileName || "Attachment"} className="w-auto h-auto max-w-[75vw] max-h-[75vh] object-contain rounded-md" />
+                <DialogContent className="max-w-[75vw] sm:max-w-[75vw] w-fit p-0 overflow-hidden border-none bg-transparent shadow-none flex justify-center" showCloseButton={false} aria-describedby={undefined}>
+                  <VisuallyHidden><DialogTitle>Image preview</DialogTitle></VisuallyHidden>
+                  <img src={resolved} alt={fileName || "Attachment"} className="w-auto h-auto max-w-[75vw] max-h-[75vh] object-contain rounded-md" />
                 </DialogContent>
               </Dialog>
             </div>
@@ -239,7 +244,7 @@ export default function MessageBubble({ content, fileUrl, fileName, createdAt, i
           {fileUrl && isVideo && (
             <div className={cn("overflow-hidden rounded-xl", content ? "mb-2" : "")}>
               <video 
-                src={`http://localhost:3000${fileUrl}`} 
+                src={resolved} 
                 controls 
                 className="max-w-full max-h-64 object-contain rounded-md border border-border" 
               />
@@ -247,7 +252,7 @@ export default function MessageBubble({ content, fileUrl, fileName, createdAt, i
           )}
           {fileUrl && !isImage && !isVideo && (
             <a 
-              href={`http://localhost:3000${fileUrl}`} 
+              href={resolved} 
               target="_blank" 
               rel="noopener noreferrer" 
               download={fileName || "attachment"}
