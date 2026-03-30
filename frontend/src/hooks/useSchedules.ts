@@ -9,6 +9,7 @@ export interface ScheduleAttendee {
   userId?: string | null
   email: string
   name?: string | null
+  response?: 'PENDING' | 'ACCEPTED' | 'DECLINED'
 }
 
 export interface Schedule {
@@ -16,6 +17,7 @@ export interface Schedule {
   title: string
   type: ScheduleType
   scheduledAt: string | Date
+  endAt?: string | Date | null
   details?: string | null
   location?: string | null
   projectId?: string | null
@@ -40,7 +42,18 @@ export function useSchedules(opts?: { from?: string; to?: string; projectId?: st
       const { data } = await api.get('/schedules', { params })
       return data as Schedule[]
     },
-    enabled: true,
+    enabled: Boolean(from || to),
+  })
+}
+
+export function useScheduleById(scheduleId: string | undefined) {
+  return useQuery({
+    queryKey: ['schedule', scheduleId],
+    enabled: !!scheduleId,
+    queryFn: async () => {
+      const { data } = await api.get(`/schedules/${scheduleId}`)
+      return data as Schedule
+    },
   })
 }
 
@@ -52,6 +65,7 @@ export function useCreateSchedule() {
       title: string
       type: ScheduleType
       scheduledAt: string
+      endAt?: string | null
       details?: string
       location?: string
       projectId?: string
@@ -63,6 +77,24 @@ export function useCreateSchedule() {
     onSuccess: async () => {
       // Simplest invalidation: re-fetch any schedule lists.
       await queryClient.invalidateQueries({ queryKey: ['schedules'] })
+      await queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      await queryClient.invalidateQueries({ queryKey: ['activity'] })
+    },
+  })
+}
+
+export function useRespondScheduleInvite() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (payload: { scheduleId: string; response: 'ACCEPTED' | 'DECLINED' | 'PENDING' }) => {
+      const { data } = await api.patch(`/schedules/${payload.scheduleId}/respond`, { response: payload.response })
+      return data as { scheduleId: string; response: 'PENDING' | 'ACCEPTED' | 'DECLINED' }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['schedules'] })
+      await queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      await queryClient.invalidateQueries({ queryKey: ['activity'] })
     },
   })
 }

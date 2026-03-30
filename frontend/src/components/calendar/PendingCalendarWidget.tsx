@@ -28,10 +28,21 @@ type PendingScheduleItem = {
   attendeesCount: number
 }
 
-function toLocalDateTimeInputValue(d: Date) {
+function toLocalDateInputValue(d: Date) {
   const offset = d.getTimezoneOffset()
-  const local = new Date(d.getTime() - offset * 60_000)
-  return local.toISOString().slice(0, 16)
+  return new Date(d.getTime() - offset * 60_000).toISOString().slice(0, 10)
+}
+
+function toLocalTimeInputValue(d: Date) {
+  const offset = d.getTimezoneOffset()
+  return new Date(d.getTime() - offset * 60_000).toISOString().slice(11, 16)
+}
+
+function localDateTimeToISO(dateStr: string, timeStr: string) {
+  const [y, m, d] = dateStr.split('-').map((n) => Number(n))
+  const [hh, mm] = timeStr.split(':').map((n) => Number(n))
+  const dt = new Date(y, m - 1, d, hh, mm, 0, 0)
+  return dt.toISOString()
 }
 
 function formatDateTime(s: string) {
@@ -93,7 +104,10 @@ export function PendingCalendarWidget({ variant = 'sidebar' }: { variant?: 'side
   const [open, setOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [type, setType] = useState<ScheduleType>('MEETING')
-  const [scheduledAtLocal, setScheduledAtLocal] = useState(() => toLocalDateTimeInputValue(new Date(Date.now() + 60 * 60 * 1000)))
+  const initialStart = useMemo(() => new Date(Date.now() + 60 * 60 * 1000), [])
+  const [formDate, setFormDate] = useState(() => toLocalDateInputValue(initialStart))
+  const [formStartTime, setFormStartTime] = useState(() => toLocalTimeInputValue(initialStart))
+  const [formEndTime, setFormEndTime] = useState(() => toLocalTimeInputValue(new Date(initialStart.getTime() + 30 * 60 * 1000)))
   const [details, setDetails] = useState('')
   const [location, setLocation] = useState('')
   const [projectId, setProjectId] = useState<string>('')
@@ -107,9 +121,14 @@ export function PendingCalendarWidget({ variant = 'sidebar' }: { variant?: 'side
     const trimmedTitle = title.trim()
     if (!trimmedTitle) return
 
-    const scheduledAt = new Date(scheduledAtLocal)
-    if (Number.isNaN(scheduledAt.getTime())) return
+    if (!formDate || !formStartTime || !formEndTime) return
+    const scheduledAtISO = localDateTimeToISO(formDate, formStartTime)
+    const endAtISO = localDateTimeToISO(formDate, formEndTime)
+    const scheduledAt = new Date(scheduledAtISO)
+    const endAt = new Date(endAtISO)
+    if (Number.isNaN(scheduledAt.getTime()) || Number.isNaN(endAt.getTime())) return
     if (scheduledAt.getTime() <= Date.now()) return
+    if (endAt.getTime() <= scheduledAt.getTime()) return
 
     const emails = attendeeEmails
       .split(',')
@@ -120,6 +139,7 @@ export function PendingCalendarWidget({ variant = 'sidebar' }: { variant?: 'side
       title: trimmedTitle,
       type,
       scheduledAt: scheduledAt.toISOString(),
+      endAt: endAt.toISOString(),
       details: details.trim() || undefined,
       location: location.trim() || undefined,
       projectId: projectId || undefined,
@@ -188,7 +208,24 @@ export function PendingCalendarWidget({ variant = 'sidebar' }: { variant?: 'side
 
                 <div className="grid grid-cols-1 gap-1.5">
                   <Label>When</Label>
-                  <Input type="datetime-local" value={scheduledAtLocal} onChange={(e) => setScheduledAtLocal(e.target.value)} />
+                  <div className="grid grid-cols-1 gap-2">
+                    <Input
+                      type="date"
+                      value={formDate}
+                      onChange={(e) => setFormDate(e.target.value)}
+                      className="rounded-none"
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Start</Label>
+                        <Input type="time" value={formStartTime} onChange={(e) => setFormStartTime(e.target.value)} className="rounded-none" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">End</Label>
+                        <Input type="time" value={formEndTime} onChange={(e) => setFormEndTime(e.target.value)} className="rounded-none" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 

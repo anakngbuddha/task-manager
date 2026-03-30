@@ -10,6 +10,7 @@ import ProjectSprintReportPage from './pages/ProjectSprintReportPage'
 import SprintBacklogPage from './pages/SprintBacklogPage'
 import RoadmapPage from './pages/RoadmapPage'
 import CalendarPage from './pages/CalendarPage'
+import DayViewPage from './pages/DayViewPage'
 import ActivityPage from './pages/ActivityPage'
 import SettingsPage from './pages/SettingsPage'
 import ChangePasswordPage from './pages/ChangePasswordPage'
@@ -105,6 +106,11 @@ export default function App() {
         <Route path="/calendar" element={
           <ProtectedRoute>
             <CalendarPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/calendar/day/:date" element={
+          <ProtectedRoute>
+            <DayViewPage />
           </ProtectedRoute>
         } />
         <Route path="/settings" element={

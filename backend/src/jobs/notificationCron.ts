@@ -53,6 +53,7 @@ async function processScheduleWindow(
   for (const schedule of schedules) {
     for (const attendee of schedule.attendees) {
       if (!attendee.userId) continue
+      if (attendee.response === 'DECLINED') continue
 
       try {
         const alreadySent = await prisma.scheduleNotificationLog.findUnique({

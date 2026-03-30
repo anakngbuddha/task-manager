@@ -6,6 +6,7 @@ import { useSession } from '@/lib/auth-client'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   Activity,
+  CalendarDays,
   CheckSquare,
   MessageCircle,
   MessageSquare,
@@ -125,6 +126,27 @@ const EVENT_CONFIG: Record<string, EventConfig> = {
     label: 'pushed to repository',
     filterKey: 'tasks',
   },
+  SCHEDULE_INVITED: {
+    icon: CalendarDays,
+    pillBg: 'bg-primary/10',
+    pillText: 'text-primary',
+    label: 'invited to a schedule',
+    filterKey: 'all',
+  },
+  SCHEDULE_INVITE_ACCEPTED: {
+    icon: CalendarDays,
+    pillBg: 'bg-emerald-100 dark:bg-emerald-950/60',
+    pillText: 'text-emerald-700 dark:text-emerald-400',
+    label: 'accepted a schedule invitation',
+    filterKey: 'all',
+  },
+  SCHEDULE_INVITE_DECLINED: {
+    icon: CalendarDays,
+    pillBg: 'bg-destructive/10',
+    pillText: 'text-destructive',
+    label: 'declined a schedule invitation',
+    filterKey: 'all',
+  },
 }
 
 function getCfg(type: string): EventConfig {
@@ -143,6 +165,14 @@ function getHref(event: any): string | null {
   const pid = event.project?.id ?? event.metadata?.projectId
   if (!pid) return null
   switch (event.type) {
+    case 'SCHEDULE_INVITED':
+    case 'SCHEDULE_INVITE_ACCEPTED':
+    case 'SCHEDULE_INVITE_DECLINED': {
+      const dayKey = event.metadata?.dayKey
+      const scheduleId = event.entityId ?? event.metadata?.scheduleId
+      if (!dayKey || !scheduleId) return null
+      return `/calendar/day/${dayKey}?scheduleId=${scheduleId}`
+    }
     case 'PROJECT_MESSAGE_SENT':
       return `/projects/${pid}/messages`
     case 'DIRECT_MESSAGE_SENT':
@@ -167,6 +197,7 @@ interface ActivityEvent {
   actor?: { id: string; name?: string | null; email?: string | null }
   project?: { id: string; name?: string | null }
   metadata?: Record<string, any>
+  entityId?: string
 }
 
 
