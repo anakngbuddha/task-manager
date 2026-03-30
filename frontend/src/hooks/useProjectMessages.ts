@@ -18,8 +18,8 @@ export function useProjectMessages(projectId: string | undefined) {
 export function useSendProjectMessage() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { projectId: string; content: string; fileUrl?: string; fileName?: string; optimisticId?: string; authorId?: string }) => {
-      const { projectId, optimisticId, authorId, ...body } = payload
+    mutationFn: async (payload: { projectId: string; content: string; fileUrl?: string; fileName?: string; optimisticId?: string; authorId?: string; authorName?: string; authorEmail?: string }) => {
+      const { projectId, optimisticId, authorId, authorName, authorEmail, ...body } = payload
       const { data } = await api.post(`/projects/${projectId}/messages`, body)
       return data
     },
@@ -32,6 +32,11 @@ export function useSendProjectMessage() {
           id: newMsg.optimisticId || `temp-${Date.now()}`,
           projectId: newMsg.projectId,
           authorId: newMsg.authorId || '',
+          author: {
+            id: newMsg.authorId || '',
+            name: newMsg.authorName || null,
+            email: newMsg.authorEmail || null,
+          },
           content: newMsg.content,
           fileUrl: newMsg.fileUrl,
           fileName: newMsg.fileName,

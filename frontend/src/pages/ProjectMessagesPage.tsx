@@ -12,6 +12,7 @@ import { api } from '@/lib/api'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Hash, MessageCircle } from 'lucide-react'
 import { io, type Socket } from 'socket.io-client'
+import { SOCKET_URL } from '@/lib/socket'
 import { useUserStatuses } from '@/hooks/useUserStatus'
 import MessageBubble, {
   getInitials,
@@ -95,7 +96,7 @@ export default function ProjectMessagesPage() {
       socketRef.current = null
     }
 
-    const socket = io('http://localhost:3001', { withCredentials: true, reconnection: true, reconnectionDelay: 1000 })
+    const socket = io(SOCKET_URL, { withCredentials: true, reconnection: true, reconnectionDelay: 1000, transports: ['polling', 'websocket'] })
     socketRef.current = socket
 
     const joinRooms = () => {
@@ -244,7 +245,9 @@ export default function ProjectMessagesPage() {
         content: contentToSend,
         fileUrl,
         fileName,
-        authorId: session.user.id
+        authorId: session.user.id,
+        authorName: session.user.name ?? undefined,
+        authorEmail: session.user.email ?? undefined,
       })
     } else if (mode === 'direct' && directTargetId) {
       sendDirect.mutate({ 
@@ -253,7 +256,9 @@ export default function ProjectMessagesPage() {
         content: contentToSend,
         fileUrl,
         fileName,
-        senderId: session.user.id
+        senderId: session.user.id,
+        senderName: session.user.name ?? undefined,
+        senderEmail: session.user.email ?? undefined,
       })
     }
   }

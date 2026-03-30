@@ -2,58 +2,23 @@ import 'dotenv/config'
 import app from './app.js'
 import fastifyStatic from '@fastify/static'
 import path from 'path'
-import { createServer } from 'http'
 import { Server } from 'socket.io'
 import { startNotificationCron } from './jobs/notificationCron.js'
 import { setIO, directRoom } from './lib/socketManager.js'
 
 const PORT = Number(process.env.PORT) || 3000
 
-const httpServer = createServer(app.server)
-
-const io = new Server(httpServer, {
-  cors: {
-    origin: ['http://localhost:5173', 'http://localhost:5174'],
-    credentials: true,
-  },
-})
-
-setIO(io)
-
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id)
-
-  socket.on('join:project', (projectId: string) => {
-    socket.join(projectId)
-  })
-
-  socket.on('join:direct', (payload: { projectId: string; userId: string; otherUserId: string }) => {
-    const room = directRoom(payload.projectId, payload.userId, payload.otherUserId)
-    socket.join(room)
-  })
-
-  socket.on('typing:project', (payload: { projectId: string; userId: string; name: string; isTyping: boolean }) => {
-    socket.to(payload.projectId).emit('typing:project', payload)
-  })
-
-  socket.on('typing:direct', (payload: { projectId: string; userId: string; otherUserId: string; name: string; isTyping: boolean }) => {
-    const room = directRoom(payload.projectId, payload.userId, payload.otherUserId)
-    socket.to(room).emit('typing:direct', payload)
-  })
-
-  socket.on('read:project', (payload: { projectId: string; userId: string }) => {
-    socket.to(payload.projectId).emit('read:project', payload)
-  })
-
-  socket.on('read:direct', (payload: { projectId: string; userId: string; otherUserId: string }) => {
-    const room = directRoom(payload.projectId, payload.userId, payload.otherUserId)
-    socket.to(room).emit('read:direct', payload)
-  })
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id)
-  })
-})
+const ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'https://task-manager-mauve-eta.vercel.app',
+]
+const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '')
+if (FRONTEND_URL && !ALLOWED_ORIGINS.includes(FRONTEND_URL)) {
+  ALLOWED_ORIGINS.push(FRONTEND_URL)
+}
 
 const start = async () => {
   try {
@@ -63,10 +28,56 @@ const start = async () => {
     })
 
     await app.listen({ port: PORT, host: '0.0.0.0' })
-    httpServer.listen(3001)
+
+    // Attach Socket.io to Fastify's underlying HTTP server (same port)
+    const io = new Server(app.server, {
+      cors: {
+        origin: ALLOWED_ORIGINS,
+        credentials: true,
+      },
+      // Allow polling + websocket transports
+      transports: ['polling', 'websocket'],
+    })
+
+    setIO(io)
+
+    io.on('connection', (socket) => {
+      console.log('Client connected:', socket.id)
+
+      socket.on('join:project', (projectId: string) => {
+        socket.join(projectId)
+      })
+
+      socket.on('join:direct', (payload: { projectId: string; userId: string; otherUserId: string }) => {
+        const room = directRoom(payload.projectId, payload.userId, payload.otherUserId)
+        socket.join(room)
+      })
+
+      socket.on('typing:project', (payload: { projectId: string; userId: string; name: string; isTyping: boolean }) => {
+        socket.to(payload.projectId).emit('typing:project', payload)
+      })
+
+      socket.on('typing:direct', (payload: { projectId: string; userId: string; otherUserId: string; name: string; isTyping: boolean }) => {
+        const room = directRoom(payload.projectId, payload.userId, payload.otherUserId)
+        socket.to(room).emit('typing:direct', payload)
+      })
+
+      socket.on('read:project', (payload: { projectId: string; userId: string }) => {
+        socket.to(payload.projectId).emit('read:project', payload)
+      })
+
+      socket.on('read:direct', (payload: { projectId: string; userId: string; otherUserId: string }) => {
+        const room = directRoom(payload.projectId, payload.userId, payload.otherUserId)
+        socket.to(room).emit('read:direct', payload)
+      })
+
+      socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id)
+      })
+    })
+
     startNotificationCron()
-    console.log(`REST API running on http://localhost:${PORT}`)
-    console.log(`Socket.io running on http://localhost:3001`)
+    console.log(`REST API + Socket.io running on http://localhost:${PORT}`)
   } catch (err) {
     app.log.error(err)
     process.exit(1)
