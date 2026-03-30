@@ -67,9 +67,8 @@ export async function projectDirectMessageRoutes(app) {
             href: `/projects/${projectId}/messages?mode=direct&user=${encodeURIComponent(req.authUser.id)}`,
             data: { projectId, fromUserId: req.authUser.id },
         });
-        // Emit real-time event to the direct message room
         const room = directRoom(projectId, req.authUser.id, otherUserId);
-        getIO().to(room).emit('message:direct', { projectId, senderId: req.authUser.id, recipientId: otherUserId });
+        getIO().to(room).emit('message:direct', created);
         return created;
     });
 }

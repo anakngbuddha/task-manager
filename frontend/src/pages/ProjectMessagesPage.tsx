@@ -144,13 +144,28 @@ export default function ProjectMessagesPage() {
       })
     })
 
-    socket.on('message:project', () => {
-      queryClient.invalidateQueries({ queryKey: ['project-messages', projectId] })
+    socket.on('message:project', (msg: any) => {
+      if (msg?.id && msg?.authorId !== session?.user?.id) {
+        queryClient.setQueryData(['project-messages', projectId], (old: any[] | undefined) => {
+          if (!old) return [msg]
+          if (old.some((m: any) => m.id === msg.id)) return old
+          return [...old, msg]
+        })
+      }
     })
 
-    socket.on('message:direct', (payload: { projectId: string; senderId: string; recipientId: string }) => {
-      queryClient.invalidateQueries({ queryKey: ['project-direct-messages', payload.projectId, payload.senderId] })
-      queryClient.invalidateQueries({ queryKey: ['project-direct-messages', payload.projectId, payload.recipientId] })
+    socket.on('message:direct', (msg: any) => {
+      if (msg?.id && msg?.senderId !== session?.user?.id) {
+        const otherUserId = msg.senderId
+        queryClient.setQueryData(
+          ['project-direct-messages', msg.projectId, otherUserId],
+          (old: any[] | undefined) => {
+            if (!old) return [msg]
+            if (old.some((m: any) => m.id === msg.id)) return old
+            return [...old, msg]
+          }
+        )
+      }
     })
 
     socket.connect()

@@ -116,8 +116,7 @@ export async function projectMessageRoutes(app: FastifyInstance) {
       }
     }
 
-    // Emit real-time event to all clients in the project room
-    getIO().to(projectId).emit('message:project', { projectId, messageId: created.id })
+    getIO().to(projectId).emit('message:project', created)
 
     return created
   })
