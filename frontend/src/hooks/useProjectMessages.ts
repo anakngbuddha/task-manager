@@ -18,12 +18,35 @@ export function useProjectMessages(projectId: string | undefined) {
 export function useSendProjectMessage() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { projectId: string; content: string }) => {
-      const { projectId, ...body } = payload
+    mutationFn: async (payload: { projectId: string; content: string; fileUrl?: string; fileName?: string; optimisticId?: string; authorId?: string }) => {
+      const { projectId, optimisticId, authorId, ...body } = payload
       const { data } = await api.post(`/projects/${projectId}/messages`, body)
       return data
     },
-    onSuccess: (_data, vars) => {
+    onMutate: async (newMsg) => {
+      await queryClient.cancelQueries({ queryKey: ['project-messages', newMsg.projectId] })
+      const previous = queryClient.getQueryData(['project-messages', newMsg.projectId])
+      
+      queryClient.setQueryData(['project-messages', newMsg.projectId], (old: any) => {
+        return [...(old || []), {
+          id: newMsg.optimisticId || `temp-${Date.now()}`,
+          projectId: newMsg.projectId,
+          authorId: newMsg.authorId || '',
+          content: newMsg.content,
+          fileUrl: newMsg.fileUrl,
+          fileName: newMsg.fileName,
+          createdAt: new Date().toISOString(),
+        }]
+      })
+      
+      return { previous }
+    },
+    onError: (_err, newMsg, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['project-messages', newMsg.projectId], context.previous)
+      }
+    },
+    onSettled: (_data, _err, vars) => {
       queryClient.invalidateQueries({ queryKey: ['project-messages', vars.projectId] })
     },
   })

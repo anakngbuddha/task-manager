@@ -26,8 +26,12 @@ export const notificationService = {
         });
     },
     async markRead(userId, id) {
+        const notification = await prisma.notification.findUnique({ where: { id } });
+        if (!notification || notification.userId !== userId) {
+            throw new Error('NOT_FOUND');
+        }
         return prisma.notification.update({
-            where: { id, userId },
+            where: { id },
             data: { readAt: new Date() },
         });
     },

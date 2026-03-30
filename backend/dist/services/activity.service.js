@@ -24,7 +24,7 @@ export const activityService = {
             where: { projectId: { in: projectIds } },
             include: {
                 project: true,
-                actor: { select: { id: true, name: true, email: true } },
+                actor: { select: { id: true, name: true, email: true, avatar: true } },
             },
             orderBy: { createdAt: 'desc' },
             take: opts?.take ?? 50,
@@ -35,7 +35,7 @@ export const activityService = {
             where: { projectId },
             include: {
                 project: true,
-                actor: { select: { id: true, name: true, email: true } },
+                actor: { select: { id: true, name: true, email: true, avatar: true } },
             },
             orderBy: { createdAt: 'desc' },
             take: opts?.take ?? 50,
@@ -84,8 +84,8 @@ export const activityService = {
         DATE(a.createdAt) as day,
         COUNT(*) as count
       FROM ActivityEvent a
-      INNER JOIN ProjectMember pm ON pm.projectId = a.projectId
-      WHERE pm.userId = ${userId}
+      INNER JOIN ProjectMember pm ON pm.projectId = a.projectId AND pm.userId = ${userId}
+      WHERE a.actorId = ${userId}
         AND a.createdAt >= DATE_SUB(CURDATE(), INTERVAL ${safeDays} DAY)
       GROUP BY DATE(a.createdAt)
     `;

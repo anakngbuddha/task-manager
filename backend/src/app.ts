@@ -18,6 +18,8 @@ import { userRoutes } from './routes/users.js'
 import { githubRoutes } from './routes/github.js'
 import { githubWebhookRoutes } from './routes/webhooks/github.js'
 import { scheduleRoutes } from './routes/schedules.js'
+import { uploadRoutes } from './routes/upload.js'
+import multipart from '@fastify/multipart'
 import 'dotenv/config'
 
 if (!process.env.JWT_SECRET) {
@@ -25,6 +27,8 @@ if (!process.env.JWT_SECRET) {
 }
 
 const app = Fastify({ logger: true, trustProxy: true })
+
+await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
@@ -92,6 +96,7 @@ app.register(userRoutes, { prefix: '/api' })
 app.register(githubRoutes, { prefix: '/api' })
 app.register(githubWebhookRoutes, { prefix: '/api' })
 app.register(scheduleRoutes, { prefix: '/api' })
+app.register(uploadRoutes, { prefix: '/api' })
 
 
 app.get('/health', async () => {

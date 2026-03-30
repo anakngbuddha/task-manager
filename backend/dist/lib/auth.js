@@ -18,6 +18,8 @@ export const auth = betterAuth({
     trustedOrigins: [
         'http://localhost:5173',
         'http://localhost:5174',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:5174',
         'https://task-manager-mauve-eta.vercel.app',
         ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.replace(/\/$/, '')] : []),
     ],
@@ -25,11 +27,13 @@ export const auth = betterAuth({
         crossSubdomainCookies: {
             enabled: false,
         },
+        // Production uses cross-site HTTPS cookies; local dev is HTTP + different port — Secure/SameSite=None
+        // cookies are often dropped by the browser, so session never sticks and users bounce back to /login.
         defaultCookieAttributes: {
-            secure: true,
+            secure: isProd,
             httpOnly: true,
-            sameSite: 'none',
-            partitioned: false,
+            sameSite: isProd ? 'none' : 'lax',
+            ...(isProd ? { partitioned: true } : {}),
         },
     },
 });

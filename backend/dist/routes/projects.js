@@ -22,6 +22,14 @@ export async function projectRoutes(app) {
     }, async (req) => {
         return projectService.getDashboardForUser(req.authUser.id);
     });
+    app.get('/projects/pending-deadlines', {
+        preHandler: authenticate,
+    }, async (req) => {
+        const query = req.query;
+        const daysAhead = Math.min(Math.max(Number(query.daysAhead) || 14, 1), 90);
+        const limit = Math.min(Math.max(Number(query.limit) || 10, 1), 200);
+        return projectService.getPendingDeadlines(req.authUser.id, daysAhead, limit);
+    });
     // GET /api/projects/:projectId/dashboard-layout
     app.get('/projects/:projectId/dashboard-layout', { preHandler: authenticate }, async (req, reply) => {
         const { projectId } = req.params;
@@ -66,6 +74,12 @@ export async function projectRoutes(app) {
         preHandler: authenticate,
     }, async (req, reply) => {
         const { id } = req.params;
+        try {
+            await requireProjectRole(id, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         const project = await projectService.getById(id);
         if (!project)
             return reply.status(404).send({ error: 'Project not found' });
@@ -81,11 +95,18 @@ export async function projectRoutes(app) {
     const updateProjectSchema = z.object({
         name: z.string().min(1).max(100).optional(),
         status: z.enum(['ACTIVE', 'COMPLETED']).optional(),
+        boardColumns: z.array(z.string()).optional(),
     });
     app.patch('/projects/:id', {
         preHandler: authenticate,
     }, async (req, reply) => {
         const { id } = req.params;
+        try {
+            await requireProjectRole(id, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         const data = updateProjectSchema.parse(req.body);
         return projectService.update(id, data);
     });
@@ -93,6 +114,12 @@ export async function projectRoutes(app) {
         preHandler: authenticate,
     }, async (req, reply) => {
         const { id } = req.params;
+        try {
+            await requireProjectRole(id, req.authUser.id, ['MASTER_ADMIN']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         await projectService.delete(id);
         return reply.status(204).send();
     });

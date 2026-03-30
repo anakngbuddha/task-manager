@@ -1,7 +1,12 @@
 import 'dotenv/config';
 import app from './app.js';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import path from 'path';
+import { uploadRoutes } from './routes/upload.js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { startNotificationCron } from './jobs/notificationCron.js';
 const PORT = Number(process.env.PORT) || 3000;
 const httpServer = createServer(app.server);
 const io = new Server(httpServer, {
@@ -43,8 +48,15 @@ io.on('connection', (socket) => {
 });
 const start = async () => {
     try {
+        app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
+        app.register(fastifyStatic, {
+            root: path.join(process.cwd(), 'uploads'),
+            prefix: '/uploads/',
+        });
+        app.register(uploadRoutes);
         await app.listen({ port: PORT, host: '0.0.0.0' });
         httpServer.listen(3001);
+        startNotificationCron();
         console.log(`REST API running on http://localhost:${PORT}`);
         console.log(`Socket.io running on http://localhost:3001`);
     }

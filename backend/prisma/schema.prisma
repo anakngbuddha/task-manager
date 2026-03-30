@@ -114,6 +114,7 @@ model Task {
   parentId              String?
   startDate             DateTime?
   deadline              DateTime?
+  completedAt           DateTime?
   githubPrUrl           String?
   deadlineReminderSent  Boolean    @default(false)
   createdAt             DateTime   @default(now())
@@ -193,6 +194,8 @@ model ProjectMessage {
   projectId String
   authorId  String
   content   String
+  fileUrl   String?
+  fileName  String?
   createdAt DateTime @default(now())
 
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -207,6 +210,8 @@ model ProjectDirectMessage {
   senderId    String
   recipientId String
   content     String
+  fileUrl     String?
+  fileName    String?
   createdAt   DateTime @default(now())
 
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -279,19 +284,22 @@ model DirectChatReadState {
 }
 
 model Sprint {
-  id        String       @id @default(cuid())
-  projectId String
-  name      String
-  goal      String?      @db.Text
-  startDate DateTime
-  endDate   DateTime
-  status    SprintStatus @default(PLANNING)
-  createdAt DateTime     @default(now())
+  id          String       @id @default(cuid())
+  projectId   String
+  name        String
+  goal        String?      @db.Text
+  startDate   DateTime?
+  endDate     DateTime?
+  status      SprintStatus @default(PLANNING)
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks   Task[]
 
-  @@index([projectId, startDate])
+  @@index([projectId])
+  @@index([projectId, status])
 }
 
 enum SprintStatus {

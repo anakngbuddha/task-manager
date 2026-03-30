@@ -1,6 +1,8 @@
 import { prisma } from '../lib/prisma.js'
 import { Priority } from '@prisma/client'
 
+const DONE_STATUSES = ['DONE', 'READY']
+
 export const taskService = {
   async getAll(projectId: string) {
     return prisma.task.findMany({
@@ -38,8 +40,9 @@ export const taskService = {
     startDate?: Date | null
     deadline?: Date | null
   }) {
+    const completedAt = data.status && DONE_STATUSES.includes(data.status) ? new Date() : null
     return prisma.task.create({
-      data,
+      data: { ...data, completedAt },
       include: { assignee: true, subtasks: true },
     })
   },
@@ -54,6 +57,20 @@ export const taskService = {
     startDate?: Date | null
     deadline?: Date | null
   }) {
+    if (data.status !== undefined) {
+      const existing = await prisma.task.findUnique({ where: { id }, select: { status: true } })
+      if (existing) {
+        const wasDone = DONE_STATUSES.includes(existing.status)
+        const isDone = DONE_STATUSES.includes(data.status)
+
+        if (isDone && !wasDone) {
+          ;(data as any).completedAt = new Date()
+        } else if (!isDone && wasDone) {
+          ;(data as any).completedAt = null
+        }
+      }
+    }
+
     return prisma.task.update({
       where: { id },
       data,

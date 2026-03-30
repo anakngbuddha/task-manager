@@ -1,29 +1,45 @@
 import { prisma } from '../lib/prisma.js'
 import { SprintStatus } from '@prisma/client'
+
+const DONE_STATUSES = ['DONE', 'READY']
+
+const sprintTaskSelect = {
+  id: true,
+  title: true,
+  status: true,
+  priority: true,
+  assigneeId: true,
+  completedAt: true,
+  assignee: { select: { id: true, name: true, email: true } },
+}
+
 export const sprintService = {
   async list(projectId: string) {
     return prisma.sprint.findMany({
       where: { projectId },
       include: {
-        tasks: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            priority: true,
-            assigneeId: true,
-            assignee: { select: { id: true, name: true, email: true } },
-          },
-        },
+        tasks: { select: sprintTaskSelect },
+        _count: { select: { tasks: true } },
       },
-      orderBy: { startDate: 'asc' },
+      orderBy: { createdAt: 'desc' },
     })
   },
 
   async getById(id: string) {
     return prisma.sprint.findUnique({
       where: { id },
-      include: { tasks: true },
+      include: {
+        tasks: { select: sprintTaskSelect },
+      },
+    })
+  },
+
+  async getActiveSprint(projectId: string) {
+    return prisma.sprint.findFirst({
+      where: { projectId, status: 'ACTIVE' },
+      include: {
+        tasks: { select: sprintTaskSelect },
+      },
     })
   },
 
@@ -31,11 +47,18 @@ export const sprintService = {
     projectId: string
     name: string
     goal?: string
-    startDate: Date
-    endDate: Date
-    status?: SprintStatus
+    startDate?: Date
+    endDate?: Date
   }) {
-    return prisma.sprint.create({ data, include: { tasks: true } })
+    return prisma.sprint.create({
+      data: {
+        ...data,
+        status: 'PLANNING',
+      },
+      include: {
+        tasks: { select: sprintTaskSelect },
+      },
+    })
   },
 
   async update(
@@ -45,34 +68,149 @@ export const sprintService = {
       goal?: string | null
       startDate?: Date
       endDate?: Date
-      status?: SprintStatus
     }
   ) {
+    const sprint = await prisma.sprint.findUnique({ where: { id } })
+    if (!sprint) throw new Error('Sprint not found')
+
+    if (sprint.status !== 'PLANNING') {
+      throw new Error('Can only edit sprint details while in PLANNING status')
+    }
+
     return prisma.sprint.update({
       where: { id },
       data,
-      include: { tasks: true },
+      include: {
+        tasks: { select: sprintTaskSelect },
+      },
     })
   },
 
+  async startSprint(sprintId: string, data: { startDate: Date; endDate: Date }) {
+    const sprint = await prisma.sprint.findUnique({ where: { id: sprintId } })
+    if (!sprint) throw new Error('Sprint not found')
+
+    if (sprint.status !== 'PLANNING') {
+      throw new Error('Only sprints in PLANNING status can be started')
+    }
+
+    if (data.endDate <= data.startDate) {
+      throw new Error('End date must be after start date')
+    }
+
+    const activeSprint = await prisma.sprint.findFirst({
+      where: { projectId: sprint.projectId, status: 'ACTIVE' },
+    })
+    if (activeSprint) {
+      throw new Error(`Another sprint "${activeSprint.name}" is already active. Complete it first.`)
+    }
+
+    return prisma.sprint.update({
+      where: { id: sprintId },
+      data: {
+        status: 'ACTIVE',
+        startDate: data.startDate,
+        endDate: data.endDate,
+      },
+      include: {
+        tasks: { select: sprintTaskSelect },
+      },
+    })
+  },
+
+  async completeSprint(
+    sprintId: string,
+    moveIncompleteTasksTo: 'BACKLOG' | string
+  ) {
+    const sprint = await prisma.sprint.findUnique({
+      where: { id: sprintId },
+      include: { tasks: true },
+    })
+    if (!sprint) throw new Error('Sprint not found')
+
+    if (sprint.status !== 'ACTIVE') {
+      throw new Error('Only ACTIVE sprints can be completed')
+    }
+
+    const notReadyTasks = sprint.tasks.filter((t) => t.status !== 'READY')
+    if (notReadyTasks.length > 0) {
+      throw new Error('Cannot complete sprint until all tasks are in READY status')
+    }
+
+    const incompleteTasks: typeof sprint.tasks = []
+    const completedTasks = sprint.tasks
+
+    let targetSprintId: string | null = null
+    if (moveIncompleteTasksTo !== 'BACKLOG') {
+      const targetSprint = await prisma.sprint.findUnique({
+        where: { id: moveIncompleteTasksTo },
+      })
+      if (!targetSprint || targetSprint.projectId !== sprint.projectId) {
+        throw new Error('Target sprint not found in this project')
+      }
+      if (targetSprint.status === 'COMPLETED') {
+        throw new Error('Cannot move tasks to a completed sprint')
+      }
+      targetSprintId = targetSprint.id
+    }
+
+    await prisma.$transaction([
+      prisma.sprint.update({
+        where: { id: sprintId },
+        data: {
+          status: 'COMPLETED',
+          completedAt: new Date(),
+        },
+      }),
+      ...(incompleteTasks.length > 0
+        ? [
+            prisma.task.updateMany({
+              where: {
+                id: { in: incompleteTasks.map((t) => t.id) },
+              },
+              data: {
+                sprintId: targetSprintId,
+              },
+            }),
+          ]
+        : []),
+    ])
+
+    return {
+      sprint: await prisma.sprint.findUnique({
+        where: { id: sprintId },
+        include: { tasks: { select: sprintTaskSelect } },
+      }),
+      completedTaskCount: completedTasks.length,
+      movedTaskCount: incompleteTasks.length,
+      movedTo: moveIncompleteTasksTo === 'BACKLOG' ? 'backlog' : targetSprintId,
+    }
+  },
+
   async delete(id: string) {
-    // Unlink tasks before deleting (FK is SetNull, Prisma handles it via the relation)
+    const sprint = await prisma.sprint.findUnique({ where: { id } })
+    if (!sprint) throw new Error('Sprint not found')
+
+    if (sprint.status === 'ACTIVE') {
+      throw new Error('Cannot delete an active sprint. Complete it first.')
+    }
+
     return prisma.sprint.delete({ where: { id } })
   },
 
-  /**
-   * Replace the full task list for a sprint.
-   * - Clears sprintId from all tasks currently in this sprint.
-   * - Sets sprintId on the provided task IDs (which must belong to the same project).
-   */
   async assignTasks(sprintId: string, projectId: string, taskIds: string[]) {
+    const sprint = await prisma.sprint.findUnique({ where: { id: sprintId } })
+    if (!sprint) throw new Error('Sprint not found')
+
+    if (sprint.status === 'COMPLETED') {
+      throw new Error('Cannot assign tasks to a completed sprint')
+    }
+
     await prisma.$transaction([
-      // Clear all existing assignments for this sprint
       prisma.task.updateMany({
         where: { sprintId },
         data: { sprintId: null },
       }),
-      // Assign new tasks — only tasks that belong to the same project
       ...(taskIds.length > 0
         ? [
             prisma.task.updateMany({
@@ -86,16 +224,7 @@ export const sprintService = {
     return prisma.sprint.findUnique({
       where: { id: sprintId },
       include: {
-        tasks: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            priority: true,
-            assigneeId: true,
-            assignee: { select: { id: true, name: true, email: true } },
-          },
-        },
+        tasks: { select: sprintTaskSelect },
       },
     })
   },
@@ -110,16 +239,19 @@ export const sprintService = {
         startDate: true,
         endDate: true,
         status: true,
+        completedAt: true,
       },
     })
 
     if (!sprint || sprint.projectId !== projectId) return null
+    if (!sprint.startDate || !sprint.endDate) return null
 
     const tasks = await prisma.task.findMany({
       where: { sprintId },
       select: {
         id: true,
         status: true,
+        completedAt: true,
         updatedAt: true,
       },
     })
@@ -129,30 +261,31 @@ export const sprintService = {
     const startUTC = new Date(sprint.startDate)
     const endUTC = new Date(sprint.endDate)
 
-    const startOfDayUTC = (d: Date) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+    const startOfDayUTC = (d: Date) =>
+      new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
     const dayMs = 24 * 60 * 60 * 1000
 
     const sprintStart = startOfDayUTC(startUTC)
     const sprintEnd = startOfDayUTC(endUTC)
 
-    const days =
-      Math.max(1, Math.floor((sprintEnd.getTime() - sprintStart.getTime()) / dayMs) + 1)
+    const days = Math.max(
+      1,
+      Math.floor((sprintEnd.getTime() - sprintStart.getTime()) / dayMs) + 1
+    )
 
-    // Daily completed task counts within the sprint date range.
-    // Note: tasks completed after sprintEnd are ignored; tasks completed before sprintStart are counted on day 0.
     const completedByDay: number[] = Array.from({ length: days }, () => 0)
 
     for (const t of tasks) {
-      if (t.status !== 'DONE' && t.status !== 'READY') continue
+      if (!DONE_STATUSES.includes(t.status)) continue
 
-      const completedDayUTC = startOfDayUTC(new Date(t.updatedAt))
+      const completionDate = t.completedAt ?? t.updatedAt
+      const completedDayUTC = startOfDayUTC(new Date(completionDate))
       const diffMs = completedDayUTC.getTime() - sprintStart.getTime()
       const idx = Math.floor(diffMs / dayMs)
 
       if (idx < 0) {
         completedByDay[0] += 1
       } else if (idx >= days) {
-        // Completed after sprint end: do not affect sprint burndown points.
         continue
       } else {
         completedByDay[idx] += 1
@@ -160,7 +293,7 @@ export const sprintService = {
     }
 
     const points: Array<{
-      date: string // YYYY-MM-DD
+      date: string
       completedDaily: number
       completedCumulative: number
       total: number

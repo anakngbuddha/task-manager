@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE `task` ADD COLUMN `parentId` VARCHAR(191) NULL;
+
+-- AddForeignKey
+ALTER TABLE `Task` ADD CONSTRAINT `Task_parentId_fkey` FOREIGN KEY (`parentId`) REFERENCES `Task`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;

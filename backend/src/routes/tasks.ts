@@ -243,11 +243,22 @@ export async function taskRoutes(app: FastifyInstance) {
     const existing = await taskService.getById(id)
     if (!existing) return reply.status(404).send({ error: 'Task not found' })
 
+    let effectiveRole: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER' = 'MEMBER'
     try {
-      // Allow any member to edit general fields, but enforce READY transition separately below
-      await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+      effectiveRole = await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
     } catch {
       return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    const wantsToMoveTask = typeof body.status === 'string' || Object.prototype.hasOwnProperty.call(body, 'sprintId')
+    const canManageTaskMovement = effectiveRole === 'MASTER_ADMIN' || effectiveRole === 'PROJECT_MANAGER'
+    if (wantsToMoveTask && !canManageTaskMovement) {
+      return reply.status(403).send({ error: 'Only MASTER_ADMIN or PROJECT_MANAGER can move tasks' })
+    }
+
+    const isLockedStatus = existing.status === 'READY' || existing.status === 'DONE'
+    if (wantsToMoveTask && isLockedStatus && effectiveRole === 'MEMBER') {
+      return reply.status(403).send({ error: 'Members cannot move tasks already in READY or DONE' })
     }
 
     // Enforce that sprintId (if provided) belongs to the same project.
@@ -276,14 +287,6 @@ export async function taskRoutes(app: FastifyInstance) {
     }
 
     const normalizedStatus = typeof body.status === 'string' ? normalizeStatus(body.status) : undefined
-
-    if (normalizedStatus === 'READY') {
-      try {
-        await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN'])
-      } catch {
-        return reply.status(403).send({ error: 'Only MASTER_ADMIN can move tasks to READY' })
-      }
-    }
 
     if (normalizedStatus) {
       if (!(await ensureProjectHasStatus(existing.projectId, normalizedStatus))) {

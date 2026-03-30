@@ -11,9 +11,14 @@ export async function notificationRoutes(app) {
         const unread = await notificationService.unreadCount(req.authUser.id);
         return { items, unread };
     });
-    app.post('/notifications/:id/read', { preHandler: authenticate }, async (req) => {
+    app.post('/notifications/:id/read', { preHandler: authenticate }, async (req, reply) => {
         const { id } = req.params;
-        await notificationService.markRead(req.authUser.id, id);
+        try {
+            await notificationService.markRead(req.authUser.id, id);
+        }
+        catch {
+            return reply.status(404).send({ error: 'Notification not found' });
+        }
         return { ok: true };
     });
     app.post('/notifications/read-all', { preHandler: authenticate }, async (req) => {

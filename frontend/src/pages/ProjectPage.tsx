@@ -12,17 +12,20 @@ import TaskCard from '@/components/board/TaskCard'
 import TaskDialog from '@/components/board/TaskDialog'
 import CreateTaskDialog from '@/components/board/CreateTaskDialog'
 import CreateSprintDialog from '@/components/board/CreateSprintDialog'
+import StartSprintDialog from '@/components/board/StartSprintDialog'
+import CompleteSprintDialog from '@/components/board/CompleteSprintDialog'
 import InviteMembersDialog from '@/components/board/InviteMembersDialog'
 import { useTasks, useUpdateTask, useCreateTask } from '@/hooks/useTasks'
 import { useProject, useUpdateProject } from '@/hooks/useProject'
 import { useProjectMembers } from '@/hooks/useProjectMembers'
-import { useCreateSprint, useSprints } from '@/hooks/useSprints'
+import { useCreateSprint, useSprints, useStartSprint, useCompleteSprint } from '@/hooks/useSprints'
+import type { Sprint } from '@/hooks/useSprints'
 import { useProjectTimeReport } from '@/hooks/useTimeLogs'
 import { useSession } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MessageCircle, MoreHorizontal } from 'lucide-react'
+import { MessageCircle, MoreHorizontal, Play, CheckCircle2 } from 'lucide-react'
 import { useCreateInvite } from '@/hooks/useInvites'
 import {
   DropdownMenu,
@@ -53,6 +56,8 @@ export default function ProjectPage() {
   const updateTask = useUpdateTask()
   const createTask = useCreateTask()
   const createSprint = useCreateSprint(projectId!)
+  const startSprint = useStartSprint(projectId!)
+  const completeSprint = useCompleteSprint(projectId!)
   const createInvite = useCreateInvite(projectId!)
   const updateProject = useUpdateProject()
 
@@ -64,8 +69,10 @@ export default function ProjectPage() {
   const dragStartRef = useRef<{ id: string; status: string } | null>(null)
   const [chatOpen, setChatOpen] = useState(false)
 
-  const [selectedSprintId, setSelectedSprintId] = useState<string>('ALL')
+  const [selectedSprintId, setSelectedSprintId] = useState<string>('')
   const [createSprintOpen, setCreateSprintOpen] = useState(false)
+  const [startSprintOpen, setStartSprintOpen] = useState(false)
+  const [completeSprintOpen, setCompleteSprintOpen] = useState(false)
   const [boardView, setBoardView] = useState<'SPRINT' | 'BACKLOG'>('SPRINT')
 
   const sensors = useSensors(useSensor(PointerSensor, {
@@ -116,15 +123,39 @@ export default function ProjectPage() {
     }
   }, [searchParams, tasksById, selectedTask])
 
+  const activeSprint = useMemo(
+    () => (sprints as Sprint[]).find((s) => s.status === 'ACTIVE') ?? null,
+    [sprints]
+  )
+
+  const currentSprint = useMemo(() => {
+    if (!selectedSprintId) return activeSprint
+    return (sprints as Sprint[]).find((s) => s.id === selectedSprintId) ?? null
+  }, [selectedSprintId, sprints, activeSprint])
+
+  useEffect(() => {
+    const allSprints = sprints as Sprint[]
+    if (allSprints.length === 0) {
+      if (selectedSprintId !== '') setSelectedSprintId('')
+      return
+    }
+
+    const exists = allSprints.some((s) => s.id === selectedSprintId)
+    if (exists) return
+
+    const fallbackSprintId = activeSprint?.id ?? allSprints[0]?.id ?? ''
+    if (fallbackSprintId !== selectedSprintId) {
+      setSelectedSprintId(fallbackSprintId)
+    }
+  }, [sprints, activeSprint, selectedSprintId])
+
   const displayedTasks = useMemo(() => {
     if (boardView === 'BACKLOG') {
       return localTasks.filter((t: any) => !t.sprintId)
     }
-    const activeSprint = sprints.find((s: any) => s.status === 'ACTIVE' || s.status === 'PLANNING')
-    const sid = selectedSprintId === 'ALL' ? activeSprint?.id : selectedSprintId
-    if (!sid || sid === 'NONE') return []
-    return localTasks.filter((t: any) => String(t.sprintId) === String(sid))
-  }, [localTasks, selectedSprintId, boardView, sprints])
+    if (!currentSprint) return []
+    return localTasks.filter((t: any) => String(t.sprintId) === String(currentSprint.id))
+  }, [localTasks, currentSprint, boardView])
 
   const projectColumns = project?.boardColumns || COLUMNS
   const firstProjectColumn = projectColumns[0] ?? 'TODO'
@@ -143,6 +174,7 @@ export default function ProjectPage() {
   }
 
   const handleDragOver = (e: DragOverEvent) => {
+    if (!canMoveTasks) return
     const { active, over } = e
     if (!over) return
 
@@ -157,7 +189,6 @@ export default function ProjectPage() {
       : tasksById.get(overId)?.status
 
     if (!newStatus || newStatus === activeTask.status) return
-    if (newStatus === 'READY' && !canMoveToReady) return
 
     setLocalTasks((prev) =>
       prev.map((t) => (String(t.id) === activeId ? { ...t, status: newStatus } : t))
@@ -165,6 +196,10 @@ export default function ProjectPage() {
   }
 
   const handleDragEnd = async (e: DragEndEvent) => {
+    if (!canMoveTasks) {
+      setActiveTask(null)
+      return
+    }
     setActiveTask(null)
     const { active, over } = e
     if (!over) return
@@ -181,7 +216,6 @@ export default function ProjectPage() {
 
     const previousStatus = started?.id === String(task.id) ? started.status : task.status
     if (newStatus === previousStatus) return
-    if (newStatus === 'READY' && !canMoveToReady) return
 
     setLocalTasks((prev) =>
       prev.map((t) => (String(t.id) === String(task.id) ? { ...t, status: newStatus } : t))
@@ -200,31 +234,31 @@ export default function ProjectPage() {
     ?? (members ?? []).find((m: any) => m.userId === myId)?.role
   const canManageRoles = effectiveMyRole === 'MASTER_ADMIN' || effectiveMyRole === 'PROJECT_MANAGER'
   const canCreateTask = canManageRoles
-  const canMoveToReady = effectiveMyRole === 'MASTER_ADMIN'
-
-  const selectedSprint = useMemo(() => {
-    if (selectedSprintId === 'ALL' || selectedSprintId === 'NONE') return null
-    return (sprints as any[]).find((s) => String(s.id) === String(selectedSprintId)) ?? null
-  }, [sprints, selectedSprintId])
+  const canMoveTasks = canManageRoles
 
   const sprintRangeText = useMemo(() => {
-    if (!selectedSprint) return null
-    const start = selectedSprint.startDate ?? selectedSprint.start ?? selectedSprint.startsAt
-    const end = selectedSprint.endDate ?? selectedSprint.end ?? selectedSprint.endsAt
-    if (!start || !end) return selectedSprint.name
-    const fmt = (v: any) =>
+    if (!currentSprint) return null
+    const start = currentSprint.startDate
+    const end = currentSprint.endDate
+    if (!start || !end) return currentSprint.name
+    const fmt = (v: string) =>
       new Date(v).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    return `${selectedSprint.name} · ${fmt(start)} – ${fmt(end)}`
-  }, [selectedSprint])
+    return `${currentSprint.name} · ${fmt(start)} – ${fmt(end)}`
+  }, [currentSprint])
 
   const sprintStatusDotClass = useMemo(() => {
-    if (!selectedSprint) return null
-    const status = String(selectedSprint.status ?? '').toUpperCase()
-    if (status === 'ACTIVE') return 'bg-emerald-500'
-    if (status === 'PLANNING') return 'bg-amber-500'
-    if (status === 'COMPLETED') return 'bg-muted-foreground/50'
+    if (!currentSprint) return null
+    if (currentSprint.status === 'ACTIVE') return 'bg-emerald-500'
+    if (currentSprint.status === 'PLANNING') return 'bg-amber-500'
+    if (currentSprint.status === 'COMPLETED') return 'bg-muted-foreground/50'
     return 'bg-muted-foreground/50'
-  }, [selectedSprint])
+  }, [currentSprint])
+
+  const sprintForStart = useMemo(() => {
+    if (!currentSprint) return null
+    if (currentSprint.status !== 'PLANNING') return null
+    return currentSprint
+  }, [currentSprint])
 
   return (
     <div className="flex h-screen">
@@ -266,7 +300,7 @@ export default function ProjectPage() {
                   }
                 }}
                 defaultStatus={firstProjectColumn}
-                defaultSprintId={selectedSprintId === 'ALL' ? 'NONE' : selectedSprintId}
+                defaultSprintId={currentSprint?.id ?? 'NONE'}
               />
 
               <CreateSprintDialog
@@ -347,7 +381,7 @@ export default function ProjectPage() {
             {isLoading ? (
               <div className="px-6 py-7 sm:px-8">
                 <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
-                  Loading tasks…
+                  Loading tasks...
                 </div>
               </div>
             ) : (
@@ -368,17 +402,18 @@ export default function ProjectPage() {
                     <div className="flex items-center justify-between">
                       {boardView === 'SPRINT' ? (
                         <div className="flex items-center gap-2">
-                          <p className="text-xs font-medium text-muted-foreground">Sprint Filter</p>
+                          <p className="text-xs font-medium text-muted-foreground">Sprint</p>
                           <Select value={selectedSprintId} onValueChange={setSelectedSprintId}>
                             <SelectTrigger className="h-9 w-[16rem] rounded-none">
-                              <SelectValue placeholder="All active sprints" />
+                              <SelectValue placeholder="Select sprint" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="ALL">Current Active Sprint</SelectItem>
-                              <SelectItem value="NONE">No sprint</SelectItem>
-                              {(sprints as any[]).map((s) => (
+                              {(sprints as Sprint[]).map((s) => (
                                 <SelectItem key={s.id} value={s.id}>
                                   {s.name}
+                                  {s.status === 'ACTIVE' && ' (active)'}
+                                  {s.status === 'PLANNING' && ' (planning)'}
+                                  {s.status === 'COMPLETED' && ' (completed)'}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -389,6 +424,30 @@ export default function ProjectPage() {
                               <span>{sprintRangeText}</span>
                             </span>
                           )}
+
+                          {canManageRoles && sprintForStart && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 ml-2 border-blue-500/30 text-blue-600 hover:bg-blue-50"
+                              onClick={() => setStartSprintOpen(true)}
+                            >
+                              <Play className="size-3.5" />
+                              Start Sprint
+                            </Button>
+                          )}
+
+                          {canManageRoles && currentSprint?.status === 'ACTIVE' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 gap-1.5 ml-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50"
+                              onClick={() => setCompleteSprintOpen(true)}
+                            >
+                              <CheckCircle2 className="size-3.5" />
+                              Complete Sprint
+                            </Button>
+                          )}
                         </div>
                       ) : (
                          <div className="text-sm text-muted-foreground flex items-center h-9">
@@ -396,9 +455,14 @@ export default function ProjectPage() {
                          </div>
                       )}
                       
-                      {selectedSprintId !== 'ALL' && boardView === 'SPRINT' && (
+                      {boardView === 'SPRINT' && currentSprint && (
                         <p className="text-xs text-muted-foreground">
                           Showing {displayedTasks.length} task{displayedTasks.length === 1 ? '' : 's'}
+                        </p>
+                      )}
+                      {boardView === 'SPRINT' && !currentSprint && !activeSprint && (
+                        <p className="text-xs text-muted-foreground">
+                          No active sprint. Create and start a sprint to begin.
                         </p>
                       )}
                     </div>
@@ -469,6 +533,37 @@ export default function ProjectPage() {
                 return prev
               })
             }
+          }}
+        />
+      )}
+
+      {sprintForStart && (
+        <StartSprintDialog
+          open={startSprintOpen}
+          onOpenChange={setStartSprintOpen}
+          sprint={sprintForStart}
+          isPending={startSprint.isPending}
+          onSubmit={async (data) => {
+            await startSprint.mutateAsync({
+              sprintId: sprintForStart.id,
+              ...data,
+            })
+          }}
+        />
+      )}
+
+      {currentSprint && currentSprint.status === 'ACTIVE' && (
+        <CompleteSprintDialog
+          open={completeSprintOpen}
+          onOpenChange={setCompleteSprintOpen}
+          sprint={currentSprint}
+          allSprints={sprints as Sprint[]}
+          isPending={completeSprint.isPending}
+          onSubmit={async (data) => {
+            await completeSprint.mutateAsync({
+              sprintId: currentSprint.id,
+              ...data,
+            })
           }}
         />
       )}

@@ -36,10 +36,10 @@ export const projectDirectMessageService = {
     })
   },
 
-  async create(params: { projectId: string; senderId: string; recipientId: string; content: string }) {
-    const { projectId, senderId, recipientId, content } = params
+  async create(params: { projectId: string; senderId: string; recipientId: string; content: string; fileUrl?: string; fileName?: string }) {
+    const { projectId, senderId, recipientId, content, fileUrl, fileName } = params
     return prisma.projectDirectMessage.create({
-      data: { projectId, senderId, recipientId, content },
+      data: { projectId, senderId, recipientId, content, fileUrl, fileName },
     })
   },
 }

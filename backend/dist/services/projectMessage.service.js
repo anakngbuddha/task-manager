@@ -8,9 +8,9 @@ export const projectMessageService = {
         });
     },
     async create(params) {
-        const { projectId, authorId, content } = params;
+        const { projectId, authorId, content, fileUrl, fileName } = params;
         return prisma.projectMessage.create({
-            data: { projectId, authorId, content },
+            data: { projectId, authorId, content, fileUrl, fileName },
             include: { author: true },
         });
     },

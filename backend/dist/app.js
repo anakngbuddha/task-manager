@@ -15,11 +15,19 @@ import { readReceiptRoutes } from './routes/readReceipts.js';
 import { sprintRoutes } from './routes/sprints.js';
 import { timeLogRoutes } from './routes/timeLogs.js';
 import { userRoutes } from './routes/users.js';
+import { githubRoutes } from './routes/github.js';
+import { githubWebhookRoutes } from './routes/webhooks/github.js';
+import { scheduleRoutes } from './routes/schedules.js';
 import 'dotenv/config';
+if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is required');
+}
 const app = Fastify({ logger: true, trustProxy: true });
 const ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
     'https://task-manager-mauve-eta.vercel.app',
 ];
 const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '');
@@ -56,10 +64,7 @@ app.addHook('onRequest', async (req, reply) => {
     if (req.url.startsWith('/api/auth')) {
         injectCORSHeaders(req.raw, reply.raw);
         const handler = toNodeHandler(auth);
-        await new Promise((resolve) => {
-            handler(req.raw, reply.raw);
-            resolve();
-        });
+        await handler(req.raw, reply.raw);
         return reply.hijack();
     }
 });
@@ -75,6 +80,9 @@ app.register(readReceiptRoutes, { prefix: '/api' });
 app.register(sprintRoutes, { prefix: '/api' });
 app.register(timeLogRoutes, { prefix: '/api' });
 app.register(userRoutes, { prefix: '/api' });
+app.register(githubRoutes, { prefix: '/api' });
+app.register(githubWebhookRoutes, { prefix: '/api' });
+app.register(scheduleRoutes, { prefix: '/api' });
 app.get('/health', async () => {
     return { status: 'ok' };
 });

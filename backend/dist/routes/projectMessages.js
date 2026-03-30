@@ -4,21 +4,38 @@ import { projectMessageService } from '../services/projectMessage.service.js';
 import { activityService } from '../services/activity.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { prisma } from '../lib/prisma.js';
+import { requireProjectRole } from '../services/projectAuth.service.js';
 const createMessageSchema = z.object({
-    content: z.string().min(1).max(2000),
-});
+    content: z.string().max(2000).optional().default(''),
+    fileUrl: z.string().optional(),
+    fileName: z.string().optional(),
+}).refine(data => data.content.length > 0 || !!data.fileUrl, { message: 'Message or file is required' });
 export async function projectMessageRoutes(app) {
-    app.get('/projects/:projectId/messages', { preHandler: authenticate }, async (req) => {
+    app.get('/projects/:projectId/messages', { preHandler: authenticate }, async (req, reply) => {
         const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         return projectMessageService.listForProject(projectId);
     });
-    app.post('/projects/:projectId/messages', { preHandler: authenticate }, async (req) => {
+    app.post('/projects/:projectId/messages', { preHandler: authenticate }, async (req, reply) => {
         const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         const body = createMessageSchema.parse(req.body);
         const created = await projectMessageService.create({
             projectId,
             authorId: req.authUser.id,
             content: body.content,
+            fileUrl: body.fileUrl,
+            fileName: body.fileName,
         });
         await activityService.record({
             projectId,
@@ -38,22 +55,24 @@ export async function projectMessageRoutes(app) {
         });
         const senderName = project?.members.find((m) => m.userId === req.authUser.id)?.user?.name ?? 'Someone';
         const otherMembers = (project?.members ?? []).filter((m) => m.userId !== req.authUser.id);
-        // Parse @mentions from the message content
-        // Matches @Name or @everyone/@Everyone
-        const mentionedEveryone = /\@everyone/i.test(body.content);
-        const mentionMatches = body.content.match(/@([\w\s]+)/g) ?? [];
+        // Parse @mentions: match @word_chars (no whitespace greediness)
+        const mentionedEveryone = /@everyone\b/i.test(body.content);
+        const mentionMatches = body.content.match(/@(\w+)/g) ?? [];
         const mentionedNames = mentionMatches
-            .map((m) => m.slice(1).trim().toLowerCase())
+            .map((m) => m.slice(1).toLowerCase())
             .filter((n) => n !== 'everyone');
-        // Determine which members are mentioned
+        // Determine which members are mentioned (exact match on first name or full name without spaces)
         const mentionedUserIds = new Set();
         if (mentionedEveryone) {
             otherMembers.forEach((m) => mentionedUserIds.add(m.userId));
         }
         else {
             for (const member of otherMembers) {
-                const memberName = (member.user?.name ?? member.user?.email ?? '').toLowerCase();
-                if (mentionedNames.some((n) => memberName.includes(n) || n.includes(memberName.split(' ')[0]))) {
+                const name = (member.user?.name ?? '').toLowerCase();
+                const email = (member.user?.email ?? '').toLowerCase();
+                const firstName = name.split(' ')[0];
+                const nameNoSpaces = name.replace(/\s+/g, '');
+                if (mentionedNames.some((n) => n === firstName || n === nameNoSpaces || n === email.split('@')[0])) {
                     mentionedUserIds.add(member.userId);
                 }
             }

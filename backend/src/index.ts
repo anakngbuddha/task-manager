@@ -1,8 +1,11 @@
 import 'dotenv/config'
 import app from './app.js'
+import fastifyStatic from '@fastify/static'
+import path from 'path'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import { startNotificationCron } from './jobs/notificationCron.js'
+import { setIO, directRoom } from './lib/socketManager.js'
 
 const PORT = Number(process.env.PORT) || 3000
 
@@ -15,10 +18,7 @@ const io = new Server(httpServer, {
   },
 })
 
-function directRoom(projectId: string, a: string, b: string) {
-  const [x, y] = [a, b].sort()
-  return `dm:${projectId}:${x}:${y}`
-}
+setIO(io)
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id)
@@ -57,6 +57,11 @@ io.on('connection', (socket) => {
 
 const start = async () => {
   try {
+    app.register(fastifyStatic, {
+      root: path.join(process.cwd(), 'uploads'),
+      prefix: '/uploads/',
+    })
+
     await app.listen({ port: PORT, host: '0.0.0.0' })
     httpServer.listen(3001)
     startNotificationCron()

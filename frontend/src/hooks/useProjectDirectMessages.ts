@@ -18,12 +18,36 @@ export function useProjectDirectMessages(projectId: string | undefined, otherUse
 export function useSendProjectDirectMessage() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { projectId: string; otherUserId: string; content: string }) => {
-      const { projectId, otherUserId, ...body } = payload
+    mutationFn: async (payload: { projectId: string; otherUserId: string; content: string; fileUrl?: string; fileName?: string; optimisticId?: string; senderId?: string }) => {
+      const { projectId, otherUserId, optimisticId, senderId, ...body } = payload
       const { data } = await api.post(`/projects/${projectId}/direct-messages/${otherUserId}`, body)
       return data
     },
-    onSuccess: (_data, vars) => {
+    onMutate: async (newMsg) => {
+      await queryClient.cancelQueries({ queryKey: ['project-direct-messages', newMsg.projectId, newMsg.otherUserId] })
+      const previous = queryClient.getQueryData(['project-direct-messages', newMsg.projectId, newMsg.otherUserId])
+      
+      queryClient.setQueryData(['project-direct-messages', newMsg.projectId, newMsg.otherUserId], (old: any) => {
+        return [...(old || []), {
+          id: newMsg.optimisticId || `temp-${Date.now()}`,
+          projectId: newMsg.projectId,
+          senderId: newMsg.senderId || '',
+          recipientId: newMsg.otherUserId,
+          content: newMsg.content,
+          fileUrl: newMsg.fileUrl,
+          fileName: newMsg.fileName,
+          createdAt: new Date().toISOString(),
+        }]
+      })
+      
+      return { previous }
+    },
+    onError: (_err, newMsg, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['project-direct-messages', newMsg.projectId, newMsg.otherUserId], context.previous)
+      }
+    },
+    onSettled: (_data, _err, vars) => {
       queryClient.invalidateQueries({
         queryKey: ['project-direct-messages', vars.projectId, vars.otherUserId],
       })

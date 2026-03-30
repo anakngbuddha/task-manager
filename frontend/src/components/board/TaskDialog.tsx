@@ -13,6 +13,7 @@ import { useProject } from '@/hooks/useProject'
 import { useTaskComments, useAddTaskComment } from '@/hooks/useTaskComments'
 import { Pencil, X, Clock, Link as LinkIcon, ExternalLink } from 'lucide-react'
 import { useCreateTaskTimeLog } from '@/hooks/useTimeLogs'
+import { useSession } from '@/lib/auth-client'
 
 function sanitizeUrl(url: string): string {
   try {
@@ -80,6 +81,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const deleteTask = useDeleteTask()
   const createTask = useCreateTask()
   const createTimeLog = useCreateTaskTimeLog(projectId)
+  const { data: session } = useSession()
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -123,6 +125,17 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
     const sprint = (sprints as any[]).find((s) => String(s.id) === id)
     return sprint?.name ?? null
   }, [task?.sprintId, sprints])
+
+  const myProjectRole = useMemo(() => {
+    const myId = session?.user?.id
+    if (!myId) return null
+    const member = (projectMembers ?? []).find((m: any) => {
+      const userId = m?.userId ?? m?.user?.id
+      return userId === myId
+    })
+    return member?.role ?? null
+  }, [projectMembers, session?.user?.id])
+  const canManageTasks = myProjectRole === 'MASTER_ADMIN' || myProjectRole === 'PROJECT_MANAGER'
 
   const renderWithMentions = (text: string) => {
     if (!text) return null
@@ -305,6 +318,17 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                   <Button variant="outline" size="sm" className="rounded-none" onClick={() => setMode('edit')}>
                     <Pencil className="size-4" />
                     Edit
+                  </Button>
+                )}
+                {mode === 'view' && canManageTasks && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="rounded-none"
+                    onClick={handleDelete}
+                    disabled={deleteTask.isPending}
+                  >
+                    {deleteTask.isPending ? 'Deleting...' : 'Delete'}
                   </Button>
                 )}
                 {mode === 'view' && (
@@ -790,7 +814,12 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
               <Button onClick={handleSave} className="flex-1 rounded-none" disabled={updateTask.isPending}>
                 {updateTask.isPending ? 'Saving...' : 'Save'}
               </Button>
-              <Button variant="destructive" className="rounded-none" onClick={handleDelete} disabled={deleteTask.isPending}>
+              <Button
+                variant="destructive"
+                className="rounded-none"
+                onClick={handleDelete}
+                disabled={deleteTask.isPending || !canManageTasks}
+              >
                 Delete
               </Button>
             </div>

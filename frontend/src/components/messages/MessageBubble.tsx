@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { MessageSquareDashed } from 'lucide-react'
+import { MessageSquareDashed, FileText, Download } from 'lucide-react'
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 
 export function getInitials(name?: string | null, email?: string | null): string {
@@ -116,7 +117,9 @@ function RenderWithMentions({ text, isMine }: { text: string; isMine?: boolean }
 }
 
 interface MessageBubbleProps {
-  content: string
+  content?: string
+  fileUrl?: string | null
+  fileName?: string | null
   createdAt: Date
   isMine: boolean
   isFirstInGroup: boolean
@@ -124,10 +127,12 @@ interface MessageBubbleProps {
   senderInitials: string
 }
 
-export default function MessageBubble({ content, createdAt, isMine, isFirstInGroup, senderName, senderInitials }: MessageBubbleProps) {
+export default function MessageBubble({ content, fileUrl, fileName, createdAt, isMine, isFirstInGroup, senderName, senderInitials }: MessageBubbleProps) {
   const [hovered, setHovered] = useState(false)
   const relTime = formatRelativeTime(createdAt)
   const fullTime = formatFullTime(createdAt)
+  const isImage = fileUrl ? /\.(jpeg|jpg|gif|png|webp|svg|avif)$/i.test(fileUrl) : false
+  const isVideo = fileUrl ? /\.(mp4|webm|ogg|mov)$/i.test(fileUrl) : false
 
   if (isMine) {
     return (
@@ -146,9 +151,53 @@ export default function MessageBubble({ content, createdAt, isMine, isFirstInGro
           {relTime}
         </span>
         <div className="max-w-[72%] rounded-2xl rounded-br-sm bg-primary px-3.5 py-2 text-[0.875rem] text-primary-foreground shadow-sm">
-          <p className="whitespace-pre-wrap leading-relaxed">
-            <RenderWithMentions text={content} isMine={true} />
-          </p>
+          {fileUrl && isImage && (
+            <div className={cn("overflow-hidden rounded-xl", content ? "mb-2" : "")}>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <img src={`http://localhost:3000${fileUrl}`} alt={fileName || "Attachment"} className="max-w-full max-h-64 object-contain cursor-pointer transition-transform hover:scale-[1.02]" />
+                </DialogTrigger>
+                <DialogContent className="max-w-[75vw] sm:max-w-[75vw] w-fit p-0 overflow-hidden border-none bg-transparent shadow-none flex justify-center" showCloseButton={false}>
+                  <img src={`http://localhost:3000${fileUrl}`} alt={fileName || "Attachment"} className="w-auto h-auto max-w-[75vw] max-h-[75vh] object-contain rounded-md" />
+                </DialogContent>
+              </Dialog>
+            </div>
+          )}
+          {fileUrl && isVideo && (
+            <div className={cn("overflow-hidden rounded-xl", content ? "mb-2" : "")}>
+              <video 
+                src={`http://localhost:3000${fileUrl}`} 
+                controls 
+                className="max-w-full max-h-64 object-contain rounded-md" 
+              />
+            </div>
+          )}
+          {fileUrl && !isImage && !isVideo && (
+            <a 
+              href={`http://localhost:3000${fileUrl}`} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              download={fileName || "attachment"}
+              className={cn(
+                "flex items-center gap-3 rounded-xl p-2.5 bg-background/10 hover:bg-background/20 transition-colors cursor-pointer text-primary-foreground border border-primary-foreground/20", 
+                content ? "mb-2" : ""
+              )}
+            >
+              <div className="grid size-9 place-items-center rounded-lg shadow-sm shrink-0 bg-primary-foreground/20">
+                <FileText className="size-4" />
+              </div>
+              <div className="flex flex-col overflow-hidden min-w-0 pr-2">
+                <span className="truncate font-medium text-sm leading-tight">{fileName || "Attachment"}</span>
+                <span className="text-[0.6rem] opacity-80 uppercase tracking-widest font-semibold mt-0.5">Download</span>
+              </div>
+              <Download className="size-4 opacity-70 ml-auto shrink-0" />
+            </a>
+          )}
+          {content && (
+            <p className="whitespace-pre-wrap leading-relaxed">
+              <RenderWithMentions text={content} isMine={true} />
+            </p>
+          )}
         </div>
       </div>
     )
@@ -175,9 +224,53 @@ export default function MessageBubble({ content, createdAt, isMine, isFirstInGro
           <p className="ml-0.5 text-[0.7rem] font-semibold text-muted-foreground">{senderName}</p>
         )}
         <div className="rounded-2xl rounded-bl-sm bg-muted px-3.5 py-2 text-[0.875rem] text-foreground shadow-sm">
-          <p className="whitespace-pre-wrap leading-relaxed">
-            <RenderWithMentions text={content} isMine={false} />
-          </p>
+          {fileUrl && isImage && (
+            <div className={cn("overflow-hidden rounded-xl", content ? "mb-2" : "")}>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <img src={`http://localhost:3000${fileUrl}`} alt={fileName || "Attachment"} className="max-w-full max-h-64 object-contain cursor-pointer transition-transform hover:scale-[1.02]" />
+                </DialogTrigger>
+                <DialogContent className="max-w-[75vw] sm:max-w-[75vw] w-fit p-0 overflow-hidden border-none bg-transparent shadow-none flex justify-center" showCloseButton={false}>
+                  <img src={`http://localhost:3000${fileUrl}`} alt={fileName || "Attachment"} className="w-auto h-auto max-w-[75vw] max-h-[75vh] object-contain rounded-md" />
+                </DialogContent>
+              </Dialog>
+            </div>
+          )}
+          {fileUrl && isVideo && (
+            <div className={cn("overflow-hidden rounded-xl", content ? "mb-2" : "")}>
+              <video 
+                src={`http://localhost:3000${fileUrl}`} 
+                controls 
+                className="max-w-full max-h-64 object-contain rounded-md border border-border" 
+              />
+            </div>
+          )}
+          {fileUrl && !isImage && !isVideo && (
+            <a 
+              href={`http://localhost:3000${fileUrl}`} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              download={fileName || "attachment"}
+              className={cn(
+                "flex items-center gap-3 rounded-xl p-2.5 bg-background/50 hover:bg-background transition-colors cursor-pointer text-foreground border border-border", 
+                content ? "mb-2" : ""
+              )}
+            >
+              <div className="grid size-9 place-items-center rounded-lg shadow-sm shrink-0 bg-muted-foreground/10">
+                <FileText className="size-4" />
+              </div>
+              <div className="flex flex-col overflow-hidden min-w-0 pr-2">
+                <span className="truncate font-medium text-sm leading-tight">{fileName || "Attachment"}</span>
+                <span className="text-[0.6rem] text-muted-foreground uppercase tracking-widest font-semibold mt-0.5">Download</span>
+              </div>
+              <Download className="size-4 text-muted-foreground ml-auto shrink-0" />
+            </a>
+          )}
+          {content && (
+            <p className="whitespace-pre-wrap leading-relaxed">
+              <RenderWithMentions text={content} isMine={false} />
+            </p>
+          )}
         </div>
       </div>
 

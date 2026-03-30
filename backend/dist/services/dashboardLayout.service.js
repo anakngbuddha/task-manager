@@ -54,8 +54,11 @@ export const dashboardLayoutService = {
             return layout;
         }
         catch (err) {
-            // If the table isn't migrated yet, don't break the UI—return a default layout.
-            return defaultLayout();
+            const msg = String(err?.message ?? '');
+            if (msg.includes("doesn't exist") || msg.includes('Unknown column') || msg.includes('no such table')) {
+                return defaultLayout();
+            }
+            throw err;
         }
     },
     async updateLayout(userId, projectId, layout) {
@@ -68,8 +71,14 @@ export const dashboardLayoutService = {
           updatedAt = NOW()
       `;
         }
-        catch {
-            // Ignore if storage isn't ready yet (e.g. missing table).
+        catch (err) {
+            const msg = String(err?.message ?? '');
+            if (msg.includes("doesn't exist") || msg.includes('Unknown column') || msg.includes('no such table')) {
+                // Table not migrated yet — ignore safely
+            }
+            else {
+                throw err;
+            }
         }
         return layout;
     },

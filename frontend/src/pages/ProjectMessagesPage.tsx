@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useLocation } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import Sidebar from '@/components/layout/Sidebar'
 import { useProject } from '@/hooks/useProject'
 import { useProjectMessages, useSendProjectMessage } from '@/hooks/useProjectMessages'
@@ -7,6 +8,7 @@ import { useProjectDirectInbox } from '@/hooks/useProjectDirectInbox'
 import { useProjectDirectMessages, useSendProjectDirectMessage } from '@/hooks/useProjectDirectMessages'
 import { useDirectSeen, useMarkDirectRead, useMarkProjectRead, useProjectSeen } from '@/hooks/useReadReceipts'
 import { useSession } from '@/lib/auth-client'
+import { api } from '@/lib/api'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Hash, MessageCircle } from 'lucide-react'
 import { io, type Socket } from 'socket.io-client'
@@ -27,9 +29,11 @@ export default function ProjectMessagesPage() {
   const { data: session } = useSession()
   const { data: project } = useProject(projectId!)
   const location = useLocation()
+  const queryClient = useQueryClient()
 
   const [mode, setMode] = useState<'project' | 'direct'>('project')
   const [input, setInput] = useState('')
+  const [attachedFile, setAttachedFile] = useState<File | null>(null)
 
   const { data: projectMessages = [] } = useProjectMessages(projectId!)
   const sendProjectMessage = useSendProjectMessage()
@@ -84,11 +88,21 @@ export default function ProjectMessagesPage() {
 
   useEffect(() => {
     if (!projectId || !session?.user?.id) return
-    if (socketRef.current) return
 
-    const socket = io('http://localhost:3001', { withCredentials: true })
+    // Clean up any existing socket before creating a new one
+    if (socketRef.current) {
+      socketRef.current.disconnect()
+      socketRef.current = null
+    }
+
+    const socket = io('http://localhost:3001', { withCredentials: true, reconnection: true, reconnectionDelay: 1000 })
     socketRef.current = socket
-    socket.emit('join:project', projectId)
+
+    const joinRooms = () => {
+      socket.emit('join:project', projectId)
+    }
+
+    socket.on('connect', joinRooms)
 
     socket.on('typing:project', (payload: { userId: string; name: string; isTyping: boolean }) => {
       setProjectTyping((curr) => {
@@ -108,11 +122,20 @@ export default function ProjectMessagesPage() {
       })
     })
 
+    socket.on('message:project', () => {
+      queryClient.invalidateQueries({ queryKey: ['project-messages', projectId] })
+    })
+
+    socket.on('message:direct', (payload: { projectId: string; senderId: string; recipientId: string }) => {
+      queryClient.invalidateQueries({ queryKey: ['project-direct-messages', payload.projectId, payload.senderId] })
+      queryClient.invalidateQueries({ queryKey: ['project-direct-messages', payload.projectId, payload.recipientId] })
+    })
+
     return () => {
       socket.disconnect()
       socketRef.current = null
     }
-  }, [projectId, session?.user?.id])
+  }, [projectId, session?.user?.id, queryClient])
 
   useEffect(() => {
     if (!projectId || !session?.user?.id || !directTargetId) return
@@ -171,7 +194,7 @@ export default function ProjectMessagesPage() {
     if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current)
     if (input.trim().length > 0) {
       emitTyping(true)
-      typingTimerRef.current = window.setTimeout(() => emitTyping(false), 900)
+      typingTimerRef.current = window.setTimeout(() => emitTyping(false), 2500)
     } else {
       emitTyping(false)
     }
@@ -188,14 +211,51 @@ export default function ProjectMessagesPage() {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || !projectId) return
+    if (!input.trim() && !attachedFile) return
+    if (!projectId || !session?.user?.id) return
+
     emitTyping(false)
-    if (mode === 'project') {
-      await sendProjectMessage.mutateAsync({ projectId, content: input.trim() })
-    } else if (mode === 'direct' && directTargetId) {
-      await sendDirect.mutateAsync({ projectId, otherUserId: directTargetId, content: input.trim() })
-    }
+
+    const contentToSend = input.trim()
+    const fileToSend = attachedFile
+
     setInput('')
+    setAttachedFile(null)
+
+    let fileUrl: string | undefined = undefined
+    let fileName: string | undefined = undefined
+
+    if (fileToSend) {
+      const formData = new FormData()
+      formData.append('file', fileToSend)
+      try {
+        const res = await api.post('/upload', formData)
+        fileUrl = res.data.fileUrl
+        fileName = res.data.fileName
+      } catch (err) {
+        console.error('Failed to upload file', err)
+        return
+      }
+    }
+
+    if (mode === 'project') {
+      sendProjectMessage.mutate({ 
+        projectId, 
+        content: contentToSend,
+        fileUrl,
+        fileName,
+        authorId: session.user.id
+      })
+    } else if (mode === 'direct' && directTargetId) {
+      sendDirect.mutate({ 
+        projectId, 
+        otherUserId: directTargetId, 
+        content: contentToSend,
+        fileUrl,
+        fileName,
+        senderId: session.user.id
+      })
+    }
   }
 
   // ── Derived state ──────────────────────────────────────────────────────────
@@ -300,6 +360,8 @@ export default function ProjectMessagesPage() {
         <div key={m.id} className="py-0.5">
           <MessageBubble
             content={m.content}
+            fileUrl={m.fileUrl}
+            fileName={m.fileName}
             createdAt={createdAt}
             isMine={isMine}
             isFirstInGroup={isFirstInGroup}
@@ -436,12 +498,18 @@ export default function ProjectMessagesPage() {
                 ? `Message ${activeDirectLabel ?? 'privately'}…`
                 : 'Select a conversation first…'
             }
-            isPending={sendProjectMessage.isPending || sendDirect.isPending}
-            members={(project?.members ?? []).map((m: any) => ({
-              id: m.user?.id ?? m.userId,
-              name: m.user?.name,
-              email: m.user?.email,
-            }))}
+            isPending={false}
+            allowMentions={mode === 'project'}
+            attachedFile={attachedFile}
+            onAttachFile={setAttachedFile}
+            onRemoveFile={() => setAttachedFile(null)}
+            members={(project?.members ?? [])
+              .map((m: any) => ({
+                id: m.user?.id ?? m.userId,
+                name: m.user?.name,
+                email: m.user?.email,
+              }))
+              .filter((m: any) => m.id !== session?.user?.id)}
           />
         </main>
       </div>

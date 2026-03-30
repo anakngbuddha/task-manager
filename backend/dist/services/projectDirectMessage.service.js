@@ -32,9 +32,9 @@ export const projectDirectMessageService = {
         });
     },
     async create(params) {
-        const { projectId, senderId, recipientId, content } = params;
+        const { projectId, senderId, recipientId, content, fileUrl, fileName } = params;
         return prisma.projectDirectMessage.create({
-            data: { projectId, senderId, recipientId, content },
+            data: { projectId, senderId, recipientId, content, fileUrl, fileName },
         });
     },
 };

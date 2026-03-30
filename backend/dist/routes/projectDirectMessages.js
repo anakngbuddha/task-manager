@@ -4,26 +4,49 @@ import { projectDirectMessageService } from '../services/projectDirectMessage.se
 import { activityService } from '../services/activity.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { prisma } from '../lib/prisma.js';
+import { requireProjectRole } from '../services/projectAuth.service.js';
 const createDirectMessageSchema = z.object({
-    content: z.string().min(1).max(2000),
-});
+    content: z.string().max(2000).optional().default(''),
+    fileUrl: z.string().optional(),
+    fileName: z.string().optional(),
+}).refine(data => data.content.length > 0 || !!data.fileUrl, { message: 'Message or file is required' });
 export async function projectDirectMessageRoutes(app) {
-    app.get('/projects/:projectId/direct-inbox', { preHandler: authenticate }, async (req) => {
+    app.get('/projects/:projectId/direct-inbox', { preHandler: authenticate }, async (req, reply) => {
         const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         return projectDirectMessageService.listInbox(projectId, req.authUser.id);
     });
-    app.get('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req) => {
+    app.get('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req, reply) => {
         const { projectId, otherUserId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         return projectDirectMessageService.listConversation(projectId, req.authUser.id, otherUserId);
     });
-    app.post('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req) => {
+    app.post('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req, reply) => {
         const { projectId, otherUserId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         const body = createDirectMessageSchema.parse(req.body);
         const created = await projectDirectMessageService.create({
             projectId,
             senderId: req.authUser.id,
             recipientId: otherUserId,
             content: body.content,
+            fileUrl: body.fileUrl,
+            fileName: body.fileName,
         });
         await activityService.record({
             projectId,
