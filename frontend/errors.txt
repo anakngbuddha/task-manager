@@ -1,0 +1,6 @@
+﻿src/hooks/useGithub.ts(15,39): error TS6133: 'projectId' is declared but its value is never read.
+src/hooks/useGithub.ts(50,26): error TS6133: 'projectId' is declared but its value is never read.
+src/pages/ProjectDependencyDiagramPage.tsx(158,41): error TS6133: 'layoutLoading' is declared but its value is never read.
+src/pages/ProjectDependencyDiagramPage.tsx(191,11): error TS6133: 'byId' is declared but its value is never read.
+src/pages/ProjectDependencyDiagramPage.tsx(278,25): error TS2339: Property 'position' does not exist on type '{}'.
+src/pages/ProjectDependencyDiagramPage.tsx(278,60): error TS2339: Property 'position' does not exist on type '{}'.

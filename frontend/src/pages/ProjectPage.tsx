@@ -337,6 +337,12 @@ export default function ProjectPage() {
                     <Link to={`/projects/${projectId}/activity`}>Project Logs</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/github`}>GitHub Activity</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/dependencies`}>Dependency Diagram</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link to={`/projects/${projectId}/roadmap`}>Roadmap</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>

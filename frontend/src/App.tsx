@@ -20,6 +20,8 @@ import ProjectMembersPage from './pages/ProjectMembersPage'
 import ProfilePage from './pages/ProfilePage'
 import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import ProjectActivityPage from './pages/ProjectActivityPage'
+import ProjectGithubActivityPage from './pages/ProjectGithubActivityPage'
+import ProjectDependencyDiagramPage from './pages/ProjectDependencyDiagramPage'
 import DocumentationPage from './pages/DocumentationPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -81,6 +83,16 @@ export default function App() {
         <Route path="/projects/:id/activity" element={
           <ProtectedRoute>
             <ProjectActivityPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/github" element={
+          <ProtectedRoute>
+            <ProjectGithubActivityPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/dependencies" element={
+          <ProtectedRoute>
+            <ProjectDependencyDiagramPage />
           </ProtectedRoute>
         } />
         <Route path="/projects/:id/time-report" element={

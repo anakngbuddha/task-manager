@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import Sidebar from '@/components/layout/Sidebar'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -6,10 +6,16 @@ import { useProject, useUpdateProject } from '@/hooks/useProject'
 import {
   useGithubInstallation,
   useGithubRepos,
+  useGithubAvailableRepos,
+  useAssignProjectRepo,
+  useUnassignProjectRepo,
 } from '@/hooks/useGithub'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
+import { useSession } from '@/lib/auth-client'
 import {
   GitBranch,
   Loader2,
@@ -20,24 +26,47 @@ import {
   ExternalLink,
   Lock,
   Globe,
+  Unplug,
+  Plus,
 } from 'lucide-react'
 
 export default function ProjectSettingsPage() {
   const { id: projectId } = useParams<{ id: string }>()
   const { data: project } = useProject(projectId!)
+  const { data: session } = useSession()
   const {
     data: installation,
     isLoading: installLoading,
     isError: installError,
-  } = useGithubInstallation(projectId!)
+  } = useGithubInstallation()
   const { data: reposData, isLoading: reposLoading } = useGithubRepos(
     projectId!,
     !!installation,
   )
+  const { data: availableReposData, isLoading: availableReposLoading } = useGithubAvailableRepos(
+    projectId!,
+    !!installation,
+  )
+  const assignRepo = useAssignProjectRepo()
+  const unassignRepo = useUnassignProjectRepo()
   const updateProject = useUpdateProject()
   const [boardColumns, setBoardColumns] = useState<string[]>([])
   const [newColumn, setNewColumn] = useState('')
   const [isEditingColumns, setIsEditingColumns] = useState(false)
+  const [selectedRepoId, setSelectedRepoId] = useState('')
+
+  const [statusMap, setStatusMap] = useState<Record<string, string | null>>({
+    pr_opened: 'IN_REVIEW',
+    pr_merged: 'DONE',
+    pr_closed: null,
+    pr_review_approved: null,
+  })
+
+  const myRole = useMemo(() => {
+    const me = (project?.members ?? []).find((m: any) => m.userId === session?.user?.id)
+    return me?.role ?? null
+  }, [project?.members, session?.user?.id])
+  const canManageGithub = myRole === 'MASTER_ADMIN' || myRole === 'PROJECT_MANAGER'
 
   useEffect(() => {
     if (project?.boardColumns) {
@@ -47,7 +76,19 @@ export default function ProjectSettingsPage() {
     }
   }, [project])
 
+  useEffect(() => {
+    const current = (project?.githubStatusMap ?? {}) as Record<string, string | null>
+    setStatusMap({
+      pr_opened: current.pr_opened ?? 'IN_REVIEW',
+      pr_merged: current.pr_merged ?? 'DONE',
+      pr_closed: current.pr_closed ?? null,
+      pr_review_approved: current.pr_review_approved ?? null,
+    })
+  }, [project?.githubStatusMap])
+
   const isConnected = !!installation && !installError
+  const assignedRepoIds = new Set((reposData?.repositories ?? []).map((r) => String(r.id ?? '')))
+  const assignableRepos = (availableReposData?.repositories ?? []).filter((r) => !assignedRepoIds.has(r.id))
 
   return (
     <div className="flex h-screen">
@@ -134,10 +175,10 @@ export default function ProjectSettingsPage() {
                       </div>
                     </div>
 
-                    {/* Repos */}
+                    {/* Assigned repos */}
                     <div>
                       <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Repositories
+                        Assigned Repositories
                       </p>
                       {reposLoading ? (
                         <div className="flex items-center gap-2 text-muted-foreground py-3">
@@ -149,11 +190,8 @@ export default function ProjectSettingsPage() {
                       ) : reposData?.repositories?.length ? (
                         <div className="space-y-1.5">
                           {reposData.repositories.map((repo) => (
-                            <a
+                            <div
                               key={repo.repoId}
-                              href={repo.htmlUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               className="flex items-center gap-3 rounded-lg border border-border/40 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 group"
                             >
                               {repo.private ? (
@@ -164,8 +202,21 @@ export default function ProjectSettingsPage() {
                               <span className="flex-1 truncate font-medium">
                                 {repo.fullName}
                               </span>
-                              <ExternalLink className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                            </a>
+                              <a href={repo.htmlUrl} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="size-3.5 text-muted-foreground shrink-0" />
+                              </a>
+                              {canManageGithub && repo.id && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  className="text-destructive"
+                                  onClick={() => unassignRepo.mutate({ projectId: projectId!, repoId: String(repo.id) })}
+                                  disabled={unassignRepo.isPending}
+                                >
+                                  <Unplug className="size-3.5" />
+                                </Button>
+                              )}
+                            </div>
                           ))}
                         </div>
                       ) : (
@@ -174,6 +225,45 @@ export default function ProjectSettingsPage() {
                         </p>
                       )}
                     </div>
+
+                    {canManageGithub && (
+                      <div className="border-t border-border/40 pt-4 space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">Assign repository</p>
+                        {availableReposLoading ? (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Loader2 className="size-3.5 animate-spin" />
+                            <span className="text-xs">Loading available repos…</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
+                              <SelectTrigger className="h-9">
+                                <SelectValue placeholder="Choose repository…" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {assignableRepos.map((r) => (
+                                  <SelectItem key={r.id} value={r.id}>
+                                    {r.fullName}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              className="h-9"
+                              disabled={!selectedRepoId || assignRepo.isPending}
+                              onClick={async () => {
+                                await assignRepo.mutateAsync({ projectId: projectId!, repoId: selectedRepoId })
+                                setSelectedRepoId('')
+                              }}
+                            >
+                              <Plus className="size-3.5 mr-1" />
+                              Assign
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="border-t border-border/40 pt-4">
                       <p className="text-xs text-muted-foreground">
@@ -206,6 +296,69 @@ export default function ProjectSettingsPage() {
                         </Button>
                       </div>
                     </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* GitHub Status Mapping Card */}
+            <div className="overflow-hidden border border-border/60 bg-card">
+              <div className="flex items-center justify-between border-b border-border/40 px-6 py-4">
+                <div>
+                  <h3 className="text-sm font-semibold">GitHub Status Mapping</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Configure auto task movement for GitHub events (supports custom columns)
+                  </p>
+                </div>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                {[
+                  { key: 'pr_opened', label: 'Pull Request Opened' },
+                  { key: 'pr_merged', label: 'Pull Request Merged' },
+                  { key: 'pr_closed', label: 'Pull Request Closed (not merged)' },
+                  { key: 'pr_review_approved', label: 'PR Review Approved' },
+                ].map((item) => (
+                  <div key={item.key} className="flex items-center justify-between gap-3">
+                    <Label className="text-sm">{item.label}</Label>
+                    <Select
+                      value={statusMap[item.key] ?? '__NONE__'}
+                      onValueChange={(value) => {
+                        setStatusMap((prev) => ({
+                          ...prev,
+                          [item.key]: value === '__NONE__' ? null : value,
+                        }))
+                      }}
+                      disabled={!canManageGithub}
+                    >
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__NONE__">No action</SelectItem>
+                        {boardColumns.map((col) => (
+                          <SelectItem key={col} value={col}>
+                            {col}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+
+                {canManageGithub && (
+                  <div className="pt-2 border-t border-border/40 flex justify-end">
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        await updateProject.mutateAsync({
+                          id: projectId!,
+                          data: { githubStatusMap: statusMap as any },
+                        })
+                      }}
+                      disabled={updateProject.isPending}
+                    >
+                      {updateProject.isPending ? 'Saving...' : 'Save Mapping'}
+                    </Button>
                   </div>
                 )}
               </div>

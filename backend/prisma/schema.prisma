@@ -86,6 +86,7 @@ model Project {
   name         String
   status       ProjectStatus   @default(ACTIVE)
   boardColumns Json            @default("[\"TODO\", \"IN_PROGRESS\", \"IN_REVIEW\", \"DONE\", \"READY\"]")
+  githubStatusMap Json?
   createdAt    DateTime        @default(now())
   tasks     Task[]
   sprints   Sprint[]
@@ -99,7 +100,21 @@ model Project {
   directChatReads DirectChatReadState[]
   dashboardLayouts DashboardLayout[]
   githubInstallations GithubInstallation[]
+  projectRepositories ProjectRepository[]
+  repoEvents     RepoEvent[]
   schedules Schedule[]
+  dependencyDiagramLayout ProjectDependencyDiagramLayout?
+}
+
+model ProjectDependencyDiagramLayout {
+  id        String   @id @default(cuid())
+  projectId String   @unique
+  layout    Json
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([updatedAt])
 }
 
 model Task {
@@ -129,6 +144,7 @@ model Task {
   blockingTasks         TaskDependency[] @relation("BlockingTasks")
   blockedByTasks        TaskDependency[] @relation("BlockedTasks")
   scheduleNotificationLogs ScheduleNotificationLog[]
+  githubLinks           TaskGithubLink[]
 
   @@index([projectId])
   @@index([assigneeId])
@@ -370,15 +386,13 @@ model GithubInstallation {
   id             String             @id @default(cuid())
   installationId Int                @unique
   userId         String
-  projectId      String
+  projectId      String?
   repos          Json?
   createdAt      DateTime           @default(now())
 
   user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project        Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project        Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   repositories   GithubRepository[]
-
-  @@index([projectId])
 }
 
 model GithubRepository {
@@ -389,8 +403,72 @@ model GithubRepository {
   isActive       Boolean            @default(true)
 
   installation   GithubInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  projectRepositories ProjectRepository[]
+  repoEvents       RepoEvent[]
 
   @@unique([installationId, repoFullName])
+}
+
+model ProjectRepository {
+  id        String           @id @default(cuid())
+  projectId String
+  repoId    String
+  createdAt DateTime         @default(now())
+
+  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repo      GithubRepository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, repoId])
+  @@index([projectId])
+}
+
+// ─── Project-level GitHub event log ───────────────────────────
+
+model RepoEvent {
+  id               String   @id @default(cuid())
+  projectId        String
+  repoId           String
+  eventType        String
+  branch           String?
+  sha              String?
+  prNumber         Int?
+  prTitle          String?
+  author           String?
+  htmlUrl          String?
+  message          String?  @db.Text
+  summary          Json?
+  githubDeliveryId String?
+  createdAt        DateTime @default(now())
+
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repo             GithubRepository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([repoId, createdAt])
+  @@index([githubDeliveryId])
+}
+
+// ─── Per-task GitHub links (PRs, commits, etc.) ───────────────
+
+model TaskGithubLink {
+  id           String   @id @default(cuid())
+  taskId       String
+  url          String   @db.VarChar(500)
+  type         String
+  title        String?
+  status       String?
+  author       String?
+  number       Int?
+  sha          String?
+  repoFullName String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, url])
+  @@index([taskId])
 }
 
 // ─── Calendar & Scheduling ─────────────────────────────────

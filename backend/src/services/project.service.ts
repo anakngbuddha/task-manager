@@ -184,7 +184,7 @@ export const projectService = {
     })
   },
 
-  async update(id: string, data: { name?: string; status?: any; boardColumns?: any }) {
+  async update(id: string, data: { name?: string; status?: any; boardColumns?: any; githubStatusMap?: any }) {
     return prisma.project.update({
       where: { id },
       data,

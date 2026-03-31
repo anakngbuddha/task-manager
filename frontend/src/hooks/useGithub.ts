@@ -8,18 +8,17 @@ export function useGithubConnect() {
       const { data } = await api.get('/github/connect')
       return data as { url: string }
     },
+    staleTime: 5 * 60 * 1000,
   })
 }
 
-export function useGithubInstallation(projectId?: string) {
+export function useGithubInstallation(_projectId?: string) {
   return useQuery({
-    queryKey: ['github-installation', projectId ?? ''],
+    queryKey: ['github-installation'],
     queryFn: async () => {
-      if (!projectId) throw new Error('Missing projectId')
-      const { data } = await api.get(`/projects/${projectId}/github`)
+      const { data } = await api.get('/github/installation')
       return data
     },
-    enabled: !!projectId,
     retry: false,
   })
 }
@@ -31,8 +30,8 @@ export function useGithubRepos(projectId?: string, enabled: boolean = true) {
       if (!projectId) throw new Error('Missing projectId')
       const { data } = await api.get(`/projects/${projectId}/github/repos`)
       return data as {
-        installationId: number
         repositories: Array<{
+          id?: string
           repoId: number
           fullName: string
           private: boolean
@@ -48,33 +47,44 @@ export function useGithubRepos(projectId?: string, enabled: boolean = true) {
 export function useLinkGithubInstallation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ projectId, installationId }: { projectId: string; installationId: number }) => {
-      const { data } = await api.post(`/projects/${projectId}/github/connect`, { installationId })
+    mutationFn: async ({ projectId: _projectId, installationId }: { projectId: string; installationId: number }) => {
+      const { data } = await api.post(`/github/connect`, { installationId })
       return data
     },
     onSuccess: (_, { projectId }) => {
-      queryClient.invalidateQueries({ queryKey: ['github-installation', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['github-installation'] })
       queryClient.invalidateQueries({ queryKey: ['github-repos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['github-pending-installation'] })
+      queryClient.invalidateQueries({ queryKey: ['github-available-repos', projectId] })
     },
   })
 }
 
-/**
- * Polls the backend every 2s for an unclaimed (pending) GitHub installation
- * that arrived via webhook. The `enabled` flag controls whether polling runs.
- */
 export function useGithubPendingInstallation(enabled: boolean) {
   return useQuery({
     queryKey: ['github-pending-installation'],
     queryFn: async () => {
-      const { data, status } = await api.get('/github/pending-installation', {
+      // Try the in-memory pending store first (works when webhooks reach the server)
+      const pending = await api.get('/github/pending-installation', {
         validateStatus: (s) => s === 200 || s === 204,
       })
-      if (status === 204) return null
-      return data as { installationId: number; repos: string[] }
+      if (pending.status === 200 && pending.data) {
+        return pending.data as { installationId: number; repos: string[] }
+      }
+
+      // Fallback: query GitHub API directly for unclaimed installations
+      // (works in dev without webhooks)
+      const detect = await api.get('/github/detect-installation', {
+        validateStatus: (s) => s === 200 || s === 204,
+      })
+      if (detect.status === 200 && detect.data) {
+        return detect.data as { installationId: number; repos: string[] }
+      }
+
+      return null
     },
     enabled,
-    refetchInterval: enabled ? 2000 : false,
+    refetchInterval: enabled ? 2500 : false,
     retry: false,
   })
 }
@@ -82,12 +92,65 @@ export function useGithubPendingInstallation(enabled: boolean) {
 export function useDisconnectGithub() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (projectId: string) => {
-      await api.delete(`/projects/${projectId}/github`)
+    mutationFn: async () => {
+      await api.delete('/github/installation')
     },
-    onSuccess: (_, projectId) => {
-      queryClient.invalidateQueries({ queryKey: ['github-installation', projectId] })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['github-installation'] })
+      queryClient.removeQueries({ queryKey: ['github-installation'] })
+      queryClient.invalidateQueries({ queryKey: ['github-repos'] })
+      queryClient.invalidateQueries({ queryKey: ['github-available-repos'] })
+    },
+  })
+}
+
+export function useGithubAvailableRepos(projectId?: string, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ['github-available-repos', projectId ?? ''],
+    queryFn: async () => {
+      if (!projectId) throw new Error('Missing projectId')
+      const { data } = await api.get(`/projects/${projectId}/github/available-repos`)
+      return data as {
+        repositories: Array<{
+          id: string
+          repoId: number
+          fullName: string
+          private: boolean
+          htmlUrl: string
+          defaultBranch: string
+        }>
+      }
+    },
+    enabled: !!projectId && enabled,
+    retry: false,
+  })
+}
+
+export function useAssignProjectRepo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ projectId, repoId }: { projectId: string; repoId: string }) => {
+      const { data } = await api.post(`/projects/${projectId}/github/repos`, { repoId })
+      return data
+    },
+    onSuccess: (_, { projectId }) => {
       queryClient.invalidateQueries({ queryKey: ['github-repos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['github-available-repos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['github-installation'] })
+    },
+  })
+}
+
+export function useUnassignProjectRepo() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ projectId, repoId }: { projectId: string; repoId: string }) => {
+      await api.delete(`/projects/${projectId}/github/repos/${repoId}`)
+    },
+    onSuccess: (_, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: ['github-repos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['github-available-repos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['github-installation'] })
     },
   })
 }

@@ -17,6 +17,7 @@ import { timeLogRoutes } from './routes/timeLogs.js'
 import { userRoutes } from './routes/users.js'
 import { githubRoutes } from './routes/github.js'
 import { githubWebhookRoutes } from './routes/webhooks/github.js'
+import { taskGithubLinkRoutes } from './routes/taskGithubLinks.js'
 import { scheduleRoutes } from './routes/schedules.js'
 import { uploadRoutes } from './routes/upload.js'
 import multipart from '@fastify/multipart'
@@ -95,6 +96,7 @@ app.register(timeLogRoutes, { prefix: '/api' })
 app.register(userRoutes, { prefix: '/api' })
 app.register(githubRoutes, { prefix: '/api' })
 app.register(githubWebhookRoutes, { prefix: '/api' })
+app.register(taskGithubLinkRoutes, { prefix: '/api' })
 app.register(scheduleRoutes, { prefix: '/api' })
 app.register(uploadRoutes, { prefix: '/api' })
 

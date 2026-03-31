@@ -11,9 +11,15 @@ import { useTasks, useUpdateTask, useDeleteTask, useCreateTaskDependency, useDel
 import { useSprints } from '@/hooks/useSprints'
 import { useProject } from '@/hooks/useProject'
 import { useTaskComments, useAddTaskComment } from '@/hooks/useTaskComments'
-import { Pencil, X, Clock, Link as LinkIcon, ExternalLink } from 'lucide-react'
+import { Pencil, X, Clock, Link as LinkIcon, ExternalLink, GitBranch, Loader2, GitCommit, GitPullRequest, GitMerge, Plus, AlertCircle } from 'lucide-react'
 import { useCreateTaskTimeLog } from '@/hooks/useTimeLogs'
 import { useSession } from '@/lib/auth-client'
+import {
+  useTaskGithubLinks,
+  useAddTaskGithubLink,
+  useRemoveTaskGithubLink,
+  type TaskGithubLink,
+} from '@/hooks/useTaskGithubLinks'
 
 function sanitizeUrl(url: string): string {
   try {
@@ -396,6 +402,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                   </a>
                 </div>
               )}
+
+              <TaskGithubLinks taskId={task?.id} projectId={projectId} />
 
               <div className="border border-border/60 bg-card p-5">
                 <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1"><LinkIcon className="size-3" /> Dependencies</p>
@@ -978,5 +986,195 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
         </DialogContent>
       </Dialog>
     </Dialog>
+  )
+}
+
+// ─── GitHub Links (PRs, Commits, Branches) ────────────────────────────────────
+
+const linkTypeIcon: Record<string, typeof GitCommit> = {
+  PULL_REQUEST: GitPullRequest,
+  COMMIT: GitCommit,
+  BRANCH: GitBranch,
+  ISSUE: AlertCircle,
+}
+
+const linkStatusBadge: Record<string, string> = {
+  open: 'bg-green-500/15 text-green-700 border-green-500/30',
+  closed: 'bg-red-500/15 text-red-700 border-red-500/30',
+  merged: 'bg-purple-500/15 text-purple-700 border-purple-500/30',
+}
+
+function TaskGithubLinks({ taskId, projectId: _projectId }: { taskId?: string; projectId: string }) {
+  const { data: links = [], isLoading } = useTaskGithubLinks(taskId)
+  const addLink = useAddTaskGithubLink()
+  const removeLink = useRemoveTaskGithubLink()
+
+  const [showInput, setShowInput] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
+  const [error, setError] = useState('')
+
+  const handleAdd = async () => {
+    if (!taskId || !urlInput.trim()) return
+    setError('')
+    try {
+      const result = await addLink.mutateAsync({ taskId, url: urlInput.trim() })
+      setUrlInput('')
+      setShowInput(false)
+      if (result.autoTransitionStatus) {
+        setError('')
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to add link')
+    }
+  }
+
+  if (!taskId) return null
+
+  return (
+    <div className="border border-border/60 bg-card p-5">
+      <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1">
+        <svg viewBox="0 0 16 16" className="size-3 fill-current" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+        </svg>
+        GitHub Links
+      </p>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground py-2">
+          <Loader2 className="size-3.5 animate-spin" />
+          <span className="text-xs">Loading…</span>
+        </div>
+      ) : links.length > 0 ? (
+        <div className="space-y-1.5 mb-3">
+          {links.map((link: TaskGithubLink) => {
+            const Icon = linkTypeIcon[link.type] ?? LinkIcon
+            const statusCls = link.status ? linkStatusBadge[link.status] : ''
+            return (
+              <div
+                key={link.id}
+                className="flex items-center justify-between text-sm bg-muted/30 p-2.5 border border-border/40"
+              >
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  {link.type === 'PULL_REQUEST' && link.status === 'merged' ? (
+                    <GitMerge className="size-3.5 text-purple-600 shrink-0" />
+                  ) : (
+                    <Icon className="size-3.5 text-muted-foreground shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      {link.title ? (
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-medium truncate hover:underline text-foreground"
+                        >
+                          {link.number ? `#${link.number} ` : ''}
+                          {link.title}
+                        </a>
+                      ) : (
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs truncate hover:underline text-primary"
+                        >
+                          {link.url}
+                        </a>
+                      )}
+                      {link.status && (
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] px-1 rounded-sm shrink-0 border ${statusCls}`}
+                        >
+                          {link.status}
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {link.repoFullName && (
+                        <span className="text-[10px] text-muted-foreground">{link.repoFullName}</span>
+                      )}
+                      {link.author && (
+                        <span className="text-[10px] text-muted-foreground">by {link.author}</span>
+                      )}
+                      {link.sha && (
+                        <code className="text-[10px] text-muted-foreground font-mono">{link.sha}</code>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                  onClick={() => removeLink.mutate({ taskId: taskId!, linkId: link.id })}
+                  disabled={removeLink.isPending}
+                >
+                  <X className="size-3" />
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground italic mb-3">
+          No GitHub links. Link a PR, commit, or branch to track it.
+        </p>
+      )}
+
+      {showInput ? (
+        <div className="space-y-2 border-t border-border/40 pt-3">
+          <Input
+            placeholder="https://github.com/owner/repo/pull/123"
+            className="h-8 text-xs rounded-none font-mono"
+            value={urlInput}
+            onChange={(e) => { setUrlInput(e.target.value); setError('') }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); handleAdd() }
+              if (e.key === 'Escape') { setShowInput(false); setUrlInput(''); setError('') }
+            }}
+            autoFocus
+          />
+          <p className="text-[10px] text-muted-foreground">
+            Paste a GitHub URL — pull request, commit, branch, or issue. PRs are auto-detected and can move the task status.
+          </p>
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              className="h-7 rounded-none px-3 text-xs"
+              disabled={!urlInput.trim() || addLink.isPending}
+              onClick={handleAdd}
+            >
+              {addLink.isPending ? (
+                <Loader2 className="size-3 animate-spin mr-1" />
+              ) : (
+                <Plus className="size-3 mr-1" />
+              )}
+              Add Link
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 rounded-none px-3 text-xs"
+              onClick={() => { setShowInput(false); setUrlInput(''); setError('') }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 rounded-none text-xs gap-1.5"
+          onClick={() => setShowInput(true)}
+        >
+          <Plus className="size-3" />
+          Link GitHub URL
+        </Button>
+      )}
+    </div>
   )
 }

@@ -2,7 +2,13 @@ import { FastifyInstance } from 'fastify'
 import { authenticate } from '../middlewares/authenticate.js'
 import { prisma } from '../lib/prisma.js'
 import { getInstallationToken } from '../lib/githubApp.js'
-import { peekPendingInstallations, removePendingInstallation, registerExpectingUser, isUserExpecting, clearExpectingUser } from '../lib/pendingInstallations.js'
+import {
+  peekPendingInstallations,
+  removePendingInstallation,
+  registerExpectingUser,
+  isUserExpecting,
+  clearExpectingUser,
+} from '../lib/pendingInstallations.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 
 const INSTALLATION_URL =
@@ -11,7 +17,7 @@ const INSTALLATION_URL =
 
 const FRONTEND_URL =
   process.env.FRONTEND_URL?.replace(/\/$/, '') ||
-  'https://task-manager-mauve-eta.vercel.app'
+  'http://localhost:5173'
 
 export async function githubRoutes(app: FastifyInstance) {
   // ── Connect button URL ────────────────────────────────────────────────
@@ -19,15 +25,13 @@ export async function githubRoutes(app: FastifyInstance) {
     '/github/connect',
     { preHandler: authenticate },
     async (req) => {
+      app.log.info({ userId: req.authUser.id }, 'GitHub connect requested — registering expecting user')
       registerExpectingUser(req.authUser.id)
       return { url: INSTALLATION_URL }
     },
   )
 
   // ── Check for a pending (unclaimed) GitHub App installation ──────────
-  // The frontend polls this after the user clicks "Install GitHub App".
-  // When the webhook fires, the installationId lands in the in-memory store.
-  // The authenticated user claims it and we remove it from the store.
   app.get(
     '/github/pending-installation',
     { preHandler: authenticate },
@@ -48,55 +52,57 @@ export async function githubRoutes(app: FastifyInstance) {
   )
 
   // ── GitHub post-install callback (redirect-based) ─────────────────────
-  // No authenticate middleware here — GitHub redirects the browser directly
-  // to this URL after installation, and cross-origin session cookies are
-  // often not sent. Instead we redirect to the frontend with the
-  // installation_id so the frontend can call the authenticated link API.
   app.get(
     '/github/callback',
     async (req, reply) => {
-      const { installation_id } = req.query as {
+      const { installation_id, setup_action } = req.query as {
         installation_id?: string
+        setup_action?: string
       }
 
       if (!installation_id) {
         return reply.redirect(`${FRONTEND_URL}/profile?github_error=missing_id`)
       }
 
+      // Both fresh installs (setup_action=install) and updates/re-authorizations
+      // (setup_action=update) carry the same installation_id param.
       return reply.redirect(
         `${FRONTEND_URL}/profile?github_installation_id=${installation_id}`,
       )
     },
   )
 
-  // ── Manually link an installation to a specific project ───────────────
+  // ── Link an installation to current user (account binding) ───────────
   app.post(
-    '/projects/:projectId/github/connect',
+    '/github/connect',
     { preHandler: authenticate },
     async (req, reply) => {
-      const { projectId } = req.params as { projectId: string }
       const { installationId } = req.body as { installationId: number }
 
       if (!installationId || typeof installationId !== 'number') {
         return reply.status(400).send({ error: 'installationId (number) is required' })
       }
 
+      // Validate the installation is real on GitHub by trying to get a token.
       try {
-        await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
-      } catch {
-        return reply.status(403).send({ error: 'Forbidden' })
+        await getInstallationToken(installationId)
+      } catch (err: any) {
+        app.log.warn({ installationId, err: err.message }, 'GitHub installation validation failed')
+        return reply.status(400).send({
+          error: 'Invalid GitHub installation. The app may have been uninstalled or the ID is wrong.',
+        })
       }
 
       const installation = await prisma.githubInstallation.upsert({
         where: { installationId },
         update: {
           userId: req.authUser.id,
-          projectId,
+          projectId: null,
         },
         create: {
           installationId,
           userId: req.authUser.id,
-          projectId,
+          projectId: null,
         },
         include: { repositories: true },
       })
@@ -104,18 +110,46 @@ export async function githubRoutes(app: FastifyInstance) {
       removePendingInstallation(installationId)
       clearExpectingUser(req.authUser.id)
 
+      app.log.info(
+        { installationId, userId: req.authUser.id },
+        'GitHub installation linked to user',
+      )
+
       return reply.status(200).send(installation)
     },
   )
 
-  // ── Get GitHub installation for a project ─────────────────────────────
+  // ── Get installation for current user (Profile page) ─────────────────
+  app.get(
+    '/github/installation',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      const installation = await prisma.githubInstallation.findFirst({
+        where: { userId: req.authUser.id },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (!installation) {
+        return reply.status(404).send({ error: 'No GitHub installation linked' })
+      }
+
+      try {
+        await getInstallationToken(installation.installationId)
+      } catch {
+        await prisma.githubInstallation.delete({ where: { id: installation.id } }).catch(() => {})
+        return reply.status(404).send({ error: 'No GitHub installation linked' })
+      }
+
+      return installation
+    },
+  )
+
+  // ── Get GitHub assignment status for a project ────────────────────────
   app.get(
     '/projects/:projectId/github',
     { preHandler: authenticate },
     async (req, reply) => {
       const { projectId } = req.params as { projectId: string }
 
-      // Ensure the user is a member of the requested project.
       const membership = await prisma.projectMember.findFirst({
         where: { userId: req.authUser.id, projectId },
         select: { userId: true },
@@ -124,30 +158,31 @@ export async function githubRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      // First try project-scoped installation (existing behavior),
-      // then fall back to a user-scoped installation (so Profile connect
-      // works across all projects).
-      const installation = await prisma.githubInstallation.findFirst({
+      const assigned = await prisma.projectRepository.findMany({
         where: { projectId },
-        include: { repositories: true },
+        include: { repo: true },
       })
-
-      if (!installation) {
-        const userInstallation = await prisma.githubInstallation.findFirst({
-          where: { userId: req.authUser.id },
-          include: { repositories: true },
-        })
-        if (!userInstallation) {
-          return reply.status(404).send({ error: 'No GitHub installation linked' })
-        }
-        return userInstallation
+      if (assigned.length === 0) {
+        return reply.status(404).send({ error: 'No GitHub installation linked' })
       }
 
-      return installation
+      return { connected: true, assignedRepoCount: assigned.length }
     },
   )
 
-  // ── Disconnect GitHub from a project ──────────────────────────────────
+  // ── Disconnect GitHub account (user-level) ────────────────────────────
+  app.delete(
+    '/github/installation',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      await prisma.githubInstallation.deleteMany({
+        where: { userId: req.authUser.id },
+      })
+      return reply.status(204).send()
+    },
+  )
+
+  // ── Backward compatible disconnect endpoint ───────────────────────────
   app.delete(
     '/projects/:projectId/github',
     { preHandler: authenticate },
@@ -160,32 +195,13 @@ export async function githubRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      const installation = await prisma.githubInstallation.findFirst({
-        where: { projectId },
-      })
-
-      if (!installation) {
-        const userInstallation = await prisma.githubInstallation.findFirst({
-          where: { userId: req.authUser.id },
-        })
-        if (!userInstallation) {
-          return reply.status(404).send({ error: 'No GitHub installation linked' })
-        }
-        await prisma.githubInstallation.delete({
-          where: { id: userInstallation.id },
-        })
-        return reply.status(204).send()
-      }
-
-      await prisma.githubInstallation.delete({
-        where: { id: installation.id },
-      })
-
+      const deleted = await prisma.githubInstallation.deleteMany({ where: { userId: req.authUser.id } })
+      app.log.info({ count: deleted.count, projectId }, 'GitHub installations disconnected (user-level)')
       return reply.status(204).send()
     },
   )
 
-  // ── List repos for a project's installation ───────────────────────────
+  // ── List assigned repos for project ───────────────────────────────────
   app.get(
     '/projects/:projectId/github/repos',
     { preHandler: authenticate },
@@ -200,59 +216,141 @@ export async function githubRoutes(app: FastifyInstance) {
         return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      const installation = await prisma.githubInstallation.findFirst({
+      const assigned = await prisma.projectRepository.findMany({
         where: { projectId },
+        include: { repo: true },
+        orderBy: { createdAt: 'desc' },
       })
 
-      let effectiveInstallation = installation
-      if (!effectiveInstallation) {
-        effectiveInstallation = await prisma.githubInstallation.findFirst({
-          where: { userId: req.authUser.id },
-        })
+      return {
+        repositories: assigned.map((a) => ({
+          id: a.repo.id,
+          repoId: a.repo.repoId,
+          fullName: a.repo.repoFullName,
+          private: true,
+          htmlUrl: `https://github.com/${a.repo.repoFullName}`,
+        })),
+      }
+    },
+  )
+
+  // ── Assign a repo to a project (admin only) ──────────────────────────
+  app.post(
+    '/projects/:projectId/github/repos',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      const { projectId } = req.params as { projectId: string }
+      const { repoId } = req.body as { repoId: string }
+
+      if (!repoId) return reply.status(400).send({ error: 'repoId is required' })
+
+      try {
+        await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+      } catch {
+        return reply.status(403).send({ error: 'Forbidden' })
       }
 
-      if (!effectiveInstallation) {
-        return reply.status(404).send({ error: 'No GitHub installation linked' })
+      const repo = await prisma.githubRepository.findUnique({ where: { id: repoId } })
+      if (!repo) return reply.status(404).send({ error: 'Repository not found' })
+
+      const assigned = await prisma.projectRepository.upsert({
+        where: { projectId_repoId: { projectId, repoId } },
+        update: {},
+        create: { projectId, repoId },
+        include: { repo: true },
+      })
+
+      return reply.status(201).send({
+        id: assigned.id,
+        repoId: assigned.repo.id,
+        fullName: assigned.repo.repoFullName,
+        htmlUrl: `https://github.com/${assigned.repo.repoFullName}`,
+      })
+    },
+  )
+
+  // ── Remove project repo assignment (admin only) ──────────────────────
+  app.delete(
+    '/projects/:projectId/github/repos/:repoId',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      const { projectId, repoId } = req.params as { projectId: string; repoId: string }
+
+      try {
+        await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+      } catch {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+
+      await prisma.projectRepository.deleteMany({ where: { projectId, repoId } })
+      return reply.status(204).send()
+    },
+  )
+
+  // ── Detect unclaimed installations directly from GitHub API ─────────
+  // Works in dev without webhooks: uses the App JWT to list all
+  // installations on GitHub and returns any not yet in our DB.
+  app.get(
+    '/github/detect-installation',
+    { preHandler: authenticate },
+    async (req, reply) => {
+      if (!isUserExpecting(req.authUser.id)) {
+        return reply.status(204).send()
+      }
+
+      let appJwt: string
+      try {
+        const jwtMod = await import('jsonwebtoken')
+        const appId = process.env.GITHUB_APP_ID
+        const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n')
+        if (!appId || !privateKey) return reply.status(204).send()
+        const now = Math.floor(Date.now() / 1000)
+        appJwt = jwtMod.default.sign(
+          { iat: now - 60, exp: now + 10 * 60, iss: appId },
+          privateKey,
+          { algorithm: 'RS256' },
+        )
+      } catch {
+        return reply.status(204).send()
       }
 
       try {
-        const token = await getInstallationToken(effectiveInstallation.installationId)
-
-        const res = await fetch(
-          'https://api.github.com/installation/repositories?per_page=100',
-          {
-            headers: {
-              Authorization: `token ${token}`,
-              Accept: 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-            },
+        const res = await fetch('https://api.github.com/app/installations?per_page=10', {
+          headers: {
+            Authorization: `Bearer ${appJwt}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
           },
-        )
+        })
 
-        if (!res.ok) {
-          const text = await res.text()
-          return reply
-            .status(502)
-            .send({ error: 'GitHub API error', detail: text })
-        }
+        if (!res.ok) return reply.status(204).send()
 
-        const data = (await res.json()) as {
-          repositories: Array<{ id: number; full_name: string; private: boolean; html_url: string }>
-        }
+        const installations = (await res.json()) as Array<{
+          id: number
+          account: { login: string } | null
+          created_at: string
+        }>
 
-        return {
-          installationId: effectiveInstallation.installationId,
-          repositories: data.repositories.map((r) => ({
-            repoId: r.id,
-            fullName: r.full_name,
-            private: r.private,
-            htmlUrl: r.html_url,
-          })),
-        }
+        const claimedIds = (
+          await prisma.githubInstallation.findMany({ select: { installationId: true } })
+        ).map((r) => r.installationId)
+
+        const unclaimed = installations
+          .filter((i) => !claimedIds.includes(i.id))
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+        if (unclaimed.length === 0) return reply.status(204).send()
+
+        const best = unclaimed[0]
+        app.log.info({ installationId: best.id, account: best.account?.login }, 'Detected unclaimed GitHub installation')
+        return reply.status(200).send({
+          installationId: best.id,
+          repos: [],
+          account: best.account?.login ?? null,
+        })
       } catch (err: any) {
-        return reply
-          .status(502)
-          .send({ error: 'Failed to fetch repos', detail: err.message })
+        app.log.warn({ err: err.message }, 'Failed to detect GitHub installations')
+        return reply.status(204).send()
       }
     },
   )

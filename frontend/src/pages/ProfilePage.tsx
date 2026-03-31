@@ -3,11 +3,9 @@ import Sidebar from '@/components/layout/Sidebar'
 import { useSession } from '@/lib/auth-client'
 import { ContributionHeatmap } from '@/components/contributions/ContributionHeatmap'
 import { useMyContributions } from '@/hooks/useMyContributions'
-import { useProjects } from '@/hooks/useProjects'
 import {
   useGithubConnect,
   useGithubInstallation,
-  useGithubRepos,
   useDisconnectGithub,
   useLinkGithubInstallation,
   useGithubPendingInstallation,
@@ -17,24 +15,22 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
-import { GitBranch, Unplug, Loader2, Lock, Globe, ExternalLink, Link2 } from 'lucide-react'
+import { GitBranch, Unplug, Loader2, Link2, RefreshCw } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 
 export default function ProfilePage() {
   const { data: session } = useSession()
   const { data: contrib } = useMyContributions(365)
-  const { data: projects = [] } = useProjects()
-  const githubProjectId = projects[0]?.id
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queryClient = useQueryClient()
 
-  const { data: connectData } = useGithubConnect()
+  const { data: connectData, refetch: refetchConnectUrl } = useGithubConnect()
   const {
     data: installation,
     isLoading: installLoading,
     isError: installError,
     refetch: refetchInstallation,
-  } = useGithubInstallation(githubProjectId)
-
-  const { data: reposData, isLoading: reposLoading } = useGithubRepos(githubProjectId, !!installation)
+  } = useGithubInstallation()
   const disconnect = useDisconnectGithub()
   const linkInstallation = useLinkGithubInstallation()
 
@@ -42,56 +38,74 @@ export default function ProfilePage() {
 
   const githubConnectedFlag = searchParams.get('github_connected')
   const githubInstallationIdParam = searchParams.get('github_installation_id')
+  const githubError = searchParams.get('github_error')
 
   const [manualId, setManualId] = useState('')
   const [manualError, setManualError] = useState('')
   const autoLinkingRef = useRef(false)
   const [polling, setPolling] = useState(false)
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [justDisconnected, setJustDisconnected] = useState(false)
 
+  // Clean up URL params after reading them
   useEffect(() => {
-    if (!githubConnectedFlag) return
-    refetchInstallation()
-  }, [githubConnectedFlag, refetchInstallation])
+    if (githubConnectedFlag || githubError) {
+      const newParams = new URLSearchParams(searchParams)
+      newParams.delete('github_connected')
+      newParams.delete('github_error')
+      setSearchParams(newParams, { replace: true })
+      if (githubConnectedFlag) {
+        refetchInstallation()
+      }
+    }
+  }, [githubConnectedFlag, githubError, searchParams, setSearchParams, refetchInstallation])
 
-  // Re-check installation when user switches back to this tab (after authorizing in new tab)
+  // Re-check installation when user switches back to this tab
   useEffect(() => {
     const onFocus = () => { refetchInstallation() }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [refetchInstallation])
 
-  // Auto-link when redirected from GitHub callback with installation_id
+  // Auto-link when redirected from GitHub callback with installation_id.
+  // Wait for githubProjectId to be available before attempting.
   useEffect(() => {
-    if (!githubInstallationIdParam || !githubProjectId || autoLinkingRef.current) return
+    if (!githubInstallationIdParam || autoLinkingRef.current) return
+
     const instId = parseInt(githubInstallationIdParam, 10)
     if (Number.isNaN(instId)) return
 
     autoLinkingRef.current = true
+
+    // Clear the URL param immediately so navigation doesn't re-trigger
+    const newParams = new URLSearchParams(searchParams)
+    newParams.delete('github_installation_id')
+    setSearchParams(newParams, { replace: true })
+
     linkInstallation
-      .mutateAsync({ projectId: githubProjectId, installationId: instId })
+      .mutateAsync({ projectId: 'profile', installationId: instId })
       .then(() => {
+        setPolling(false)
+        if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
         refetchInstallation()
-        const url = new URL(window.location.href)
-        url.searchParams.delete('github_installation_id')
-        window.history.replaceState({}, '', url.pathname + '?github_connected=true')
       })
-      .catch(() => {
-        setManualId(githubInstallationIdParam)
-        setManualError('Auto-link failed. You can try linking manually below.')
+      .catch((err) => {
+        setManualId(String(instId))
+        const msg = err?.response?.data?.error || 'Auto-link failed. You can try linking manually below.'
+        setManualError(msg)
       })
       .finally(() => { autoLinkingRef.current = false })
-  }, [githubInstallationIdParam, githubProjectId, linkInstallation, refetchInstallation])
+  }, [githubInstallationIdParam, linkInstallation, refetchInstallation, searchParams, setSearchParams])
 
   // Poll for pending installation (from webhook) while polling === true
   const { data: pendingInstall } = useGithubPendingInstallation(polling && !isConnected)
 
   // Auto-claim the pending installation when found via polling
   useEffect(() => {
-    if (!pendingInstall || !githubProjectId || autoLinkingRef.current) return
+    if (!pendingInstall || autoLinkingRef.current) return
     autoLinkingRef.current = true
     linkInstallation
-      .mutateAsync({ projectId: githubProjectId, installationId: pendingInstall.installationId })
+      .mutateAsync({ projectId: 'profile', installationId: pendingInstall.installationId })
       .then(() => {
         setPolling(false)
         if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
@@ -102,7 +116,7 @@ export default function ProfilePage() {
         setManualError('Auto-link failed. The Installation ID has been filled in below — click Link.')
       })
       .finally(() => { autoLinkingRef.current = false })
-  }, [pendingInstall, githubProjectId, linkInstallation, refetchInstallation])
+  }, [pendingInstall, linkInstallation, refetchInstallation])
 
   // Cleanup poll timeout on unmount
   useEffect(() => {
@@ -113,19 +127,27 @@ export default function ProfilePage() {
 
   const handleConnect = useCallback(() => {
     if (!connectData?.url) return
+    setJustDisconnected(false)
+    setManualError('')
+    refetchConnectUrl()
     window.open(connectData.url, '_blank', 'noopener,noreferrer')
     setPolling(true)
-    setManualError('')
     if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current)
     pollTimeoutRef.current = setTimeout(() => {
       setPolling(false)
       setManualError('Auto-detection timed out. Please paste your GitHub Installation ID below.')
     }, 90_000)
-  }, [connectData?.url])
+  }, [connectData?.url, refetchConnectUrl])
 
   const handleDisconnect = async () => {
-    if (!githubProjectId) return
-    await disconnect.mutateAsync(githubProjectId)
+    await disconnect.mutateAsync()
+    setJustDisconnected(true)
+    setManualError('')
+    setManualId('')
+    // Force clear all cached github state so the UI resets to "not connected"
+    queryClient.removeQueries({ queryKey: ['github-installation'] })
+    queryClient.removeQueries({ queryKey: ['github-repos'] })
+    queryClient.removeQueries({ queryKey: ['github-pending-installation'] })
   }
 
   const handleManualLink = async () => {
@@ -135,13 +157,10 @@ export default function ProfilePage() {
       setManualError('Please enter a valid numeric Installation ID.')
       return
     }
-    if (!githubProjectId) {
-      setManualError('Create a project first.')
-      return
-    }
     try {
-      await linkInstallation.mutateAsync({ projectId: githubProjectId, installationId: parsed })
+      await linkInstallation.mutateAsync({ projectId: 'profile', installationId: parsed })
       setManualId('')
+      setJustDisconnected(false)
       refetchInstallation()
     } catch (err: any) {
       setManualError(err?.response?.data?.error || err?.message || 'Failed to link installation.')
@@ -210,7 +229,7 @@ export default function ProfilePage() {
                   <Loader2 className="size-4 animate-spin" />
                   <span>Checking GitHub connection…</span>
                 </div>
-              ) : isConnected ? (
+              ) : isConnected && !justDisconnected ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <Badge className="gap-1.5 bg-emerald-500/15 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/15">
@@ -219,42 +238,6 @@ export default function ProfilePage() {
                     <span className="text-xs text-muted-foreground font-mono">
                       Installation ID: {installation.installationId}
                     </span>
-                  </div>
-
-                  <div>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Repositories
-                    </p>
-                    {reposLoading ? (
-                      <div className="flex items-center gap-2 text-muted-foreground py-3">
-                        <Loader2 className="size-3.5 animate-spin" />
-                        <span>Loading repositories…</span>
-                      </div>
-                    ) : reposData?.repositories?.length ? (
-                      <div className="space-y-1.5">
-                        {reposData.repositories.map((repo) => (
-                          <a
-                            key={repo.repoId}
-                            href={repo.htmlUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-3 rounded-lg border border-border/40 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 group"
-                          >
-                            {repo.private ? (
-                              <Lock className="size-3.5 text-amber-500 shrink-0" />
-                            ) : (
-                              <Globe className="size-3.5 text-muted-foreground shrink-0" />
-                            )}
-                            <span className="flex-1 truncate font-medium">{repo.fullName}</span>
-                            <ExternalLink className="size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                          </a>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground italic">
-                        No repositories found for this installation.
-                      </p>
-                    )}
                   </div>
 
                   <div className="pt-2 border-t border-border/40">
@@ -269,16 +252,25 @@ export default function ProfilePage() {
                       ) : (
                         <Unplug className="size-4" />
                       )}
-                      Disconnect GitHub (all projects)
+                      Disconnect GitHub account
                     </Button>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Disconnecting will stop GitHub → task syncing everywhere.
+                      Disconnecting will remove this bound GitHub account from your profile.
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* Step 1 – Install button */}
+                  {justDisconnected && (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+                      <p className="text-sm text-amber-700 font-medium">GitHub disconnected</p>
+                      <p className="mt-1 text-xs text-amber-600">
+                        You can reconnect by clicking the button below. If the app is already installed
+                        on your GitHub account, it will be detected automatically.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-5 py-6 text-center">
                     <div className={`mx-auto mb-3 grid size-12 place-items-center rounded-full ${polling ? 'bg-blue-500/15' : 'bg-muted/60'}`}>
                       {polling ? (
@@ -310,26 +302,27 @@ export default function ProfilePage() {
                         </p>
                         <Button
                           className="mt-4 h-9 gap-2 rounded-none"
-                          disabled={!connectData?.url || projects.length === 0}
+                          disabled={!connectData?.url}
                           onClick={handleConnect}
                         >
                           <span className="inline-flex items-center gap-2">
-                            Install GitHub App
+                            {justDisconnected ? (
+                              <>
+                                <RefreshCw className="size-4" />
+                                Reconnect GitHub App
+                              </>
+                            ) : (
+                              'Install GitHub App'
+                            )}
                           </span>
                         </Button>
                         <p className="mt-2 text-xs text-muted-foreground">
                           Opens GitHub in a new tab. We'll auto-detect when you finish.
                         </p>
-                        {projects.length === 0 && (
-                          <p className="mt-3 text-xs text-muted-foreground">
-                            Create a project first to connect GitHub.
-                          </p>
-                        )}
                       </>
                     )}
                   </div>
 
-                  {/* Step 2 – Manual fallback */}
                   <div className="rounded-lg border border-border/60 bg-muted/10 px-5 py-5">
                     <div className="flex items-center gap-2 mb-2">
                       <Link2 className="size-4 text-muted-foreground" />
@@ -357,12 +350,18 @@ export default function ProfilePage() {
                           onChange={(e) => setManualId(e.target.value)}
                           placeholder="e.g. 12345678"
                           className="h-9 font-mono"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault()
+                              handleManualLink()
+                            }
+                          }}
                         />
                       </div>
                       <Button
                         className="h-9 gap-2 rounded-none"
                         onClick={handleManualLink}
-                        disabled={!manualId.trim() || linkInstallation.isPending || projects.length === 0}
+                        disabled={!manualId.trim() || linkInstallation.isPending}
                       >
                         {linkInstallation.isPending ? (
                           <Loader2 className="size-4 animate-spin" />
@@ -385,4 +384,3 @@ export default function ProfilePage() {
     </div>
   )
 }
-

@@ -181,16 +181,60 @@ export function renderNonTimeLogDetails(event: any) {
   }
 
   if (type === 'PUSH_TO_REPO') {
-    const ref = md?.ref ? String(md.ref) : null
+    const branch = md?.branch ? String(md.branch) : md?.ref ? String(md.ref) : null
     const commits = Number(md?.commits ?? 0)
     const pusher = md?.pusher ? String(md.pusher) : null
+    const commitMessages: Array<{ sha?: string; message?: string; author?: string }> =
+      Array.isArray(md?.commitMessages) ? md.commitMessages : []
     return (
       <div className="mt-2 rounded-md bg-muted/30 p-3 text-xs">
         <p className="text-[11px] font-semibold text-foreground/90">Repository push</p>
         <p className="mt-1 text-sm text-foreground">
-          {ref ? `Ref: ${ref}` : 'Changes pushed'} {pusher ? `· by ${pusher}` : ''}
+          {branch ? `Branch: ${branch}` : 'Changes pushed'} {pusher ? `· by ${pusher}` : ''}
         </p>
         {commits > 0 && <p className="mt-1 text-sm text-muted-foreground">{commits} commit(s)</p>}
+        {commitMessages.length > 0 && (
+          <div className="mt-2 space-y-1 border-t border-border/30 pt-2">
+            {commitMessages.map((c, i) => (
+              <p key={i} className="text-muted-foreground truncate">
+                <span className="font-mono text-[10px] text-foreground/70">{c.sha ?? '?'}</span>{' '}
+                {c.message ?? ''}
+                {c.author && <span className="text-[10px]"> — {c.author}</span>}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (type === 'PR_REVIEWED') {
+    const prTitle = md?.prTitle ? String(md.prTitle) : null
+    const reviewer = md?.reviewer ? String(md.reviewer) : null
+    const state = md?.state ? String(md.state) : null
+    return (
+      <div className="mt-2 rounded-md bg-muted/30 p-3 text-xs">
+        <p className="text-[11px] font-semibold text-foreground/90">Pull request review</p>
+        <p className="mt-1 text-sm text-foreground">{prTitle ?? 'A pull request'}</p>
+        {reviewer && <p className="mt-1 text-sm text-muted-foreground">Reviewer: {reviewer}</p>}
+        {state && <p className="text-sm text-muted-foreground">Verdict: {state}</p>}
+      </div>
+    )
+  }
+
+  if (type === 'BRANCH_CREATED' || type === 'BRANCH_DELETED' ||
+      type === 'TAG_CREATED' || type === 'TAG_DELETED') {
+    const refType = md?.refType ? String(md.refType) : 'ref'
+    const ref = md?.ref ? String(md.ref) : '?'
+    const sender = md?.sender ? String(md.sender) : null
+    const action = type.includes('CREATED') ? 'created' : 'deleted'
+    return (
+      <div className="mt-2 rounded-md bg-muted/30 p-3 text-xs">
+        <p className="text-[11px] font-semibold text-foreground/90">
+          {refType.charAt(0).toUpperCase() + refType.slice(1)} {action}
+        </p>
+        <p className="mt-1 text-sm text-foreground font-mono">{ref}</p>
+        {sender && <p className="mt-1 text-sm text-muted-foreground">by {sender}</p>}
       </div>
     )
   }
@@ -235,7 +279,12 @@ export function getEventHeadline(type: string) {
     PR_OPENED: 'opened a pull request',
     PR_MERGED: 'merged a pull request',
     PR_CLOSED: 'closed a pull request',
+    PR_REVIEWED: 'reviewed a pull request',
     PUSH_TO_REPO: 'pushed to repository',
+    BRANCH_CREATED: 'created a branch',
+    BRANCH_DELETED: 'deleted a branch',
+    TAG_CREATED: 'created a tag',
+    TAG_DELETED: 'deleted a tag',
   }
   return map[type] ?? type.replace(/_/g, ' ').toLowerCase()
 }
@@ -244,6 +293,9 @@ export function shouldShowEntityType(type: string, entityType: any) {
   if (typeof entityType !== 'string') return false
   const t = type ?? ''
   if (t === 'PUSH_TO_REPO') return false
+  if (t === 'BRANCH_CREATED' || t === 'BRANCH_DELETED') return false
+  if (t === 'TAG_CREATED' || t === 'TAG_DELETED') return false
+  if (t === 'PR_REVIEWED') return false
   if (entityType === 'TASK') return false
   if (entityType === 'TIME_LOG') return false
   if (entityType === 'PROJECT') return false

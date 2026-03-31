@@ -118,6 +118,7 @@ const updateProjectSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   status: z.enum(['ACTIVE', 'COMPLETED']).optional(),
   boardColumns: z.array(z.string()).optional(),
+  githubStatusMap: z.record(z.string(), z.string().nullable()).nullable().optional(),
 })
 
   app.patch('/projects/:id', {
@@ -131,6 +132,60 @@ const updateProjectSchema = z.object({
     }
     const data = updateProjectSchema.parse(req.body)
     return projectService.update(id, data)
+  })
+
+  // ── Dependency diagram layout (persisted per project) ─────────────────
+  app.get('/projects/:projectId/dependency-diagram-layout', {
+    preHandler: authenticate,
+  }, async (req, reply) => {
+    const { projectId } = req.params as { projectId: string }
+    try {
+      await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
+    const row = await prisma.projectDependencyDiagramLayout.findUnique({
+      where: { projectId },
+      select: { layout: true, updatedAt: true },
+    })
+    if (!row) return reply.status(204).send()
+    return reply.status(200).send(row)
+  })
+
+  const dependencyLayoutSchema = z.object({
+    layout: z.any(),
+  })
+
+  app.put('/projects/:projectId/dependency-diagram-layout', {
+    preHandler: authenticate,
+  }, async (req, reply) => {
+    const { projectId } = req.params as { projectId: string }
+    try {
+      await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
+    const body = dependencyLayoutSchema.parse(req.body)
+    const row = await prisma.projectDependencyDiagramLayout.upsert({
+      where: { projectId },
+      update: { layout: body.layout },
+      create: { projectId, layout: body.layout },
+      select: { layout: true, updatedAt: true },
+    })
+    return reply.status(200).send(row)
+  })
+
+  app.delete('/projects/:projectId/dependency-diagram-layout', {
+    preHandler: authenticate,
+  }, async (req, reply) => {
+    const { projectId } = req.params as { projectId: string }
+    try {
+      await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
+    } catch {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
+    await prisma.projectDependencyDiagramLayout.deleteMany({ where: { projectId } })
+    return reply.status(204).send()
   })
 
   app.delete('/projects/:id', {
