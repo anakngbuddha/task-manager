@@ -3,6 +3,13 @@ import crypto from 'crypto';
 const APP_ID = process.env.GITHUB_APP_ID;
 const PRIVATE_KEY = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n');
 const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
+if (!APP_ID || !PRIVATE_KEY || !WEBHOOK_SECRET) {
+    console.warn('[github] WARNING: GitHub App env vars not fully configured (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET). ' +
+        'GitHub integration features will fail at runtime until these are set.');
+}
+export function isGithubConfigured() {
+    return !!(APP_ID && PRIVATE_KEY && WEBHOOK_SECRET);
+}
 function requireGithubConfig() {
     if (!APP_ID || !PRIVATE_KEY || !WEBHOOK_SECRET) {
         throw new Error('GitHub App environment variables (GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_WEBHOOK_SECRET) are not set');

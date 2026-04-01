@@ -110,6 +110,20 @@ export async function projectRoutes(app: FastifyInstance) {
     preHandler: authenticate,
   }, async (req, reply) => {
     const { name } = createProjectSchema.parse(req.body)
+
+    // Enforce unique active project names per user
+    const existingProjects = await prisma.project.findMany({
+      where: {
+        name,
+        status: 'ACTIVE',
+        members: { some: { userId: req.authUser.id } }
+      }
+    })
+
+    if (existingProjects.length > 0) {
+      return reply.status(400).send({ error: 'You already have an active project with this name. A project with the same name can only be created if the existing one is completed.' })
+    }
+
     const project = await projectService.create(name, req.authUser.id)
     return reply.status(201).send(project)
   })

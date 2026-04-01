@@ -2,7 +2,7 @@
  * In-memory store for GitHub App installations received via webhook
  * before a user has had the chance to claim them.
  *
- * TTL: 10 minutes. Safe for single-instance deployments (Render free tier).
+ * TTL: 10 minutes. Safe for single-instance deployments.
  *
  * Flow:
  * 1. User calls GET /github/connect → registerExpectingUser(userId) records
@@ -47,6 +47,10 @@ export function peekPendingInstallations() {
 }
 export function removePendingInstallation(installationId) {
     store.delete(installationId);
+}
+export function getAllExpectingUserIds() {
+    pruneExpectingUsers();
+    return Array.from(expectingUsers.keys());
 }
 function pruneExpired() {
     const cutoff = Date.now() - TTL_MS;

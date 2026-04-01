@@ -17,11 +17,23 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const isValidEmail = useMemo(() => /\S+@\S+\.\S+/.test(email), [email])
+  const isPasswordValid = useMemo(() => {
+    return password.length >= 8 &&
+      /[a-z]/.test(password) &&
+      /[A-Z]/.test(password) &&
+      /\d/.test(password)
+  }, [password])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+
+    if (!isPasswordValid) {
+      setError('Password must be at least 8 characters long and contain a lowercase letter, an uppercase letter, and a number.')
+      setLoading(false)
+      return
+    }
   
     try {
       const result = await signUp.email({ name, email, password })
@@ -139,7 +151,7 @@ export default function RegisterPage() {
                       </button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Use at least 8 characters. You can update it later in your profile.
+                      Use at least 8 characters, including a lowercase letter, an uppercase letter, and a number. You can update it later in your profile.
                     </p>
                   </div>
 

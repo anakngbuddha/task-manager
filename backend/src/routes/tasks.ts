@@ -146,6 +146,13 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
+    const existingTask = await prisma.task.findFirst({
+      where: { projectId: body.projectId, title: body.title }
+    })
+    if (existingTask) {
+      return reply.status(400).send({ error: 'A task with this title already exists in the project' })
+    }
+
     if (body.assigneeId === 'EVERYONE') {
       const members = await prisma.projectMember.findMany({
         where: { projectId: body.projectId },
@@ -243,22 +250,19 @@ export async function taskRoutes(app: FastifyInstance) {
     const existing = await taskService.getById(id)
     if (!existing) return reply.status(404).send({ error: 'Task not found' })
 
-    let effectiveRole: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER' = 'MEMBER'
     try {
-      effectiveRole = await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
+      await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
     } catch {
       return reply.status(403).send({ error: 'Forbidden' })
     }
 
-    const wantsToMoveTask = typeof body.status === 'string' || Object.prototype.hasOwnProperty.call(body, 'sprintId')
-    const canManageTaskMovement = effectiveRole === 'MASTER_ADMIN' || effectiveRole === 'PROJECT_MANAGER'
-    if (wantsToMoveTask && !canManageTaskMovement) {
-      return reply.status(403).send({ error: 'Only MASTER_ADMIN or PROJECT_MANAGER can move tasks' })
-    }
-
-    const isLockedStatus = existing.status === 'READY' || existing.status === 'DONE'
-    if (wantsToMoveTask && isLockedStatus && effectiveRole === 'MEMBER') {
-      return reply.status(403).send({ error: 'Members cannot move tasks already in READY or DONE' })
+    if (body.title && body.title !== existing.title) {
+      const duplicateTask = await prisma.task.findFirst({
+        where: { projectId: existing.projectId, title: body.title }
+      })
+      if (duplicateTask) {
+        return reply.status(400).send({ error: 'A task with this title already exists in the project' })
+      }
     }
 
     // Enforce that sprintId (if provided) belongs to the same project.

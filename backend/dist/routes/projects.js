@@ -89,6 +89,17 @@ export async function projectRoutes(app) {
         preHandler: authenticate,
     }, async (req, reply) => {
         const { name } = createProjectSchema.parse(req.body);
+        // Enforce unique active project names per user
+        const existingProjects = await prisma.project.findMany({
+            where: {
+                name,
+                status: 'ACTIVE',
+                members: { some: { userId: req.authUser.id } }
+            }
+        });
+        if (existingProjects.length > 0) {
+            return reply.status(400).send({ error: 'You already have an active project with this name. A project with the same name can only be created if the existing one is completed.' });
+        }
         const project = await projectService.create(name, req.authUser.id);
         return reply.status(201).send(project);
     });
@@ -96,6 +107,7 @@ export async function projectRoutes(app) {
         name: z.string().min(1).max(100).optional(),
         status: z.enum(['ACTIVE', 'COMPLETED']).optional(),
         boardColumns: z.array(z.string()).optional(),
+        githubStatusMap: z.record(z.string(), z.string().nullable()).nullable().optional(),
     });
     app.patch('/projects/:id', {
         preHandler: authenticate,
@@ -109,6 +121,60 @@ export async function projectRoutes(app) {
         }
         const data = updateProjectSchema.parse(req.body);
         return projectService.update(id, data);
+    });
+    // ── Dependency diagram layout (persisted per project) ─────────────────
+    app.get('/projects/:projectId/dependency-diagram-layout', {
+        preHandler: authenticate,
+    }, async (req, reply) => {
+        const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        const row = await prisma.projectDependencyDiagramLayout.findUnique({
+            where: { projectId },
+            select: { layout: true, updatedAt: true },
+        });
+        if (!row)
+            return reply.status(204).send();
+        return reply.status(200).send(row);
+    });
+    const dependencyLayoutSchema = z.object({
+        layout: z.any(),
+    });
+    app.put('/projects/:projectId/dependency-diagram-layout', {
+        preHandler: authenticate,
+    }, async (req, reply) => {
+        const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        const body = dependencyLayoutSchema.parse(req.body);
+        const row = await prisma.projectDependencyDiagramLayout.upsert({
+            where: { projectId },
+            update: { layout: body.layout },
+            create: { projectId, layout: body.layout },
+            select: { layout: true, updatedAt: true },
+        });
+        return reply.status(200).send(row);
+    });
+    app.delete('/projects/:projectId/dependency-diagram-layout', {
+        preHandler: authenticate,
+    }, async (req, reply) => {
+        const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        await prisma.projectDependencyDiagramLayout.deleteMany({ where: { projectId } });
+        return reply.status(204).send();
     });
     app.delete('/projects/:id', {
         preHandler: authenticate,

@@ -47,7 +47,8 @@ export function useGithubRepos(projectId?: string, enabled: boolean = true) {
 export function useLinkGithubInstallation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ projectId: _projectId, installationId }: { projectId: string; installationId: number }) => {
+    mutationFn: async ({ projectId, installationId }: { projectId: string; installationId: number }) => {
+      void projectId
       const { data } = await api.post(`/github/connect`, { installationId })
       return data
     },
