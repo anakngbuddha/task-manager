@@ -13,9 +13,7 @@ import { useSprints } from '@/hooks/useSprints'
 import { useProjectMembers } from '@/hooks/useProjectMembers'
 import { useSession } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -37,7 +35,6 @@ import {
   ChevronRight,
   Copy,
   Crosshair,
-  Filter,
   Focus,
   Keyboard,
   LayoutGrid,
@@ -606,7 +603,7 @@ function TaskNode({ data, selected }: { data: Record<string, unknown>; selected?
           </button>
         )}
       </div>
-      {data.assigneeName && (
+      {Boolean(data.assigneeName) && (
         <div className={`mb-2 truncate text-[10px] ${assigneeText}`}>{data.assigneeName as string}</div>
       )}
       
