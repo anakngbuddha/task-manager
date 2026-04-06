@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { ChevronLeft, ChevronRight, Plus, Clock, X } from 'lucide-react'
+import { Avatar, AvatarGroup, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useSchedules, useCreateSchedule, useRespondScheduleInvite, type ScheduleType, type Schedule } from '@/hooks/useSchedules'
 import { usePendingDeadlines, type PendingDeadlineItem } from '@/hooks/usePendingDeadlines'
 import { useProjects } from '@/hooks/useProjects'
@@ -335,7 +336,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar />
       <main className="flex-1 overflow-hidden bg-background flex flex-col">
         <PageHeader
@@ -589,21 +590,24 @@ export default function CalendarPage() {
 
         {/* Create schedule dialog */}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="sm:max-w-xl rounded-none">
-            <DialogHeader>
-              <DialogTitle>Create schedule</DialogTitle>
-              <DialogDescription>Add a new meeting, reminder, or event to your calendar.</DialogDescription>
+          <DialogContent className="sm:max-w-xl rounded-2xl p-6">
+            <DialogHeader className="flex flex-row items-center justify-between pb-2">
+              <DialogTitle className="text-lg font-semibold">Create Schedule</DialogTitle>
+              {/* Radix Dialog close button is rendered automatically */}
             </DialogHeader>
-            <div className="grid grid-cols-1 gap-3">
+            <div className="grid grid-cols-1 gap-4">
               <div className="space-y-1.5">
                 <Label>Title</Label>
-                <Input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="e.g. Sprint review" />
+                <Input value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="e.g. Sprint review" className="rounded-md" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
+
+              <div className="grid grid-cols-4 gap-3">
+                <div className="space-y-1.5 min-w-0">
                   <Label>Type</Label>
                   <Select value={formType} onValueChange={v => setFormType(v as ScheduleType)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="rounded-md">
+                      <SelectValue />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="MEETING">Meeting</SelectItem>
                       <SelectItem value="TRAINING">Training</SelectItem>
@@ -613,56 +617,56 @@ export default function CalendarPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>When</Label>
-                  <div className="grid grid-cols-1 gap-2">
-                    <Input
-                      type="date"
-                      value={formDate}
-                      onChange={(e) => setFormDate(e.target.value)}
-                      className="rounded-none"
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Start</Label>
-                        <Input
-                          type="time"
-                          value={formStartTime}
-                          onChange={(e) => setFormStartTime(e.target.value)}
-                          className="rounded-none"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">End</Label>
-                        <Input
-                          type="time"
-                          value={formEndTime}
-                          onChange={(e) => setFormEndTime(e.target.value)}
-                          className="rounded-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
+                <div className="space-y-1.5 min-w-0">
+                  <Label>Date</Label>
+                  <Input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
+                    className="rounded-md"
+                  />
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  <Label>Start</Label>
+                  <Input
+                    type="time"
+                    value={formStartTime}
+                    onChange={(e) => setFormStartTime(e.target.value)}
+                    className="rounded-md px-2"
+                  />
+                </div>
+                <div className="space-y-1.5 min-w-0">
+                  <Label>End</Label>
+                  <Input
+                    type="time"
+                    value={formEndTime}
+                    onChange={(e) => setFormEndTime(e.target.value)}
+                    className="rounded-md px-2"
+                  />
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Project (optional)</Label>
-                <Select value={formProjectId} onValueChange={setFormProjectId}>
-                  <SelectTrigger><SelectValue placeholder="Personal / no project" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">No project</SelectItem>
-                    {projects.map((p: any) => (
-                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Project <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Select value={formProjectId} onValueChange={setFormProjectId}>
+                    <SelectTrigger className="rounded-md"><SelectValue placeholder="No project" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">No project</SelectItem>
+                      {projects.map((p: any) => (
+                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Location</Label>
+                  <Input value={formLocation} onChange={e => setFormLocation(e.target.value)} placeholder="e.g. Zoom link / Room 3B" className="rounded-md" />
+                </div>
               </div>
+
               <div className="space-y-1.5">
-                <Label>Location (optional)</Label>
-                <Input value={formLocation} onChange={e => setFormLocation(e.target.value)} placeholder="e.g. Zoom link / Room 3B" />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Details (optional)</Label>
+                <Label>Description</Label>
                 <textarea
                   value={formDetails}
                   onChange={e => setFormDetails(e.target.value)}
@@ -670,9 +674,10 @@ export default function CalendarPage() {
                   className="min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
               </div>
+
               <div className="space-y-1.5">
-                <Label>Attendees emails (optional)</Label>
-                <div className="flex flex-wrap gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                <Label>Attendees</Label>
+                <div className="relative flex flex-wrap min-h-10 items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
                   {formAttendees.map((email, i) => (
                     <Badge key={i} variant="secondary" className="flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 font-normal h-6">
                       {email}
@@ -686,7 +691,7 @@ export default function CalendarPage() {
                     </Badge>
                   ))}
                   <input
-                    className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground min-w-[150px]"
+                    className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground min-w-[200px]"
                     placeholder={formAttendees.length === 0 ? "comma separated, e.g. a@x.com, b@x.com" : ""}
                     value={attendeeInput}
                     onChange={e => {
@@ -696,30 +701,45 @@ export default function CalendarPage() {
                     onKeyDown={handleEmailInputKeyDown}
                     onBlur={handleEmailBlur}
                   />
+                  
+                  {formAttendees.length === 0 && (
+                    <div 
+                      className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => setParticipantsOpen(true)}
+                      title="Add project members"
+                    >
+                      <AvatarGroup>
+                        <Avatar size="sm"><AvatarImage src="https://i.pravatar.cc/100?img=1" /><AvatarFallback>A</AvatarFallback></Avatar>
+                        <Avatar size="sm"><AvatarImage src="https://i.pravatar.cc/100?img=2" /><AvatarFallback>B</AvatarFallback></Avatar>
+                        <Avatar size="sm"><AvatarImage src="https://i.pravatar.cc/100?img=3" /><AvatarFallback>C</AvatarFallback></Avatar>
+                        <Avatar size="sm"><AvatarImage src="https://i.pravatar.cc/100?img=4" /><AvatarFallback>D</AvatarFallback></Avatar>
+                      </AvatarGroup>
+                    </div>
+                  )}
                 </div>
-
-                <div className="flex items-center justify-between gap-3 pt-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    className="rounded-none"
-                    onClick={() => setParticipantsOpen(true)}
-                  >
-                    Add participants
-                  </Button>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {projectMembers.length} project member{projectMembers.length === 1 ? '' : 's'} available
-                  </p>
-                </div>
+                {formAttendees.length > 0 && (
+                  <div className="flex justify-end pt-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setParticipantsOpen(true)}
+                    >
+                      Browse members
+                    </Button>
+                  </div>
+                )}
               </div>
+
               {formError && (
-                <p className="text-xs text-destructive -mt-1">{formError}</p>
+                <p className="text-xs text-destructive">{formError}</p>
               )}
+              
               <div className="flex items-center justify-end gap-2 pt-2">
-                <Button variant="ghost" onClick={() => { setCreateOpen(false); resetForm() }} disabled={isCreating}>Cancel</Button>
-                <Button onClick={handleCreate} disabled={isCreating}>
-                  {isCreating ? 'Creating…' : 'Create schedule'}
+                <Button variant="outline" className="rounded-md" onClick={() => { setCreateOpen(false); resetForm() }} disabled={isCreating}>Cancel</Button>
+                <Button className="rounded-md bg-teal-600 hover:bg-teal-700 text-primary-foreground" onClick={handleCreate} disabled={isCreating}>
+                  {isCreating ? 'Creating...' : 'Create'}
                 </Button>
               </div>
             </div>

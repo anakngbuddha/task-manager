@@ -89,7 +89,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar />
       <main className="flex-1 overflow-auto bg-background">
         <PageHeader

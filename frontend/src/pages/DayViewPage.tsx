@@ -219,7 +219,7 @@ export default function DayViewPage() {
   const selectedAttendees = selectedSchedule?.attendees ?? []
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar />
       <main className="flex-1 overflow-hidden bg-background flex flex-col bg-[radial-gradient(ellipse_at_top,_rgba(148,163,184,0.08),transparent_55%)]">
         <PageHeader

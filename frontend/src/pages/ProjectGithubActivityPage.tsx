@@ -209,7 +209,7 @@ export default function ProjectGithubActivityPage() {
   const hasMore = !!activityData?.nextCursor
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-dvh bg-background">
       <Sidebar />
       <main className="flex-1 overflow-hidden">
         <PageHeader

@@ -491,7 +491,7 @@ export default function ProjectMessagesPage() {
   // ─── Layout ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh overflow-hidden">
       <Sidebar />
 
       <div className="flex flex-1 overflow-hidden">

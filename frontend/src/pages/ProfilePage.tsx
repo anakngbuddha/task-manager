@@ -168,7 +168,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar />
       <main className="flex-1 overflow-auto bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.08),transparent_55%)]">
         <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">

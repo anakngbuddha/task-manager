@@ -138,7 +138,7 @@ export default function RoadmapPage() {
   today.setHours(0,0,0,0)
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar />
       <main className="flex-1 overflow-hidden bg-background flex flex-col">
         <PageHeader

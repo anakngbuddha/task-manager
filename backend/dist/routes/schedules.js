@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma.js';
 import { activityService } from '../services/activity.service.js';
 import { notificationService } from '../services/notification.service.js';
 import { sendScheduleInviteEmail, sendScheduleCancellationEmail, } from '../services/email.service.js';
+import { scheduleCalendarUrl } from '../lib/publicUrls.js';
 const attendeeSchema = z.object({
     email: z.string().email(),
     name: z.string().optional(),
@@ -319,6 +320,7 @@ export async function scheduleRoutes(app) {
         });
         if (newAttendeeEmails.length > 0) {
             try {
+                const viewInAppUrl = scheduleCalendarUrl(FRONTEND_URL, schedule.id, schedule.scheduledAt);
                 await sendScheduleInviteEmail({
                     to: newAttendeeEmails,
                     scheduledBy: user.name || user.email,
@@ -327,6 +329,7 @@ export async function scheduleRoutes(app) {
                     scheduledAt: schedule.scheduledAt,
                     details: schedule.details,
                     location: schedule.location,
+                    viewInAppUrl,
                 });
             }
             catch (err) {

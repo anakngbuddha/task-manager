@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { prisma } from '../lib/prisma.js';
 import { notificationService } from '../services/notification.service.js';
 import { sendScheduleReminderEmail, sendTaskDeadlineEmail, } from '../services/email.service.js';
+import { scheduleCalendarUrl } from '../lib/publicUrls.js';
 const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '') || 'https://task-manager-mauve-eta.vercel.app';
 export function startNotificationCron() {
     cron.schedule('*/5 * * * *', async () => {
@@ -52,6 +53,7 @@ async function processScheduleWindow(now, type, minMinutes, maxMinutes, timeUnti
                 });
                 if (alreadySent)
                     continue;
+                const viewInAppUrl = scheduleCalendarUrl(FRONTEND_URL, schedule.id, schedule.scheduledAt);
                 await sendScheduleReminderEmail({
                     to: [attendee.email],
                     scheduledBy: schedule.creator.name || schedule.creator.email,
@@ -61,6 +63,7 @@ async function processScheduleWindow(now, type, minMinutes, maxMinutes, timeUnti
                     details: schedule.details,
                     location: schedule.location,
                     timeUntil,
+                    viewInAppUrl,
                 });
                 await prisma.scheduleNotificationLog.create({
                     data: {

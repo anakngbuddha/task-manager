@@ -22,6 +22,17 @@ if (FRONTEND_URL && !ALLOWED_ORIGINS.includes(FRONTEND_URL)) {
 
 const start = async () => {
   try {
+    if (process.env.SMTP_VERIFY_ON_START === 'true') {
+      const { verifyEmailSmtp } = await import('./services/email.service.js')
+      try {
+        await verifyEmailSmtp()
+        console.log('[email] SMTP verify OK')
+      } catch (e) {
+        console.error('[email] SMTP verify failed:', e)
+        process.exit(1)
+      }
+    }
+
     app.register(fastifyStatic, {
       root: path.join(process.cwd(), 'uploads'),
       prefix: '/uploads/',

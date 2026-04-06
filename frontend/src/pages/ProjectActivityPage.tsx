@@ -35,7 +35,7 @@ export default function ProjectActivityPage() {
   const visibleTimeLogEvents = timeLogEvents.slice(0, visibleLimit)
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-dvh bg-background">
       <Sidebar />
       <main className="flex-1 overflow-hidden">
         <PageHeader

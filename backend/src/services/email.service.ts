@@ -22,7 +22,12 @@ const transporter = nodemailer.createTransport({
   socketTimeout: 30_000,      // max time to wait for any socket activity (30s)
 })
 
-const FROM = process.env.EMAIL_FROM || 'WSI TaskA <noreply@yourdomain.com>'
+const FROM = process.env.EMAIL_FROM || 'WeWorkIT <noreply@yourdomain.com>'
+
+/** Optional: set SMTP_VERIFY_ON_START=true to fail fast on bad credentials (e.g. local dev). */
+export async function verifyEmailSmtp(): Promise<void> {
+  await transporter.verify()
+}
 
 function escapeHtml(str: string): string {
   return str
@@ -86,6 +91,21 @@ function detailRow(label: string, value: string): string {
   </tr>`
 }
 
+function viewInAppCalendarCta(viewInAppUrl: string): string {
+  const safeUrl = escapeHtml(viewInAppUrl)
+  return `
+    <p style="margin:24px 0 0;text-align:center;">
+      <a href="${safeUrl}"
+         style="display:inline-block;padding:12px 28px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
+        Open in calendar
+      </a>
+    </p>
+    <p style="margin:16px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
+      If the button does not work, copy and paste this link into your browser:<br>
+      <a href="${safeUrl}" style="color:#0052CC;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
+    </p>`
+}
+
 // ────── Schedule invitation email ──────
 
 export async function sendScheduleInviteEmail(opts: {
@@ -96,6 +116,7 @@ export async function sendScheduleInviteEmail(opts: {
   scheduledAt: Date
   details?: string | null
   location?: string | null
+  viewInAppUrl?: string | null
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
   const safeTitle = escapeHtml(opts.title)
@@ -111,10 +132,13 @@ export async function sendScheduleInviteEmail(opts: {
     ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${escapeHtml(opts.details)}</p>`
     : ''
 
+  const cta = opts.viewInAppUrl ? viewInAppCalendarCta(opts.viewInAppUrl) : ''
+
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">You have been invited to the following ${escapeHtml(typeLabel.toLowerCase())}:</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
-    ${detailsBlock}`
+    ${detailsBlock}
+    ${cta}`
 
   const html = baseLayout(
     `📅 Invitation: ${safeTitle}`,
@@ -142,6 +166,7 @@ export async function sendScheduleReminderEmail(opts: {
   details?: string | null
   location?: string | null
   timeUntil: '1 day' | '15 minutes'
+  viewInAppUrl?: string | null
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
   const safeTitle = escapeHtml(opts.title)
@@ -157,12 +182,15 @@ export async function sendScheduleReminderEmail(opts: {
     ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${escapeHtml(opts.details)}</p>`
     : ''
 
+  const cta = opts.viewInAppUrl ? viewInAppCalendarCta(opts.viewInAppUrl) : ''
+
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
       <strong>${safeTitle}</strong> is starting in <strong>${escapeHtml(opts.timeUntil)}</strong>.
     </p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
-    ${detailsBlock}`
+    ${detailsBlock}
+    ${cta}`
 
   const html = baseLayout(
     `⏰ Reminder: ${safeTitle} in ${escapeHtml(opts.timeUntil)}`,
@@ -189,7 +217,6 @@ export async function sendScheduleCancellationEmail(opts: {
   scheduledAt: Date
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
-
   const safeTitle = escapeHtml(opts.title)
   const safeCancelledBy = escapeHtml(opts.cancelledBy)
 

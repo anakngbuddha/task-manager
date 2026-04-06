@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useSession } from './lib/auth-client'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import AuthLayout from './components/layout/AuthLayout'
 import DashboardPage from './pages/DashboardPage'
 import ProjectPage from './pages/ProjectPage'
 import ProjectMessagesPage from './pages/ProjectMessagesPage'
@@ -28,7 +29,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
 
   if (isPending) return (
-    <div className="flex h-screen items-center justify-center">
+    <div className="flex h-dvh items-center justify-center">
       <p className="text-muted-foreground">Loading...</p>
     </div>
   )
@@ -42,8 +43,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route element={<AuthLayout />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+        </Route>
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/" element={
           <ProtectedRoute>

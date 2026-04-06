@@ -13,6 +13,8 @@ services:
         sync: false
       - key: BETTER_AUTH_URL
         sync: false
+      - key: FRONTEND_URL
+        sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET

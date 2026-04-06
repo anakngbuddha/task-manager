@@ -1367,7 +1367,7 @@ export default function ProjectDependencyDiagramPage() {
   }, [tasks, columnOrder])
 
   return (
-    <div className="flex h-screen bg-slate-100 text-slate-900">
+    <div className="flex h-dvh bg-slate-100 text-slate-900">
       <Sidebar />
       <main className="flex flex-1 flex-col overflow-hidden">
         <PageHeader

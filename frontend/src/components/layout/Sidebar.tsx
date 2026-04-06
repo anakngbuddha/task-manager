@@ -154,7 +154,7 @@ export default function Sidebar() {
   return (
     <aside
       className={cn(
-        'relative flex h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground',
+        'relative flex h-dvh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground',
         'transition-[width] duration-200',
         expanded ? 'w-72' : 'w-14'
       )}

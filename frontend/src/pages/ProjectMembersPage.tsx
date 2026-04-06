@@ -82,7 +82,7 @@ export default function ProjectMembersPage() {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar />
       <main className="flex-1 overflow-hidden bg-background">
         <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">

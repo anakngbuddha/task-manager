@@ -9,6 +9,7 @@ export const taskService = {
                 subtasks: { include: { assignee: true } },
                 blockingTasks: { include: { blockedTask: true } },
                 blockedByTasks: { include: { blockingTask: true } },
+                tags: { include: { tag: true } },
             },
             orderBy: { createdAt: 'desc' },
         });

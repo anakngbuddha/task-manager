@@ -17,13 +17,10 @@ export const auth = betterAuth({
   emailVerification: {
     sendOnSignUp: true,
     sendVerificationEmail: async ({ user, url, token }: { user: any, url: string, token: string }, request?: Request) => {
-      // Fire-and-forget — don't block the sign-up response on SMTP delivery
-      sendVerificationEmail({
+      await sendVerificationEmail({
         to: user.email,
         url,
         userName: user.name,
-      }).catch((err) => {
-        console.error('[email] Failed to send verification email to', user.email, err)
       })
     },
   },

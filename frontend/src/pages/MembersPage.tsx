@@ -21,7 +21,7 @@ export default function MembersPage() {
   }, [mode])
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-dvh">
       <Sidebar />
       <main className="flex-1 overflow-auto">
         <header className="border-b bg-background/80 backdrop-blur">

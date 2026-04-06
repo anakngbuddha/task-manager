@@ -26,7 +26,7 @@ export default function InvitePage() {
 
   if (!code) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center bg-background">
         <p className="text-sm text-muted-foreground">Invalid invite link.</p>
       </div>
     )
@@ -34,7 +34,7 @@ export default function InvitePage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center bg-background">
         <p className="text-sm text-muted-foreground">Loading invite…</p>
       </div>
     )
@@ -42,7 +42,7 @@ export default function InvitePage() {
 
   if (isError || !invite) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center bg-background">
         <Card className="max-w-md border-border/60 bg-card/95 shadow-lg">
           <CardHeader>
             <CardTitle>Invalid invite</CardTitle>
@@ -57,7 +57,7 @@ export default function InvitePage() {
 
   if (invite.isExpired) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-dvh items-center justify-center bg-background">
         <Card className="max-w-md border-border/60 bg-card/95 shadow-lg">
           <CardHeader>
             <CardTitle>Invite expired</CardTitle>
@@ -72,7 +72,7 @@ export default function InvitePage() {
 
   if (!isLoggedIn) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.08),transparent_55%)]">
+      <div className="flex h-dvh items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.08),transparent_55%)]">
         <Card className="max-w-lg border-border/60 bg-card/95 shadow-xl">
           <CardHeader>
             <CardTitle>Join project “{invite.projectName}”</CardTitle>
@@ -111,7 +111,7 @@ export default function InvitePage() {
   }
 
   return (
-    <div className="flex h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.08),transparent_55%)]">
+    <div className="flex h-dvh items-center justify-center bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.15),transparent_55%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.08),transparent_55%)]">
       <Card className="max-w-lg border-border/60 bg-card/95 shadow-xl">
         <CardHeader>
           <CardTitle>Project invite</CardTitle>
