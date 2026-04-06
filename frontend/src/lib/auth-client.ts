@@ -1,4 +1,5 @@
 import { createAuthClient } from 'better-auth/react'
+import { emailOTPClient } from 'better-auth/client/plugins'
 
 function deriveBaseURL(apiUrl: string | undefined): string {
   if (!apiUrl) return 'http://localhost:3000'
@@ -17,6 +18,7 @@ export const authClient = createAuthClient({
   fetchOptions: {
     credentials: 'include',
   },
+  plugins: [emailOTPClient()],
 })
 
 export const { signIn, signOut, signUp, useSession } = authClient

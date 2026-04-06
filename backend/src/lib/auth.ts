@@ -1,6 +1,8 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
+import { emailOTP } from 'better-auth/plugins'
 import { prisma } from './prisma.js'
+import { sendVerificationEmail, sendPasswordResetOTPEmail } from '../services/email.service.js'
 
 const isProd = process.env.NODE_ENV === 'production' || process.env.BETTER_AUTH_URL?.startsWith('https://')
 
@@ -10,6 +12,17 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    requireEmailVerification: true,
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    sendVerificationEmail: async ({ user, url, token }: { user: any, url: string, token: string }, request?: Request) => {
+      await sendVerificationEmail({
+        to: user.email,
+        url,
+        userName: user.name,
+      })
+    },
   },
   socialProviders: {
     google: {
@@ -38,4 +51,17 @@ export const auth = betterAuth({
       ...(isProd ? { partitioned: true } : {}),
     },
   },
+  plugins: [
+    emailOTP({
+      async sendVerificationOTP({ email, otp, type }, request) {
+        if (type === 'forget-password') {
+          // Send 6-digit OTP for password reset
+          await sendPasswordResetOTPEmail({
+            to: email,
+            otp,
+          })
+        }
+      },
+    }),
+  ],
 })

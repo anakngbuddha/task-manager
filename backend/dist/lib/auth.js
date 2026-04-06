@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { prisma } from './prisma.js';
+import { sendVerificationEmail } from '../services/email.service.js';
 const isProd = process.env.NODE_ENV === 'production' || process.env.BETTER_AUTH_URL?.startsWith('https://');
 export const auth = betterAuth({
     database: prismaAdapter(prisma, {
@@ -8,6 +9,17 @@ export const auth = betterAuth({
     }),
     emailAndPassword: {
         enabled: true,
+        requireEmailVerification: true,
+    },
+    emailVerification: {
+        sendOnSignUp: true,
+        sendVerificationEmail: async ({ user, url, token }, request) => {
+            await sendVerificationEmail({
+                to: user.email,
+                url,
+                userName: user.name,
+            });
+        },
     },
     socialProviders: {
         google: {

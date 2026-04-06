@@ -82,6 +82,15 @@ app.addHook('onRequest', async (req, reply) => {
   }
 })
 
+// Add security headers
+app.addHook('onSend', async (req, reply) => {
+  reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'self'")
+  reply.header('X-Frame-Options', 'SAMEORIGIN')
+  reply.header('X-Content-Type-Options', 'nosniff')
+  reply.header('Referrer-Policy', 'strict-origin-when-cross-origin')
+  reply.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+})
+
 app.register(taskRoutes, { prefix: '/api' })
 app.register(projectRoutes, { prefix: '/api' })
 app.register(inviteRoutes, { prefix: '/api' })

@@ -258,3 +258,87 @@ export async function sendTaskDeadlineEmail(opts: {
     html,
   })
 }
+
+// ────── Password Reset OTP Email ──────
+
+export async function sendPasswordResetOTPEmail(opts: {
+  to: string
+  otp: string
+  userName?: string | null
+}) {
+  const safeUserName = escapeHtml(opts.userName || 'there')
+  const safeOtp = escapeHtml(opts.otp)
+
+  const body = `
+    <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
+      Hi ${safeUserName},
+    </p>
+    <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
+      We received a request to reset your password. Use the following 6-digit code to complete the reset:
+    </p>
+    <div style="background:#eceff1;padding:24px;border-radius:8px;text-align:center;margin:24px 0;">
+      <span style="font-size:36px;font-weight:700;letter-spacing:12px;color:#0052CC;">${safeOtp}</span>
+    </div>
+    <p style="margin:24px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
+      If you did not request this, please ignore this email or contact support if you have concerns.
+    </p>
+  `
+
+  const html = baseLayout(
+    'Password Reset Code',
+    '#0052CC',
+    body,
+    'You received this email because a password reset was requested for your account.'
+  )
+
+  await transporter.sendMail({
+    from: FROM,
+    to: opts.to,
+    subject: 'Your Password Reset Code',
+    html,
+  })
+}
+
+// ────── Email Verification ──────
+
+export async function sendVerificationEmail(opts: {
+  to: string
+  url: string
+  userName?: string | null
+}) {
+  const safeUserName = escapeHtml(opts.userName || 'there')
+  const safeUrl = escapeHtml(opts.url)
+
+  const body = `
+    <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
+      Hi ${safeUserName},
+    </p>
+    <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
+      Welcome! Please verify your email address to complete your registration. This link will expire shortly.
+    </p>
+    <p style="margin:20px 0 0;text-align:center;">
+      <a href="${safeUrl}"
+         style="display:inline-block;padding:12px 28px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
+        Verify My Email
+      </a>
+    </p>
+    <p style="margin:24px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
+      If the button doesn't work, copy and paste this link into your browser:<br>
+      <a href="${safeUrl}" style="color:#0052CC;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
+    </p>
+  `
+
+  const html = baseLayout(
+    'Verify your email address',
+    '#0052CC',
+    body,
+    'You received this email because you created an account. If you did not request this, please ignore it.'
+  )
+
+  await transporter.sendMail({
+    from: FROM,
+    to: opts.to,
+    subject: 'Action Required: Verify your email address',
+    html,
+  })
+}

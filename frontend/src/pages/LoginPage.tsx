@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { signIn } from '../lib/auth-client'
+import { signIn, authClient } from '../lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Eye, EyeOff, KeyRound, Mail } from 'lucide-react'
 
 export default function LoginPage() {
@@ -15,6 +16,69 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const isValidEmail = useMemo(() => /\S+@\S+\.\S+/.test(email), [email])
+
+  // Forgot password
+  const [isForgotOpen, setIsForgotOpen] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify'>('request')
+  const [forgotOtp, setForgotOtp] = useState('')
+  const [forgotNewPassword, setForgotNewPassword] = useState('')
+  const [forgotShowPassword, setForgotShowPassword] = useState(false)
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotError, setForgotError] = useState('')
+
+  const resetForgotState = () => {
+    setForgotStep('request')
+    setForgotEmail(email)
+    setForgotOtp('')
+    setForgotNewPassword('')
+    setForgotError('')
+    setForgotShowPassword(false)
+  }
+
+  const handleForgotRequest = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setForgotLoading(true)
+    setForgotError('')
+    try {
+      const res = await authClient.emailOtp.sendVerificationOtp({
+        email: forgotEmail,
+        type: 'forget-password'
+      })
+      if (res?.error) {
+        setForgotError(res.error.message || 'Failed to send OTP')
+      } else {
+        setForgotStep('verify')
+      }
+    } catch (err: any) {
+      setForgotError(err?.message || 'Failed to send OTP')
+    }
+    setForgotLoading(false)
+  }
+
+  const handleForgotVerify = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setForgotLoading(true)
+    setForgotError('')
+    try {
+      const res = await authClient.emailOtp.resetPassword({
+        email: forgotEmail,
+        otp: forgotOtp,
+        password: forgotNewPassword
+      })
+      if (res?.error) {
+        setForgotError(res.error.message || 'Failed to reset password')
+      } else {
+        setIsForgotOpen(false)
+        setEmail(forgotEmail)
+        setPassword('')
+        resetForgotState()
+      }
+    } catch (err: any) {
+      setForgotError(err?.message || 'Failed to reset password')
+    }
+    setForgotLoading(false)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -107,7 +171,19 @@ export default function LoginPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="password">Password</Label>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-primary hover:underline hover:text-primary/80"
+                        onClick={() => {
+                          resetForgotState()
+                          setIsForgotOpen(true)
+                        }}
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
                     <div className="relative">
                       <KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -164,6 +240,90 @@ export default function LoginPage() {
                 </p>
               </CardFooter>
             </Card>
+
+            <Dialog open={isForgotOpen} onOpenChange={(open) => {
+              setIsForgotOpen(open)
+              if (!open) resetForgotState()
+            }}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>{forgotStep === 'request' ? 'Reset password' : 'Enter security code'}</DialogTitle>
+                  <DialogDescription>
+                    {forgotStep === 'request'
+                      ? "Enter your email address and we'll send you a 6-digit code to reset your password."
+                      : `We sent a 6-digit code to ${forgotEmail}. Enter it below along with your new password.`}
+                  </DialogDescription>
+                </DialogHeader>
+
+                {forgotStep === 'request' ? (
+                  <form onSubmit={handleForgotRequest} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="forgot-email">Email address</Label>
+                      <Input
+                        id="forgot-email"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={forgotEmail}
+                        onChange={e => setForgotEmail(e.target.value)}
+                        required
+                      />
+                    </div>
+                    {forgotError && <p className="text-sm text-destructive">{forgotError}</p>}
+                    <DialogFooter>
+                      <Button type="submit" disabled={forgotLoading} className="w-full sm:w-auto">
+                        {forgotLoading ? 'Sending...' : 'Send reset code'}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                ) : (
+                  <form onSubmit={handleForgotVerify} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="forgot-otp">6-digit Code</Label>
+                      <Input
+                        id="forgot-otp"
+                        type="text"
+                        placeholder="123456"
+                        value={forgotOtp}
+                        onChange={e => setForgotOtp(e.target.value)}
+                        required
+                        maxLength={6}
+                        pattern="[0-9]*"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="forgot-new-password">New password</Label>
+                      <div className="relative">
+                        <Input
+                          id="forgot-new-password"
+                          type={forgotShowPassword ? 'text' : 'password'}
+                          placeholder="••••••••"
+                          value={forgotNewPassword}
+                          onChange={e => setForgotNewPassword(e.target.value)}
+                          required
+                          minLength={8}
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-2 text-muted-foreground transition-colors hover:text-foreground"
+                          onClick={() => setForgotShowPassword(s => !s)}
+                        >
+                          {forgotShowPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    {forgotError && <p className="text-sm text-destructive">{forgotError}</p>}
+                    <DialogFooter className="gap-2 sm:gap-0">
+                      <Button type="button" variant="ghost" onClick={() => setForgotStep('request')} disabled={forgotLoading}>
+                        Back
+                      </Button>
+                      <Button type="submit" disabled={forgotLoading}>
+                        {forgotLoading ? 'Resetting...' : 'Reset password'}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                )}
+              </DialogContent>
+            </Dialog>
           </div>
         </main>
       </div>

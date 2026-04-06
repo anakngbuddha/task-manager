@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { ArrowRight, Eye, EyeOff, Mail, UserRound } from 'lucide-react'
+import { ArrowRight, Eye, EyeOff, Mail, UserRound, CheckCircle2 } from 'lucide-react'
 
 export default function RegisterPage() {
  
@@ -16,6 +16,7 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(false)
   const isValidEmail = useMemo(() => /\S+@\S+\.\S+/.test(email), [email])
   const isPasswordValid = useMemo(() => {
     return password.length >= 8 &&
@@ -42,11 +43,26 @@ export default function RegisterPage() {
         setLoading(false)
         return
       }
-      window.location.href = '/'
+      setSuccess(true)
     } catch (err: any) {
       setError(err?.message ?? 'Registration failed')
       setLoading(false)
     }
+  }
+
+  if (success) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 text-center">
+        <CheckCircle2 className="size-16 text-primary mb-6" />
+        <h1 className="text-3xl font-bold tracking-tight mb-2">Check your email</h1>
+        <p className="text-muted-foreground mb-8 text-base">
+          We sent a verification link to <strong>{email}</strong>. Please check your inbox and click the link to verify your account.
+        </p>
+        <Button asChild className="rounded-none px-8">
+          <Link to="/login">Go to login</Link>
+        </Button>
+      </div>
+    )
   }
 
   return (
