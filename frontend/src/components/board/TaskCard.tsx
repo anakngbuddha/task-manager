@@ -1,6 +1,8 @@
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { TagPill } from '@/components/board/TagInput'
+import type { Tag } from '@/hooks/useTaskTags'
 
 const columnBorderColors: Record<string, string> = {
   TODO: 'border-blue-500',
@@ -18,9 +20,10 @@ const columnBgColors: Record<string, string> = {
   READY: 'bg-primary',
 }
 
-export default function TaskCard({ task, onClick }: {
+export default function TaskCard({ task, onClick, onTagClick }: {
   task: any
   onClick: (task: any) => void
+  onTagClick?: (tag: Tag) => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(task.id) })
@@ -59,6 +62,25 @@ export default function TaskCard({ task, onClick }: {
         <h3 className="text-[13px] font-semibold leading-snug line-clamp-2 text-foreground">
           {task.title}
         </h3>
+
+        {/* Tags */}
+        {task.tags && task.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {(task.tags as Array<{ tag: Tag }>).slice(0, 3).map(({ tag }) => (
+              <TagPill
+                key={tag.id}
+                tag={tag}
+                size="xs"
+                onClick={onTagClick ? () => onTagClick(tag) : undefined}
+              />
+            ))}
+            {task.tags.length > 3 && (
+              <span className="text-[10px] text-muted-foreground font-medium self-center">
+                +{task.tags.length - 3}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Subtasks Progress */}
         {totalSubtasks > 0 && (

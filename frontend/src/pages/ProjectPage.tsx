@@ -25,8 +25,10 @@ import { useSession } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MessageCircle, MoreHorizontal, Play, CheckCircle2 } from 'lucide-react'
+import { MessageCircle, MoreHorizontal, Play, CheckCircle2, Tag as TagIcon, X as XIcon } from 'lucide-react'
 import { useCreateInvite } from '@/hooks/useInvites'
+import { TagPill } from '@/components/board/TagInput'
+import type { Tag } from '@/hooks/useTaskTags'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,6 +76,7 @@ export default function ProjectPage() {
   const [startSprintOpen, setStartSprintOpen] = useState(false)
   const [completeSprintOpen, setCompleteSprintOpen] = useState(false)
   const [boardView, setBoardView] = useState<'SPRINT' | 'BACKLOG'>('SPRINT')
+  const [selectedTag, setSelectedTag] = useState<Tag | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, {
     activationConstraint: { distance: 5 },
@@ -150,12 +153,21 @@ export default function ProjectPage() {
   }, [sprints, activeSprint, selectedSprintId])
 
   const displayedTasks = useMemo(() => {
+    let tasks: any[]
     if (boardView === 'BACKLOG') {
-      return localTasks.filter((t: any) => !t.sprintId)
+      tasks = localTasks.filter((t: any) => !t.sprintId)
+    } else if (!currentSprint) {
+      tasks = []
+    } else {
+      tasks = localTasks.filter((t: any) => String(t.sprintId) === String(currentSprint.id))
     }
-    if (!currentSprint) return []
-    return localTasks.filter((t: any) => String(t.sprintId) === String(currentSprint.id))
-  }, [localTasks, currentSprint, boardView])
+    if (selectedTag) {
+      tasks = tasks.filter((t: any) =>
+        Array.isArray(t.tags) && t.tags.some((tt: any) => tt.tag?.id === selectedTag.id)
+      )
+    }
+    return tasks
+  }, [localTasks, currentSprint, boardView, selectedTag])
 
   const projectColumns = project?.boardColumns || COLUMNS
   const firstProjectColumn = projectColumns[0] ?? 'TODO'
@@ -404,6 +416,25 @@ export default function ProjectPage() {
                       <button onClick={() => setBoardView('SPRINT')} className={boardView === 'SPRINT' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Sprint Tasks</button>
                       <button onClick={() => setBoardView('BACKLOG')} className={boardView === 'BACKLOG' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Non-Sprint Tasks</button>
                     </div>
+
+                    {/* Tag filter bar */}
+                    {selectedTag && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <TagIcon className="size-3" />
+                          Filtered by:
+                        </span>
+                        <TagPill tag={selectedTag} />
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTag(null)}
+                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          <XIcon className="size-3" />
+                          Clear filter
+                        </button>
+                      </div>
+                    )}
                     
                     <div className="flex items-center justify-between">
                       {boardView === 'SPRINT' ? (
@@ -485,6 +516,7 @@ export default function ProjectPage() {
                           setCreateOpen(true)
                         }}
                         canAddTask={canCreateTask}
+                        onTagClick={(tag) => setSelectedTag(tag)}
                       />
                     ))}
                     </div>

@@ -17,10 +17,13 @@ export const auth = betterAuth({
   emailVerification: {
     sendOnSignUp: true,
     sendVerificationEmail: async ({ user, url, token }: { user: any, url: string, token: string }, request?: Request) => {
-      await sendVerificationEmail({
+      // Fire-and-forget — don't block the sign-up response on SMTP delivery
+      sendVerificationEmail({
         to: user.email,
         url,
         userName: user.name,
+      }).catch((err) => {
+        console.error('[email] Failed to send verification email to', user.email, err)
       })
     },
   },
@@ -28,6 +31,10 @@ export const auth = betterAuth({
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+    github: {
+      clientId: process.env.GITHUB_OAUTH_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_OAUTH_CLIENT_SECRET!,
     },
   },
   trustedOrigins: [

@@ -108,6 +108,13 @@ export default function LoginPage() {
     })
   }
 
+  const handleGithub = async () => {
+    await signIn.social({
+      provider: 'github',
+      callbackURL: `${window.location.origin}/`,
+    })
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <div className="grid min-h-screen lg:grid-cols-2">
@@ -227,9 +234,14 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <Button variant="outline" className="h-10 w-full" onClick={handleGoogle}>
-                  Continue with Google
-                </Button>
+                <div className="flex flex-col gap-2">
+                  <Button variant="outline" className="h-10 w-full" onClick={handleGoogle}>
+                    Continue with Google
+                  </Button>
+                  <Button variant="outline" className="h-10 w-full" onClick={handleGithub}>
+                    Continue with GitHub
+                  </Button>
+                </div>
               </CardContent>
               <CardFooter className="justify-center">
                 <p className="text-sm text-muted-foreground">

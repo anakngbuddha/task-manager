@@ -20,6 +20,8 @@ import {
   useRemoveTaskGithubLink,
   type TaskGithubLink,
 } from '@/hooks/useTaskGithubLinks'
+import TagInput from '@/components/board/TagInput'
+import { useTaskTags } from '@/hooks/useTaskTags'
 
 function sanitizeUrl(url: string): string {
   try {
@@ -121,6 +123,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const { data: project } = useProject(projectId)
   const createDependency = useCreateTaskDependency()
   const deleteDependency = useDeleteTaskDependency()
+  const { data: taskTags = [] } = useTaskTags(task?.id)
 
   const [depType, setDepType] = useState<'BLOCKS' | 'IS_BLOCKED_BY'>('IS_BLOCKED_BY')
   const [depTargetId, setDepTargetId] = useState<string>('')
@@ -375,6 +378,15 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                 <p className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
                   {description || 'No description'}
                 </p>
+              </div>
+
+              <div className="border border-border/60 bg-card p-5">
+                <p className="text-xs font-medium text-muted-foreground mb-3">Tags</p>
+                <TagInput
+                  taskId={task?.id}
+                  projectId={projectId}
+                  currentTags={taskTags}
+                />
               </div>
               <div className="border border-border/60 bg-card p-5">
                 <p className="text-xs font-medium text-muted-foreground">Deadline</p>

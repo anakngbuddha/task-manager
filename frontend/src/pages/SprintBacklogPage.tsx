@@ -25,6 +25,8 @@ import { cn } from '@/lib/utils'
 import { Calendar, GripVertical, ListTodo, Play, CheckCircle2 } from 'lucide-react'
 import { useSession } from '@/lib/auth-client'
 import { useProjectMembers } from '@/hooks/useProjectMembers'
+import { TagPill } from '@/components/board/TagInput'
+import type { Tag } from '@/hooks/useTaskTags'
 
 function DroppableContainer({ id, children, className }: { id: string, children: React.ReactNode, className?: string }) {
   const { setNodeRef, isOver } = useDroppable({ id })
@@ -57,9 +59,12 @@ function DraggableTask({ task, isOverlay = false }: { task: any, isOverlay?: boo
         </div>
         <div className="flex flex-col overflow-hidden">
           <span className="truncate text-sm font-medium">{task.title}</span>
-          <div className="flex items-center gap-2 mt-1">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             <Badge variant="outline" className="text-[10px] uppercase font-semibold h-4 px-1">{task.status.replace(/_/g, ' ')}</Badge>
             <Badge variant="secondary" className="text-[10px] h-4 px-1">{task.priority}</Badge>
+            {task.tags && task.tags.length > 0 && (task.tags as Array<{ tag: Tag }>).slice(0, 2).map(({ tag }) => (
+              <TagPill key={tag.id} tag={tag} size="xs" />
+            ))}
           </div>
         </div>
       </div>

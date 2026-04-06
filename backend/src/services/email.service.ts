@@ -7,6 +7,9 @@ const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST || 'smtp.gmail.com',
   port: smtpPort,
   secure: smtpPort === 465,
+  pool: true,          // reuse connections instead of re-opening for each email
+  maxConnections: 5,   // allow up to 5 concurrent SMTP connections
+  maxMessages: 100,    // recycle each connection after 100 messages
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
@@ -14,6 +17,9 @@ const transporter = nodemailer.createTransport({
   tls: {
     rejectUnauthorized: process.env.NODE_ENV === 'production',
   },
+  connectionTimeout: 10_000,  // fail fast if SMTP server unreachable (10s)
+  greetingTimeout: 10_000,    // fail fast if server doesn't greet us (10s)
+  socketTimeout: 30_000,      // max time to wait for any socket activity (30s)
 })
 
 const FROM = process.env.EMAIL_FROM || 'WSI TaskA <noreply@yourdomain.com>'

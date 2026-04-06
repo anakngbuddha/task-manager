@@ -1,6 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import TaskCard from './TaskCard'
+import type { Tag } from '@/hooks/useTaskTags'
 
 const columnTopBorder: Record<string, string> = {
   TODO: 'border-t-blue-500',
@@ -26,12 +27,13 @@ const columnLabels: Record<string, string> = {
   READY:       'Ready',
 }
 
-export default function KanbanColumn({ status, tasks, onTaskClick, onAddTask, canAddTask }: {
+export default function KanbanColumn({ status, tasks, onTaskClick, onAddTask, canAddTask, onTagClick }: {
   status: string
   tasks: any[]
   onTaskClick: (task: any) => void
   onAddTask?: (status: string) => void
   canAddTask?: boolean
+  onTagClick?: (tag: Tag) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
 
@@ -66,7 +68,7 @@ export default function KanbanColumn({ status, tasks, onTaskClick, onAddTask, ca
               </div>
             ) : (
               tasks.map(task => (
-                <TaskCard key={task.id} task={task} onClick={onTaskClick} />
+                <TaskCard key={task.id} task={task} onClick={onTaskClick} onTagClick={onTagClick} />
               ))
             )}
 
