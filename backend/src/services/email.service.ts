@@ -108,6 +108,7 @@ export function sendScheduleInviteEmail(opts: {
   scheduledAt: Date
   details?: string | null
   location?: string | null
+  viewInAppUrl?: string
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
   const safeTitle = escapeHtml(opts.title)
@@ -123,10 +124,20 @@ export function sendScheduleInviteEmail(opts: {
     ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${escapeHtml(opts.details)}</p>`
     : ''
 
+  const btnBlock = opts.viewInAppUrl
+    ? `<p style="margin:20px 0 0;">
+         <a href="${escapeHtml(opts.viewInAppUrl)}"
+            style="display:inline-block;padding:10px 24px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:4px;font-size:14px;font-weight:500;">
+           Open Context
+         </a>
+       </p>`
+    : ''
+
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">You have been invited to the following ${escapeHtml(typeLabel.toLowerCase())}:</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
-    ${detailsBlock}`
+    ${detailsBlock}
+    ${btnBlock}`
 
   const html = baseLayout(
     `📅 Invitation: ${safeTitle}`,
@@ -153,6 +164,7 @@ export function sendScheduleReminderEmail(opts: {
   details?: string | null
   location?: string | null
   timeUntil: '1 day' | '15 minutes'
+  viewInAppUrl?: string
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
   const safeTitle = escapeHtml(opts.title)
@@ -168,12 +180,22 @@ export function sendScheduleReminderEmail(opts: {
     ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${escapeHtml(opts.details)}</p>`
     : ''
 
+  const btnBlock = opts.viewInAppUrl
+    ? `<p style="margin:20px 0 0;">
+         <a href="${escapeHtml(opts.viewInAppUrl)}"
+            style="display:inline-block;padding:10px 24px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:4px;font-size:14px;font-weight:500;">
+           Open Context
+         </a>
+       </p>`
+    : ''
+
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
       <strong>${safeTitle}</strong> is starting in <strong>${escapeHtml(opts.timeUntil)}</strong>.
     </p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
-    ${detailsBlock}`
+    ${detailsBlock}
+    ${btnBlock}`
 
   const html = baseLayout(
     `⏰ Reminder: ${safeTitle} in ${escapeHtml(opts.timeUntil)}`,
