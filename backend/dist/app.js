@@ -28,6 +28,26 @@ if (!process.env.JWT_SECRET) {
 }
 const app = Fastify({ logger: true, trustProxy: true });
 await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } });
+// Basic latency logging for slow requests (helps diagnose cold starts / DB slowness in production).
+app.addHook('onRequest', async (req, reply) => {
+    ;
+    req._startedAt = Date.now();
+});
+app.addHook('onResponse', async (req, reply) => {
+    const startedAt = req._startedAt;
+    if (!startedAt)
+        return;
+    const ms = Date.now() - startedAt;
+    const isSlow = ms >= Number(process.env.SLOW_REQUEST_MS || 1500);
+    if (isSlow) {
+        req.log.warn({
+            ms,
+            method: req.method,
+            url: req.url,
+            statusCode: reply.statusCode,
+        }, 'slow_request');
+    }
+});
 const ALLOWED_ORIGINS = [
     'http://localhost:5173',
     'http://localhost:5174',

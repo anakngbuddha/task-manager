@@ -5,6 +5,8 @@ import path from 'path';
 import { Server } from 'socket.io';
 import { startNotificationCron } from './jobs/notificationCron.js';
 import { setIO, directRoom } from './lib/socketManager.js';
+import { prisma } from './lib/prisma.js';
+import { assertEmailProviderConfigured } from './services/email.service.js';
 const PORT = Number(process.env.PORT) || 3000;
 const ALLOWED_ORIGINS = [
     'http://localhost:5173',
@@ -19,6 +21,12 @@ if (FRONTEND_URL && !ALLOWED_ORIGINS.includes(FRONTEND_URL)) {
 }
 const start = async () => {
     try {
+        // Fail fast (in prod) or warn (in dev) if email provider config is missing.
+        assertEmailProviderConfigured();
+        // Force DB connect at startup so cold-start cost is visible in logs.
+        const dbStart = Date.now();
+        await prisma.$connect();
+        console.log(`[db] prisma.$connect OK (${Date.now() - dbStart}ms)`);
         app.register(fastifyStatic, {
             root: path.join(process.cwd(), 'uploads'),
             prefix: '/uploads/',

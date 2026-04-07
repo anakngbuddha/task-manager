@@ -20,6 +20,9 @@ export const auth = betterAuth({
                 to: user.email,
                 url,
                 userName: user.name,
+            })
+                .catch((err) => {
+                console.error('[email] Failed to send verification email to', user.email, err);
             });
         },
     },
@@ -62,6 +65,9 @@ export const auth = betterAuth({
                     sendPasswordResetOTPEmail({
                         to: email,
                         otp,
+                    })
+                        .catch((err) => {
+                        console.error('[email] Failed to send password reset OTP to', email, err);
                     });
                 }
             },

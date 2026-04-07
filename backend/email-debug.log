@@ -1,0 +1,22 @@
+KEY starts with: xkeysib-8275dec0b3c93f90d...
+FROM_ADDR: markvalerio44@gmail.com
+FROM_NAME: We Work IT
+stack: BadRequestError: BadRequestError
+Status code: 400
+Body: {
+  "code": "missing_parameter",
+  "message": "client id is missing"
+}
+    at TransactionalEmailsClient.<anonymous> (file:///C:/Users/markmv/Desktop/task-manager/backend/node_modules/@getbrevo/brevo/dist/esm/api/resources/transactionalEmails/client/Client.mjs:407:31)
+    at Generator.next (<anonymous>)
+    at fulfilled (file:///C:/Users/markm
+message: BadRequestError
+Status code: 400
+Body: {
+  "code": "missing_parameter",
+  "message": "client id is missing"
+}
+name: BadRequestError
+statusCode: 400
+body: {"code":"missing_parameter","message":"client id is missing"}
+rawResponse: {"headers":{},"redirected":false,"status":400,"statusText":"Bad Request","type":"basic","url":"https://api.brevo.com/v3/smtp/email"}
