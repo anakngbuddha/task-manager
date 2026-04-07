@@ -17,7 +17,8 @@ export const auth = betterAuth({
   emailVerification: {
     sendOnSignUp: true,
     sendVerificationEmail: async ({ user, url, token }: { user: any, url: string, token: string }, request?: Request) => {
-      await sendVerificationEmail({
+      // Fire-and-forget: email is sent in background, does not block the sign-up response
+      sendVerificationEmail({
         to: user.email,
         url,
         userName: user.name,
@@ -59,8 +60,8 @@ export const auth = betterAuth({
     emailOTP({
       async sendVerificationOTP({ email, otp, type }, request) {
         if (type === 'forget-password') {
-          // Send 6-digit OTP for password reset
-          await sendPasswordResetOTPEmail({
+          // Fire-and-forget: email is sent in background
+          sendPasswordResetOTPEmail({
             to: email,
             otp,
           })

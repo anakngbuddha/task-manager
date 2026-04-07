@@ -1,33 +1,40 @@
-import nodemailer from 'nodemailer'
+import { BrevoClient } from '@getbrevo/brevo'
 import type { ScheduleType } from '@prisma/client'
 
-const smtpPort = Number(process.env.EMAIL_PORT) || 587
+// ────── Brevo client setup ──────
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: smtpPort,
-  secure: smtpPort === 465,
-  pool: true,          // reuse connections instead of re-opening for each email
-  maxConnections: 5,   // allow up to 5 concurrent SMTP connections
-  maxMessages: 100,    // recycle each connection after 100 messages
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: process.env.NODE_ENV === 'production',
-  },
-  connectionTimeout: 10_000,  // fail fast if SMTP server unreachable (10s)
-  greetingTimeout: 10_000,    // fail fast if server doesn't greet us (10s)
-  socketTimeout: 30_000,      // max time to wait for any socket activity (30s)
+const brevo = new BrevoClient({
+  apiKey: process.env.BREVO_API_KEY || '',
 })
 
-const FROM = process.env.EMAIL_FROM || 'WeWorkIT <noreply@yourdomain.com>'
+const FROM_EMAIL = process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || 'noreply@example.com'
+const FROM_NAME = process.env.EMAIL_FROM_NAME || 'We Work IT'
 
-/** Optional: set SMTP_VERIFY_ON_START=true to fail fast on bad credentials (e.g. local dev). */
-export async function verifyEmailSmtp(): Promise<void> {
-  await transporter.verify()
+// ────── Helper: send via Brevo (non-blocking fire-and-forget) ──────
+
+function sendEmail(opts: {
+  to: string | string[]
+  subject: string
+  html: string
+}) {
+  const toList = (Array.isArray(opts.to) ? opts.to : [opts.to]).map((email) => ({ email }))
+
+  brevo.transactionalEmails
+    .sendTransacEmail({
+      sender: { name: FROM_NAME, email: FROM_EMAIL },
+      to: toList,
+      subject: opts.subject,
+      htmlContent: opts.html,
+    })
+    .then(() => {
+      console.log(`[email] Sent "${opts.subject}" to ${toList.map((t) => t.email).join(', ')}`)
+    })
+    .catch((err: unknown) => {
+      console.error(`[email] Failed to send "${opts.subject}":`, err)
+    })
 }
+
+// ────── Utility helpers ──────
 
 function escapeHtml(str: string): string {
   return str
@@ -91,24 +98,9 @@ function detailRow(label: string, value: string): string {
   </tr>`
 }
 
-function viewInAppCalendarCta(viewInAppUrl: string): string {
-  const safeUrl = escapeHtml(viewInAppUrl)
-  return `
-    <p style="margin:24px 0 0;text-align:center;">
-      <a href="${safeUrl}"
-         style="display:inline-block;padding:12px 28px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
-        Open in calendar
-      </a>
-    </p>
-    <p style="margin:16px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
-      If the button does not work, copy and paste this link into your browser:<br>
-      <a href="${safeUrl}" style="color:#0052CC;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
-    </p>`
-}
-
 // ────── Schedule invitation email ──────
 
-export async function sendScheduleInviteEmail(opts: {
+export function sendScheduleInviteEmail(opts: {
   to: string[]
   scheduledBy: string
   title: string
@@ -116,7 +108,6 @@ export async function sendScheduleInviteEmail(opts: {
   scheduledAt: Date
   details?: string | null
   location?: string | null
-  viewInAppUrl?: string | null
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
   const safeTitle = escapeHtml(opts.title)
@@ -132,13 +123,10 @@ export async function sendScheduleInviteEmail(opts: {
     ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${escapeHtml(opts.details)}</p>`
     : ''
 
-  const cta = opts.viewInAppUrl ? viewInAppCalendarCta(opts.viewInAppUrl) : ''
-
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">You have been invited to the following ${escapeHtml(typeLabel.toLowerCase())}:</p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
-    ${detailsBlock}
-    ${cta}`
+    ${detailsBlock}`
 
   const html = baseLayout(
     `📅 Invitation: ${safeTitle}`,
@@ -147,9 +135,8 @@ export async function sendScheduleInviteEmail(opts: {
     'You are receiving this because you were included in this schedule.',
   )
 
-  await transporter.sendMail({
-    from: FROM,
-    to: opts.to.join(', '),
+  sendEmail({
+    to: opts.to,
     subject: `Invitation: ${opts.title} — ${formatDate(opts.scheduledAt)}`,
     html,
   })
@@ -157,7 +144,7 @@ export async function sendScheduleInviteEmail(opts: {
 
 // ────── Schedule reminder email ──────
 
-export async function sendScheduleReminderEmail(opts: {
+export function sendScheduleReminderEmail(opts: {
   to: string[]
   scheduledBy: string
   title: string
@@ -166,7 +153,6 @@ export async function sendScheduleReminderEmail(opts: {
   details?: string | null
   location?: string | null
   timeUntil: '1 day' | '15 minutes'
-  viewInAppUrl?: string | null
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
   const safeTitle = escapeHtml(opts.title)
@@ -182,15 +168,12 @@ export async function sendScheduleReminderEmail(opts: {
     ? `<p style="margin:16px 0 0;color:#42526e;font-size:14px;line-height:1.6;">${escapeHtml(opts.details)}</p>`
     : ''
 
-  const cta = opts.viewInAppUrl ? viewInAppCalendarCta(opts.viewInAppUrl) : ''
-
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
       <strong>${safeTitle}</strong> is starting in <strong>${escapeHtml(opts.timeUntil)}</strong>.
     </p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
-    ${detailsBlock}
-    ${cta}`
+    ${detailsBlock}`
 
   const html = baseLayout(
     `⏰ Reminder: ${safeTitle} in ${escapeHtml(opts.timeUntil)}`,
@@ -199,9 +182,8 @@ export async function sendScheduleReminderEmail(opts: {
     'You are receiving this because you were included in this schedule.',
   )
 
-  await transporter.sendMail({
-    from: FROM,
-    to: opts.to.join(', '),
+  sendEmail({
+    to: opts.to,
     subject: `Reminder: ${opts.title} is in ${opts.timeUntil}`,
     html,
   })
@@ -209,7 +191,7 @@ export async function sendScheduleReminderEmail(opts: {
 
 // ────── Schedule cancellation email ──────
 
-export async function sendScheduleCancellationEmail(opts: {
+export function sendScheduleCancellationEmail(opts: {
   to: string[]
   cancelledBy: string
   title: string
@@ -237,9 +219,8 @@ export async function sendScheduleCancellationEmail(opts: {
     'This schedule has been cancelled by ' + safeCancelledBy + '.',
   )
 
-  await transporter.sendMail({
-    from: FROM,
-    to: opts.to.join(', '),
+  sendEmail({
+    to: opts.to,
     subject: `Cancelled: ${opts.title}`,
     html,
   })
@@ -247,7 +228,7 @@ export async function sendScheduleCancellationEmail(opts: {
 
 // ────── Task deadline email ──────
 
-export async function sendTaskDeadlineEmail(opts: {
+export function sendTaskDeadlineEmail(opts: {
   to: string
   userName: string
   taskTitle: string
@@ -284,8 +265,7 @@ export async function sendTaskDeadlineEmail(opts: {
     'You are receiving this because this task is assigned to you.',
   )
 
-  await transporter.sendMail({
-    from: FROM,
+  sendEmail({
     to: opts.to,
     subject: `Task deadline approaching: ${opts.taskTitle} is due in ${opts.timeUntil}`,
     html,
@@ -294,7 +274,7 @@ export async function sendTaskDeadlineEmail(opts: {
 
 // ────── Password Reset OTP Email ──────
 
-export async function sendPasswordResetOTPEmail(opts: {
+export function sendPasswordResetOTPEmail(opts: {
   to: string
   otp: string
   userName?: string | null
@@ -324,8 +304,7 @@ export async function sendPasswordResetOTPEmail(opts: {
     'You received this email because a password reset was requested for your account.'
   )
 
-  await transporter.sendMail({
-    from: FROM,
+  sendEmail({
     to: opts.to,
     subject: 'Your Password Reset Code',
     html,
@@ -334,7 +313,7 @@ export async function sendPasswordResetOTPEmail(opts: {
 
 // ────── Email Verification ──────
 
-export async function sendVerificationEmail(opts: {
+export function sendVerificationEmail(opts: {
   to: string
   url: string
   userName?: string | null
@@ -368,8 +347,7 @@ export async function sendVerificationEmail(opts: {
     'You received this email because you created an account. If you did not request this, please ignore it.'
   )
 
-  await transporter.sendMail({
-    from: FROM,
+  sendEmail({
     to: opts.to,
     subject: 'Action Required: Verify your email address',
     html,
