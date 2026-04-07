@@ -1,13 +1,13 @@
-import { BrevoClient } from '@getbrevo/brevo';
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 function isProd() {
     return process.env.NODE_ENV === 'production';
 }
 const FROM_EMAIL = () => process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || 'noreply@example.com';
 const FROM_NAME = () => process.env.EMAIL_FROM_NAME || 'We Work IT';
 function resolveProvider() {
-    if (process.env.BREVO_API_KEY)
-        return 'brevo';
+    if (process.env.RESEND_API_KEY)
+        return 'resend';
     if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS)
         return 'smtp';
     return null;
@@ -16,9 +16,9 @@ export function assertEmailProviderConfigured() {
     const provider = resolveProvider();
     if (!provider) {
         if (isProd()) {
-            throw new Error('[email] No email provider configured. Set BREVO_API_KEY (preferred) or EMAIL_HOST/EMAIL_USER/EMAIL_PASS for SMTP.');
+            throw new Error('[email] No email provider configured. Set RESEND_API_KEY (preferred) or EMAIL_HOST/EMAIL_USER/EMAIL_PASS for SMTP.');
         }
-        console.warn('[email] No email provider configured (development). Emails will not be sent. Set BREVO_API_KEY or EMAIL_HOST/EMAIL_USER/EMAIL_PASS.');
+        console.warn('[email] No email provider configured (development). Emails will not be sent. Set RESEND_API_KEY or EMAIL_HOST/EMAIL_USER/EMAIL_PASS.');
     }
     const fromEmail = FROM_EMAIL();
     if (!fromEmail || !fromEmail.includes('@')) {
@@ -27,20 +27,16 @@ export function assertEmailProviderConfigured() {
         console.warn('[email] Invalid sender email. Set EMAIL_FROM_ADDRESS (recommended).');
     }
 }
-// ────── Lazy Brevo client (created on first use so dotenv has loaded) ──────
-let _brevo = null;
-function getBrevo() {
-    if (!_brevo) {
-        const apiKey = process.env.BREVO_API_KEY;
+// ────── Lazy Resend client (created on first use so dotenv has loaded) ──────
+let _resend = null;
+function getResend() {
+    if (!_resend) {
+        const apiKey = process.env.RESEND_API_KEY;
         if (!apiKey)
-            throw new Error('[email] BREVO_API_KEY is not set in environment variables');
-        _brevo = new BrevoClient({
-            apiKey,
-            timeoutInSeconds: 10,
-            maxRetries: 1,
-        });
+            throw new Error('[email] RESEND_API_KEY is not set in environment variables');
+        _resend = new Resend(apiKey);
     }
-    return _brevo;
+    return _resend;
 }
 // ────── Lazy SMTP transporter ──────
 let _smtp = null;
@@ -80,13 +76,16 @@ async function sendEmail(opts) {
         return;
     }
     try {
-        if (provider === 'brevo') {
-            await getBrevo().transactionalEmails.sendTransacEmail({
-                sender: { name: FROM_NAME(), email: FROM_EMAIL() },
-                to: toList,
+        if (provider === 'resend') {
+            const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`;
+            const { error } = await getResend().emails.send({
+                from,
+                to: toList.map((t) => t.email),
                 subject: opts.subject,
-                htmlContent: opts.html,
+                html: opts.html,
             });
+            if (error)
+                throw error;
         }
         else {
             const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`;

@@ -1,8 +1,8 @@
-import { BrevoClient } from '@getbrevo/brevo'
 import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 import type { ScheduleType } from '@prisma/client'
 
-type EmailProvider = 'brevo' | 'smtp'
+type EmailProvider = 'resend' | 'smtp'
 
 function isProd() {
   return process.env.NODE_ENV === 'production'
@@ -12,7 +12,7 @@ const FROM_EMAIL = () => process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USE
 const FROM_NAME = () => process.env.EMAIL_FROM_NAME || 'We Work IT'
 
 function resolveProvider(): EmailProvider | null {
-  if (process.env.BREVO_API_KEY) return 'brevo'
+  if (process.env.RESEND_API_KEY) return 'resend'
   if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) return 'smtp'
   return null
 }
@@ -22,11 +22,11 @@ export function assertEmailProviderConfigured(): void {
   if (!provider) {
     if (isProd()) {
       throw new Error(
-        '[email] No email provider configured. Set BREVO_API_KEY (preferred) or EMAIL_HOST/EMAIL_USER/EMAIL_PASS for SMTP.',
+        '[email] No email provider configured. Set RESEND_API_KEY (preferred) or EMAIL_HOST/EMAIL_USER/EMAIL_PASS for SMTP.',
       )
     }
     console.warn(
-      '[email] No email provider configured (development). Emails will not be sent. Set BREVO_API_KEY or EMAIL_HOST/EMAIL_USER/EMAIL_PASS.',
+      '[email] No email provider configured (development). Emails will not be sent. Set RESEND_API_KEY or EMAIL_HOST/EMAIL_USER/EMAIL_PASS.',
     )
   }
 
@@ -37,20 +37,16 @@ export function assertEmailProviderConfigured(): void {
   }
 }
 
-// ────── Lazy Brevo client (created on first use so dotenv has loaded) ──────
+// ────── Lazy Resend client (created on first use so dotenv has loaded) ──────
 
-let _brevo: BrevoClient | null = null
-function getBrevo(): BrevoClient {
-  if (!_brevo) {
-    const apiKey = process.env.BREVO_API_KEY
-    if (!apiKey) throw new Error('[email] BREVO_API_KEY is not set in environment variables')
-    _brevo = new BrevoClient({
-      apiKey,
-      timeoutInSeconds: 10,
-      maxRetries: 1,
-    })
+let _resend: Resend | null = null
+function getResend(): Resend {
+  if (!_resend) {
+    const apiKey = process.env.RESEND_API_KEY
+    if (!apiKey) throw new Error('[email] RESEND_API_KEY is not set in environment variables')
+    _resend = new Resend(apiKey)
   }
-  return _brevo
+  return _resend
 }
 
 // ────── Lazy SMTP transporter ──────
@@ -103,13 +99,15 @@ async function sendEmail(opts: {
   }
 
   try {
-    if (provider === 'brevo') {
-      await getBrevo().transactionalEmails.sendTransacEmail({
-        sender: { name: FROM_NAME(), email: FROM_EMAIL() },
-        to: toList,
+    if (provider === 'resend') {
+      const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`
+      const { error } = await getResend().emails.send({
+        from,
+        to: toList.map((t) => t.email),
         subject: opts.subject,
-        htmlContent: opts.html,
+        html: opts.html,
       })
+      if (error) throw error
     } else {
       const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`
       await getSmtp().sendMail({

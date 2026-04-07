@@ -19,7 +19,7 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
-      - key: BREVO_API_KEY
+      - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM_ADDRESS
         sync: false
