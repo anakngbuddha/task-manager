@@ -283,9 +283,18 @@ export default function ProfilePage() {
                     {polling ? (
                       <>
                         <p className="text-sm font-medium">Waiting for GitHub…</p>
-                        <p className="mt-1 text-xs text-muted-foreground max-w-xs mx-auto">
-                          Finish the installation on GitHub, then come back here. We'll detect it automatically.
+                        <p className="mt-1 text-xs text-muted-foreground max-w-sm mx-auto">
+                          If you are installing for the first time, GitHub will redirect you back automatically.
                         </p>
+
+                        <div className="mt-4 rounded-md bg-amber-500/10 border border-amber-500/20 p-3 text-left max-w-sm mx-auto">
+                          <p className="text-xs text-amber-700/90 dark:text-amber-500/90 font-medium">App already installed?</p>
+                          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                            GitHub doesn't redirect back if the app is already installed on your account.
+                            If you are stuck on the GitHub settings page, simply copy the Installation ID from the GitHub URL (e.g., <code>installations/120269033</code>) and paste it into the <strong>Manual link</strong> box below.
+                          </p>
+                        </div>
+
                         <Button
                           variant="outline"
                           className="mt-4 h-9 rounded-none"
