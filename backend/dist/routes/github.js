@@ -1,7 +1,7 @@
 import { authenticate } from '../middlewares/authenticate.js';
 import { prisma } from '../lib/prisma.js';
 import { getInstallationToken } from '../lib/githubApp.js';
-import { peekPendingInstallations, removePendingInstallation, registerExpectingUser, isUserExpecting, clearExpectingUser, } from '../lib/pendingInstallations.js';
+import { removePendingInstallation, registerExpectingUser, clearExpectingUser, } from '../lib/pendingInstallations.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
 const INSTALLATION_URL = process.env.GITHUB_INSTALLATION_URL ||
     'https://github.com/apps/wsi-taska/installations/new';
@@ -16,18 +16,9 @@ export async function githubRoutes(app) {
     });
     // ── Check for a pending (unclaimed) GitHub App installation ──────────
     app.get('/github/pending-installation', { preHandler: authenticate }, async (req, reply) => {
-        if (!isUserExpecting(req.authUser.id)) {
-            return reply.status(204).send();
-        }
-        const pending = peekPendingInstallations();
-        if (pending.length === 0) {
-            return reply.status(204).send();
-        }
-        const latest = pending[0];
-        return reply.status(200).send({
-            installationId: latest.installationId,
-            repos: latest.repos,
-        });
+        // Disabled for security. Polling globally allows users to accidentally steal installations.
+        // Auto-linking now strictly relies on the ?github_installation_id callback URL.
+        return reply.status(204).send();
     });
     // ── GitHub post-install callback (redirect-based) ─────────────────────
     app.get('/github/callback', async (req, reply) => {
@@ -53,6 +44,14 @@ export async function githubRoutes(app) {
             app.log.warn({ installationId, err: err.message }, 'GitHub installation validation failed');
             return reply.status(400).send({
                 error: 'Invalid GitHub installation. The app may have been uninstalled or the ID is wrong.',
+            });
+        }
+        const existing = await prisma.githubInstallation.findUnique({
+            where: { installationId },
+        });
+        if (existing && existing.userId !== req.authUser.id) {
+            return reply.status(403).send({
+                error: 'This GitHub installation is already linked to another account. Please ask the owner to disconnect it first, or use a different GitHub account.'
             });
         }
         const installation = await prisma.githubInstallation.upsert({
@@ -196,53 +195,9 @@ export async function githubRoutes(app) {
         return reply.status(204).send();
     });
     // ── Detect unclaimed installations directly from GitHub API ─────────
-    // Works in dev without webhooks: uses the App JWT to list all
-    // installations on GitHub and returns any not yet in our DB.
     app.get('/github/detect-installation', { preHandler: authenticate }, async (req, reply) => {
-        if (!isUserExpecting(req.authUser.id)) {
-            return reply.status(204).send();
-        }
-        let appJwt;
-        try {
-            const jwtMod = await import('jsonwebtoken');
-            const appId = process.env.GITHUB_APP_ID;
-            const privateKey = process.env.GITHUB_APP_PRIVATE_KEY?.replace(/\\n/g, '\n');
-            if (!appId || !privateKey)
-                return reply.status(204).send();
-            const now = Math.floor(Date.now() / 1000);
-            appJwt = jwtMod.default.sign({ iat: now - 60, exp: now + 10 * 60, iss: appId }, privateKey, { algorithm: 'RS256' });
-        }
-        catch {
-            return reply.status(204).send();
-        }
-        try {
-            const res = await fetch('https://api.github.com/app/installations?per_page=10', {
-                headers: {
-                    Authorization: `Bearer ${appJwt}`,
-                    Accept: 'application/vnd.github+json',
-                    'X-GitHub-Api-Version': '2022-11-28',
-                },
-            });
-            if (!res.ok)
-                return reply.status(204).send();
-            const installations = (await res.json());
-            const claimedIds = (await prisma.githubInstallation.findMany({ select: { installationId: true } })).map((r) => r.installationId);
-            const unclaimed = installations
-                .filter((i) => !claimedIds.includes(i.id))
-                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-            if (unclaimed.length === 0)
-                return reply.status(204).send();
-            const best = unclaimed[0];
-            app.log.info({ installationId: best.id, account: best.account?.login }, 'Detected unclaimed GitHub installation');
-            return reply.status(200).send({
-                installationId: best.id,
-                repos: [],
-                account: best.account?.login ?? null,
-            });
-        }
-        catch (err) {
-            app.log.warn({ err: err.message }, 'Failed to detect GitHub installations');
-            return reply.status(204).send();
-        }
+        // Disabled for security. Fetching all app installations globally and picking an unclaimed one
+        // is highly insecure in a multi-tenant environment.
+        return reply.status(204).send();
     });
 }

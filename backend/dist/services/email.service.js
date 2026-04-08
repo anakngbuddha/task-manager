@@ -1,78 +1,46 @@
-import nodemailer from 'nodemailer';
 function isProd() {
     return process.env.NODE_ENV === 'production';
 }
-const FROM_EMAIL = () => process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || 'noreply@example.com';
-const FROM_NAME = () => process.env.EMAIL_FROM_NAME || 'We Work IT';
-function resolveProvider() {
-    if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS)
-        return 'smtp';
-    return null;
-}
+const FROM_EMAIL = () => process.env.EMAIL_FROM_ADDRESS || 'noreply@example.com';
+const FROM_NAME = () => process.env.EMAIL_FROM_NAME || 'Task Manager';
 export function assertEmailProviderConfigured() {
-    const provider = resolveProvider();
-    if (!provider) {
+    if (!process.env.BREVO_API_KEY) {
         if (isProd()) {
-            throw new Error('[email] SMTP provider is not configured. Set EMAIL_HOST/EMAIL_USER/EMAIL_PASS (and optional EMAIL_PORT/EMAIL_FROM).');
+            throw new Error('[email] Brevo configured. Set BREVO_API_KEY.');
         }
-        console.warn('[email] SMTP provider is not configured (development). Emails will not be sent. Set EMAIL_HOST/EMAIL_USER/EMAIL_PASS.');
-    }
-    const fromEmail = FROM_EMAIL();
-    if (!fromEmail || !fromEmail.includes('@')) {
-        if (isProd())
-            throw new Error('[email] Invalid sender email. Set EMAIL_FROM_ADDRESS (recommended).');
-        console.warn('[email] Invalid sender email. Set EMAIL_FROM_ADDRESS (recommended).');
+        console.warn('[email] Brevo provider is not configured (development). Emails will not be sent. Set BREVO_API_KEY.');
     }
 }
-// ────── Lazy SMTP transporter ──────
-let _smtp = null;
-function getSmtp() {
-    if (_smtp)
-        return _smtp;
-    const host = process.env.EMAIL_HOST;
-    const port = Number(process.env.EMAIL_PORT || 587);
-    const user = process.env.EMAIL_USER;
-    const pass = process.env.EMAIL_PASS;
-    if (!host || !user || !pass) {
-        throw new Error('[email] SMTP is not fully configured. Set EMAIL_HOST/EMAIL_USER/EMAIL_PASS (and optional EMAIL_PORT).');
-    }
-    _smtp = nodemailer.createTransport({
-        host,
-        port,
-        secure: port === 465,
-        pool: true,
-        maxConnections: 5,
-        maxMessages: 100,
-        auth: { user, pass },
-        tls: {
-            rejectUnauthorized: isProd(),
-        },
-        connectionTimeout: 10_000,
-        greetingTimeout: 10_000,
-        socketTimeout: 30_000,
-    });
-    return _smtp;
-}
-// ────── Send email via configured provider ──────
+// ────── Send email via Brevo HTTP API ──────
 async function sendEmail(opts) {
     const toList = (Array.isArray(opts.to) ? opts.to : [opts.to]).map((email) => ({ email }));
-    const provider = resolveProvider();
-    if (!provider) {
+    if (!process.env.BREVO_API_KEY) {
         assertEmailProviderConfigured();
         return;
     }
     try {
-        const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`;
-        await getSmtp().sendMail({
-            from,
-            to: toList.map((t) => t.email).join(', '),
-            subject: opts.subject,
-            html: opts.html,
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'api-key': process.env.BREVO_API_KEY
+            },
+            body: JSON.stringify({
+                sender: { name: FROM_NAME(), email: FROM_EMAIL() },
+                to: toList,
+                subject: opts.subject,
+                htmlContent: opts.html
+            })
         });
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`Brevo API responded with status ${response.status}: ${errorData}`);
+        }
         console.log(`[email] Sent "${opts.subject}" to ${toList.map((t) => t.email).join(', ')}`);
     }
     catch (err) {
-        console.error(`[email] Failed to send "${opts.subject}" via ${provider}:`, err);
+        console.error(`[email] Failed to send "${opts.subject}" via Brevo:`, err);
         throw err;
     }
 }
@@ -139,13 +107,13 @@ function calendarCta(viewInAppUrl) {
     return `
     <p style="margin:24px 0 0;text-align:center;">
       <a href="${safeUrl}"
-         style="display:inline-block;padding:12px 28px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
-        Open in calendar
+         style="display:inline-block;padding:12px 28px;background:#0d9488;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
+        Open in Calendar
       </a>
     </p>
     <p style="margin:16px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
       If the button does not work, copy and paste this link into your browser:<br>
-      <a href="${safeUrl}" style="color:#0052CC;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
+      <a href="${safeUrl}" style="color:#0d9488;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
     </p>`;
 }
 // ────── Schedule invitation email ──────
@@ -168,7 +136,8 @@ export async function sendScheduleInviteEmail(opts) {
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
     ${detailsBlock}
     ${cta}`;
-    const html = baseLayout(`📅 Invitation: ${safeTitle}`, '#0052CC', body, 'You are receiving this because you were included in this schedule.');
+    const html = baseLayout(`📅 Invitation: ${safeTitle}`, '#0d9488', // using teal-600 to match the app
+    body, 'You are receiving this because you were included in this schedule.');
     await sendEmail({
         to: opts.to,
         subject: `Invitation: ${opts.title} — ${formatDate(opts.scheduledAt)}`,
@@ -197,7 +166,8 @@ export async function sendScheduleReminderEmail(opts) {
     <table cellpadding="0" cellspacing="0" style="width:100%;">${rows}</table>
     ${detailsBlock}
     ${cta}`;
-    const html = baseLayout(`⏰ Reminder: ${safeTitle} in ${escapeHtml(opts.timeUntil)}`, '#FF991F', body, 'You are receiving this because you were included in this schedule.');
+    const html = baseLayout(`⏰ Reminder: ${safeTitle} in ${escapeHtml(opts.timeUntil)}`, '#f59e0b', // amber-500
+    body, 'You are receiving this because you were included in this schedule.');
     await sendEmail({
         to: opts.to,
         subject: `Reminder: ${opts.title} is in ${opts.timeUntil}`,
@@ -211,14 +181,15 @@ export async function sendScheduleCancellationEmail(opts) {
     const safeCancelledBy = escapeHtml(opts.cancelledBy);
     const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
-      The following ${escapeHtml(typeLabel.toLowerCase())} has been <strong style="color:#DE350B;">cancelled</strong>:
+      The following ${escapeHtml(typeLabel.toLowerCase())} has been <strong style="color:#ef4444;">cancelled</strong>:
     </p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">
       ${detailRow('Event', safeTitle)}
       ${detailRow('Was scheduled', escapeHtml(formatDate(opts.scheduledAt)))}
       ${detailRow('Cancelled by', safeCancelledBy)}
     </table>`;
-    const html = baseLayout(`❌ Cancelled: ${safeTitle}`, '#DE350B', body, 'This schedule has been cancelled by ' + safeCancelledBy + '.');
+    const html = baseLayout(`❌ Cancelled: ${safeTitle}`, '#ef4444', // red-500
+    body, 'This schedule has been cancelled by ' + safeCancelledBy + '.');
     await sendEmail({
         to: opts.to,
         subject: `Cancelled: ${opts.title}`,
@@ -242,11 +213,12 @@ export async function sendTaskDeadlineEmail(opts) {
     </table>
     <p style="margin:20px 0 0;">
       <a href="${safeTaskUrl}"
-         style="display:inline-block;padding:10px 24px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:4px;font-size:14px;font-weight:500;">
+         style="display:inline-block;padding:10px 24px;background:#0d9488;color:#ffffff;text-decoration:none;border-radius:4px;font-size:14px;font-weight:500;">
         Open Task
       </a>
     </p>`;
-    const html = baseLayout(`⚠️ Deadline approaching: ${safeTaskTitle}`, '#FF5630', body, 'You are receiving this because this task is assigned to you.');
+    const html = baseLayout(`⚠️ Deadline approaching: ${safeTaskTitle}`, '#ea580c', // orange-600
+    body, 'You are receiving this because this task is assigned to you.');
     await sendEmail({
         to: opts.to,
         subject: `Task deadline approaching: ${opts.taskTitle} is due in ${opts.timeUntil}`,
@@ -265,13 +237,13 @@ export async function sendPasswordResetOTPEmail(opts) {
       We received a request to reset your password. Use the following 6-digit code to complete the reset:
     </p>
     <div style="background:#eceff1;padding:24px;border-radius:8px;text-align:center;margin:24px 0;">
-      <span style="font-size:36px;font-weight:700;letter-spacing:12px;color:#0052CC;">${safeOtp}</span>
+      <span style="font-size:36px;font-weight:700;letter-spacing:12px;color:#0d9488;">${safeOtp}</span>
     </div>
     <p style="margin:24px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
       If you did not request this, please ignore this email or contact support if you have concerns.
     </p>
   `;
-    const html = baseLayout('Password Reset Code', '#0052CC', body, 'You received this email because a password reset was requested for your account.');
+    const html = baseLayout('Password Reset Code', '#0d9488', body, 'You received this email because a password reset was requested for your account.');
     await sendEmail({
         to: opts.to,
         subject: 'Your Password Reset Code',
@@ -287,20 +259,20 @@ export async function sendVerificationEmail(opts) {
       Hi ${safeUserName},
     </p>
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
-      Welcome! Please verify your email address to complete your registration. This link will expire shortly.
+      Welcome to We Work IT! Please verify your email address to complete your registration. This link will expire shortly.
     </p>
     <p style="margin:20px 0 0;text-align:center;">
       <a href="${safeUrl}"
-         style="display:inline-block;padding:12px 28px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
+         style="display:inline-block;padding:12px 28px;background:#0d9488;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
         Verify My Email
       </a>
     </p>
     <p style="margin:24px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
       If the button doesn't work, copy and paste this link into your browser:<br>
-      <a href="${safeUrl}" style="color:#0052CC;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
+      <a href="${safeUrl}" style="color:#0d9488;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
     </p>
   `;
-    const html = baseLayout('Verify your email address', '#0052CC', body, 'You received this email because you created an account. If you did not request this, please ignore it.');
+    const html = baseLayout('Verify your email address', '#0d9488', body, 'You received this email because you created an account. If you did not request this, please ignore it.');
     await sendEmail({
         to: opts.to,
         subject: 'Action Required: Verify your email address',
