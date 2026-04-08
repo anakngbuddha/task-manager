@@ -36,11 +36,11 @@ function getSmtp(): nodemailer.Transporter {
 
   _smtp = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,           // use STARTTLS instead of implicit TLS
+    port: 465,
+    secure: true,
     auth: { user, pass },
     tls: {
-      rejectUnauthorized: isProd(), // Bypass corporate proxy/firewall SSL on localhost
+      rejectUnauthorized: isProd(), // Bypass TLS errors for local development proxies
     },
   })
 
