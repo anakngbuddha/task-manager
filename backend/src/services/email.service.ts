@@ -1,53 +1,26 @@
-import nodemailer from 'nodemailer'
 import type { ScheduleType } from '@prisma/client'
 
 function isProd() {
   return process.env.NODE_ENV === 'production'
 }
 
-const FROM_EMAIL = () => process.env.EMAIL_USER || 'noreply@example.com'
-const FROM_NAME = () => process.env.EMAIL_FROM_NAME || 'We Work IT'
+const FROM_EMAIL = () => process.env.EMAIL_FROM_ADDRESS || 'noreply@example.com'
+const FROM_NAME = () => process.env.EMAIL_FROM_NAME || 'Task Manager'
 
 export function assertEmailProviderConfigured(): void {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
+  if (!process.env.BREVO_API_KEY) {
     if (isProd()) {
       throw new Error(
-        '[email] Gmail provider is not configured. Set EMAIL_USER and EMAIL_APP_PASSWORD.',
+        '[email] Brevo configured. Set BREVO_API_KEY.',
       )
     }
     console.warn(
-      '[email] Gmail provider is not configured (development). Emails will not be sent. Set EMAIL_USER and EMAIL_APP_PASSWORD.',
+      '[email] Brevo provider is not configured (development). Emails will not be sent. Set BREVO_API_KEY.',
     )
   }
 }
 
-// ────── Lazy SMTP transporter ──────
-
-let _smtp: nodemailer.Transporter | null = null
-function getSmtp(): nodemailer.Transporter {
-  if (_smtp) return _smtp
-
-  const user = process.env.EMAIL_USER
-  const pass = process.env.EMAIL_APP_PASSWORD
-
-  if (!user || !pass) {
-    throw new Error('[email] Gmail is not fully configured. Set EMAIL_USER and EMAIL_APP_PASSWORD.')
-  }
-
-  _smtp = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: { user, pass },
-    tls: {
-      rejectUnauthorized: isProd(), // Bypass TLS errors for local development proxies
-    },
-  })
-
-  return _smtp
-}
-
-// ────── Send email via configured provider ──────
+// ────── Send email via Brevo HTTP API ──────
 
 async function sendEmail(opts: {
   to: string | string[]
@@ -56,27 +29,38 @@ async function sendEmail(opts: {
 }): Promise<void> {
   const toList = (Array.isArray(opts.to) ? opts.to : [opts.to]).map((email) => ({ email }))
 
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
+  if (!process.env.BREVO_API_KEY) {
     assertEmailProviderConfigured()
     return
   }
 
   try {
-    const from = `"${FROM_NAME()}" <${FROM_EMAIL()}>`
-    await getSmtp().sendMail({
-      from,
-      to: toList.map((t) => t.email).join(', '),
-      subject: opts.subject,
-      html: opts.html,
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'api-key': process.env.BREVO_API_KEY
+      },
+      body: JSON.stringify({
+        sender: { name: FROM_NAME(), email: FROM_EMAIL() },
+        to: toList,
+        subject: opts.subject,
+        htmlContent: opts.html
+      })
     })
+
+    if (!response.ok) {
+      const errorData = await response.text()
+      throw new Error(`Brevo API responded with status ${response.status}: ${errorData}`)
+    }
 
     console.log(`[email] Sent "${opts.subject}" to ${toList.map((t) => t.email).join(', ')}`)
   } catch (err: unknown) {
-    console.error(`[email] Failed to send "${opts.subject}" via Gmail:`, err)
+    console.error(`[email] Failed to send "${opts.subject}" via Brevo:`, err)
     throw err
   }
 }
-
 
 // ────── Utility helpers ──────
 
