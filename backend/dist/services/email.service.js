@@ -1,13 +1,10 @@
 import nodemailer from 'nodemailer';
-import { Resend } from 'resend';
 function isProd() {
     return process.env.NODE_ENV === 'production';
 }
 const FROM_EMAIL = () => process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || 'noreply@example.com';
 const FROM_NAME = () => process.env.EMAIL_FROM_NAME || 'We Work IT';
 function resolveProvider() {
-    if (process.env.RESEND_API_KEY)
-        return 'resend';
     if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS)
         return 'smtp';
     return null;
@@ -16,9 +13,9 @@ export function assertEmailProviderConfigured() {
     const provider = resolveProvider();
     if (!provider) {
         if (isProd()) {
-            throw new Error('[email] No email provider configured. Set RESEND_API_KEY (preferred) or EMAIL_HOST/EMAIL_USER/EMAIL_PASS for SMTP.');
+            throw new Error('[email] SMTP provider is not configured. Set EMAIL_HOST/EMAIL_USER/EMAIL_PASS (and optional EMAIL_PORT/EMAIL_FROM).');
         }
-        console.warn('[email] No email provider configured (development). Emails will not be sent. Set RESEND_API_KEY or EMAIL_HOST/EMAIL_USER/EMAIL_PASS.');
+        console.warn('[email] SMTP provider is not configured (development). Emails will not be sent. Set EMAIL_HOST/EMAIL_USER/EMAIL_PASS.');
     }
     const fromEmail = FROM_EMAIL();
     if (!fromEmail || !fromEmail.includes('@')) {
@@ -26,17 +23,6 @@ export function assertEmailProviderConfigured() {
             throw new Error('[email] Invalid sender email. Set EMAIL_FROM_ADDRESS (recommended).');
         console.warn('[email] Invalid sender email. Set EMAIL_FROM_ADDRESS (recommended).');
     }
-}
-// ────── Lazy Resend client (created on first use so dotenv has loaded) ──────
-let _resend = null;
-function getResend() {
-    if (!_resend) {
-        const apiKey = process.env.RESEND_API_KEY;
-        if (!apiKey)
-            throw new Error('[email] RESEND_API_KEY is not set in environment variables');
-        _resend = new Resend(apiKey);
-    }
-    return _resend;
 }
 // ────── Lazy SMTP transporter ──────
 let _smtp = null;
@@ -76,26 +62,13 @@ async function sendEmail(opts) {
         return;
     }
     try {
-        if (provider === 'resend') {
-            const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`;
-            const { error } = await getResend().emails.send({
-                from,
-                to: toList.map((t) => t.email),
-                subject: opts.subject,
-                html: opts.html,
-            });
-            if (error)
-                throw error;
-        }
-        else {
-            const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`;
-            await getSmtp().sendMail({
-                from,
-                to: toList.map((t) => t.email).join(', '),
-                subject: opts.subject,
-                html: opts.html,
-            });
-        }
+        const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`;
+        await getSmtp().sendMail({
+            from,
+            to: toList.map((t) => t.email).join(', '),
+            subject: opts.subject,
+            html: opts.html,
+        });
         console.log(`[email] Sent "${opts.subject}" to ${toList.map((t) => t.email).join(', ')}`);
     }
     catch (err) {

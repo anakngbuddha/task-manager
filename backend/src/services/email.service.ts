@@ -1,52 +1,24 @@
 import nodemailer from 'nodemailer'
-import { Resend } from 'resend'
 import type { ScheduleType } from '@prisma/client'
-
-type EmailProvider = 'resend' | 'smtp'
 
 function isProd() {
   return process.env.NODE_ENV === 'production'
 }
 
-const FROM_EMAIL = () => process.env.EMAIL_FROM_ADDRESS || process.env.EMAIL_USER || 'noreply@example.com'
+const FROM_EMAIL = () => process.env.EMAIL_USER || 'noreply@example.com'
 const FROM_NAME = () => process.env.EMAIL_FROM_NAME || 'We Work IT'
 
-function resolveProvider(): EmailProvider | null {
-  if (process.env.RESEND_API_KEY) return 'resend'
-  if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) return 'smtp'
-  return null
-}
-
 export function assertEmailProviderConfigured(): void {
-  const provider = resolveProvider()
-  if (!provider) {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
     if (isProd()) {
       throw new Error(
-        '[email] No email provider configured. Set RESEND_API_KEY (preferred) or EMAIL_HOST/EMAIL_USER/EMAIL_PASS for SMTP.',
+        '[email] Gmail provider is not configured. Set EMAIL_USER and EMAIL_APP_PASSWORD.',
       )
     }
     console.warn(
-      '[email] No email provider configured (development). Emails will not be sent. Set RESEND_API_KEY or EMAIL_HOST/EMAIL_USER/EMAIL_PASS.',
+      '[email] Gmail provider is not configured (development). Emails will not be sent. Set EMAIL_USER and EMAIL_APP_PASSWORD.',
     )
   }
-
-  const fromEmail = FROM_EMAIL()
-  if (!fromEmail || !fromEmail.includes('@')) {
-    if (isProd()) throw new Error('[email] Invalid sender email. Set EMAIL_FROM_ADDRESS (recommended).')
-    console.warn('[email] Invalid sender email. Set EMAIL_FROM_ADDRESS (recommended).')
-  }
-}
-
-// ────── Lazy Resend client (created on first use so dotenv has loaded) ──────
-
-let _resend: Resend | null = null
-function getResend(): Resend {
-  if (!_resend) {
-    const apiKey = process.env.RESEND_API_KEY
-    if (!apiKey) throw new Error('[email] RESEND_API_KEY is not set in environment variables')
-    _resend = new Resend(apiKey)
-  }
-  return _resend
 }
 
 // ────── Lazy SMTP transporter ──────
@@ -55,29 +27,21 @@ let _smtp: nodemailer.Transporter | null = null
 function getSmtp(): nodemailer.Transporter {
   if (_smtp) return _smtp
 
-  const host = process.env.EMAIL_HOST
-  const port = Number(process.env.EMAIL_PORT || 587)
   const user = process.env.EMAIL_USER
-  const pass = process.env.EMAIL_PASS
+  const pass = process.env.EMAIL_APP_PASSWORD
 
-  if (!host || !user || !pass) {
-    throw new Error('[email] SMTP is not fully configured. Set EMAIL_HOST/EMAIL_USER/EMAIL_PASS (and optional EMAIL_PORT).')
+  if (!user || !pass) {
+    throw new Error('[email] Gmail is not fully configured. Set EMAIL_USER and EMAIL_APP_PASSWORD.')
   }
 
   _smtp = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,           // use STARTTLS instead of implicit TLS
     auth: { user, pass },
     tls: {
-      rejectUnauthorized: isProd(),
+      rejectUnauthorized: isProd(), // Bypass corporate proxy/firewall SSL on localhost
     },
-    connectionTimeout: 10_000,
-    greetingTimeout: 10_000,
-    socketTimeout: 30_000,
   })
 
   return _smtp
@@ -92,35 +56,23 @@ async function sendEmail(opts: {
 }): Promise<void> {
   const toList = (Array.isArray(opts.to) ? opts.to : [opts.to]).map((email) => ({ email }))
 
-  const provider = resolveProvider()
-  if (!provider) {
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_APP_PASSWORD) {
     assertEmailProviderConfigured()
     return
   }
 
   try {
-    if (provider === 'resend') {
-      const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`
-      const { error } = await getResend().emails.send({
-        from,
-        to: toList.map((t) => t.email),
-        subject: opts.subject,
-        html: opts.html,
-      })
-      if (error) throw error
-    } else {
-      const from = process.env.EMAIL_FROM || `${FROM_NAME()} <${FROM_EMAIL()}>`
-      await getSmtp().sendMail({
-        from,
-        to: toList.map((t) => t.email).join(', '),
-        subject: opts.subject,
-        html: opts.html,
-      })
-    }
+    const from = `"${FROM_NAME()}" <${FROM_EMAIL()}>`
+    await getSmtp().sendMail({
+      from,
+      to: toList.map((t) => t.email).join(', '),
+      subject: opts.subject,
+      html: opts.html,
+    })
 
     console.log(`[email] Sent "${opts.subject}" to ${toList.map((t) => t.email).join(', ')}`)
   } catch (err: unknown) {
-    console.error(`[email] Failed to send "${opts.subject}" via ${provider}:`, err)
+    console.error(`[email] Failed to send "${opts.subject}" via Gmail:`, err)
     throw err
   }
 }
@@ -195,13 +147,13 @@ function calendarCta(viewInAppUrl: string): string {
   return `
     <p style="margin:24px 0 0;text-align:center;">
       <a href="${safeUrl}"
-         style="display:inline-block;padding:12px 28px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
-        Open in calendar
+         style="display:inline-block;padding:12px 28px;background:#0d9488;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
+        Open in Calendar
       </a>
     </p>
     <p style="margin:16px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
       If the button does not work, copy and paste this link into your browser:<br>
-      <a href="${safeUrl}" style="color:#0052CC;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
+      <a href="${safeUrl}" style="color:#0d9488;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
     </p>`
 }
 
@@ -241,7 +193,7 @@ export async function sendScheduleInviteEmail(opts: {
 
   const html = baseLayout(
     `📅 Invitation: ${safeTitle}`,
-    '#0052CC',
+    '#0d9488', // using teal-600 to match the app
     body,
     'You are receiving this because you were included in this schedule.',
   )
@@ -292,7 +244,7 @@ export async function sendScheduleReminderEmail(opts: {
 
   const html = baseLayout(
     `⏰ Reminder: ${safeTitle} in ${escapeHtml(opts.timeUntil)}`,
-    '#FF991F',
+    '#f59e0b', // amber-500
     body,
     'You are receiving this because you were included in this schedule.',
   )
@@ -319,7 +271,7 @@ export async function sendScheduleCancellationEmail(opts: {
 
   const body = `
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
-      The following ${escapeHtml(typeLabel.toLowerCase())} has been <strong style="color:#DE350B;">cancelled</strong>:
+      The following ${escapeHtml(typeLabel.toLowerCase())} has been <strong style="color:#ef4444;">cancelled</strong>:
     </p>
     <table cellpadding="0" cellspacing="0" style="width:100%;">
       ${detailRow('Event', safeTitle)}
@@ -329,7 +281,7 @@ export async function sendScheduleCancellationEmail(opts: {
 
   const html = baseLayout(
     `❌ Cancelled: ${safeTitle}`,
-    '#DE350B',
+    '#ef4444', // red-500
     body,
     'This schedule has been cancelled by ' + safeCancelledBy + '.',
   )
@@ -368,14 +320,14 @@ export async function sendTaskDeadlineEmail(opts: {
     </table>
     <p style="margin:20px 0 0;">
       <a href="${safeTaskUrl}"
-         style="display:inline-block;padding:10px 24px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:4px;font-size:14px;font-weight:500;">
+         style="display:inline-block;padding:10px 24px;background:#0d9488;color:#ffffff;text-decoration:none;border-radius:4px;font-size:14px;font-weight:500;">
         Open Task
       </a>
     </p>`
 
   const html = baseLayout(
     `⚠️ Deadline approaching: ${safeTaskTitle}`,
-    '#FF5630',
+    '#ea580c', // orange-600
     body,
     'You are receiving this because this task is assigned to you.',
   )
@@ -405,7 +357,7 @@ export async function sendPasswordResetOTPEmail(opts: {
       We received a request to reset your password. Use the following 6-digit code to complete the reset:
     </p>
     <div style="background:#eceff1;padding:24px;border-radius:8px;text-align:center;margin:24px 0;">
-      <span style="font-size:36px;font-weight:700;letter-spacing:12px;color:#0052CC;">${safeOtp}</span>
+      <span style="font-size:36px;font-weight:700;letter-spacing:12px;color:#0d9488;">${safeOtp}</span>
     </div>
     <p style="margin:24px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
       If you did not request this, please ignore this email or contact support if you have concerns.
@@ -414,7 +366,7 @@ export async function sendPasswordResetOTPEmail(opts: {
 
   const html = baseLayout(
     'Password Reset Code',
-    '#0052CC',
+    '#0d9488',
     body,
     'You received this email because a password reset was requested for your account.'
   )
@@ -441,23 +393,23 @@ export async function sendVerificationEmail(opts: {
       Hi ${safeUserName},
     </p>
     <p style="margin:0 0 16px;color:#172b4d;font-size:15px;">
-      Welcome! Please verify your email address to complete your registration. This link will expire shortly.
+      Welcome to We Work IT! Please verify your email address to complete your registration. This link will expire shortly.
     </p>
     <p style="margin:20px 0 0;text-align:center;">
       <a href="${safeUrl}"
-         style="display:inline-block;padding:12px 28px;background:#0052CC;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
+         style="display:inline-block;padding:12px 28px;background:#0d9488;color:#ffffff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600;">
         Verify My Email
       </a>
     </p>
     <p style="margin:24px 0 0;color:#6b778c;font-size:13px;line-height:1.5;">
       If the button doesn't work, copy and paste this link into your browser:<br>
-      <a href="${safeUrl}" style="color:#0052CC;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
+      <a href="${safeUrl}" style="color:#0d9488;text-decoration:underline;word-break:break-all;">${safeUrl}</a>
     </p>
   `
 
   const html = baseLayout(
     'Verify your email address',
-    '#0052CC',
+    '#0d9488',
     body,
     'You received this email because you created an account. If you did not request this, please ignore it.'
   )
