@@ -17,7 +17,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  BookOpen,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -26,6 +25,7 @@ import {
   LogOut,
   PanelLeft,
   Settings,
+  ShieldAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -63,7 +63,8 @@ export default function Sidebar() {
     )
       return 'profile'
     if (location.pathname === '/calendar') return 'calendar'
-    if (location.pathname === '/') return 'dashboard'
+    if (location.pathname === '/dashboard') return 'dashboard'
+    if (location.pathname.startsWith('/admin')) return 'admin'
     return ''
   }, [location.pathname])
 
@@ -165,9 +166,7 @@ export default function Sidebar() {
           <>
             {/* Brand */}
             <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1">
-              <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-sidebar-accent text-sidebar-foreground">
-                <FolderKanban className="size-4" />
-              </div>
+              <img src="/logo.png" alt="Logo" className="size-8 shrink-0 object-contain drop-shadow" />
               <div className="min-w-0">
                 <h1 className="truncate text-sm font-semibold leading-tight">Task Manager</h1>
                 <p className="truncate text-[0.7rem] text-sidebar-foreground/60">Workspace</p>
@@ -212,7 +211,7 @@ export default function Sidebar() {
       <nav className="flex-1 overflow-y-auto px-2 pb-3 pt-3 space-y-0.5">
         {/* Dashboard */}
         <Link
-          to="/"
+          to="/dashboard"
           title={!expanded ? 'Dashboard' : undefined}
           className={navItemCls(activeRoot === 'dashboard', expanded)}
         >
@@ -230,15 +229,7 @@ export default function Sidebar() {
           {expanded && <span className="font-medium">Activity</span>}
         </Link>
 
-        {/* Documentation */}
-        <Link
-          to="/docs"
-          title={!expanded ? 'Documentation' : undefined}
-          className={navItemCls(location.pathname === '/docs', expanded)}
-        >
-          <BookOpen className="size-4 shrink-0" />
-          {expanded && <span className="font-medium">Documentation</span>}
-        </Link>
+
 
         {/* ── Projects ── */}
         <div className="pt-3">
@@ -318,6 +309,20 @@ export default function Sidebar() {
             {expanded && <span className="font-medium">Profile</span>}
           </Link>
         </div>
+
+        {/* Admin System */}
+        {session?.user?.role === 'admin' && (
+          <div className="pt-1">
+            <Link
+              to="/admin/dashboard"
+              title={!expanded ? 'Admin Dashboard' : undefined}
+              className={navItemCls(activeRoot === 'admin', expanded)}
+            >
+              <ShieldAlert className="size-4 shrink-0" />
+              {expanded && <span className="font-medium">Admin System</span>}
+            </Link>
+          </div>
+        )}
       </nav>
 
       {/* ── Footer: user + sign out ── */}

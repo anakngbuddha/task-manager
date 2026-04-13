@@ -7,6 +7,7 @@ import { startNotificationCron } from './jobs/notificationCron.js'
 import { setIO, directRoom } from './lib/socketManager.js'
 import { prisma } from './lib/prisma.js'
 import { assertEmailProviderConfigured } from './services/email.service.js'
+import { seedAdmin } from './scripts/seed-admin.js'
 
 const PORT = Number(process.env.PORT) || 3000
 
@@ -31,6 +32,8 @@ const start = async () => {
     const dbStart = Date.now()
     await prisma.$connect()
     console.log(`[db] prisma.$connect OK (${Date.now() - dbStart}ms)`)
+
+    await seedAdmin()
 
     app.register(fastifyStatic, {
       root: path.join(process.cwd(), 'uploads'),

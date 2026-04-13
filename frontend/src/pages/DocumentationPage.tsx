@@ -1,115 +1,226 @@
-import Sidebar from '@/components/layout/Sidebar'
-import { PageHeader } from '@/components/layout/PageHeader'
-import { Badge } from '@/components/ui/badge'
+import { Link } from 'react-router-dom'
+import { FolderKanban, Workflow, Activity, GitPullRequest, Code2, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { cn } from '@/lib/utils'
 
-type DocItem = {
-  title: string
-  details: string
-}
-
-type DocSection = {
-  title: string
-  summary: string
-  items: DocItem[]
-}
-
-const DOC_SECTIONS: DocSection[] = [
+const DOC_CONTENTS = [
   {
-    title: 'Getting Started',
-    summary: 'Core steps to start using Task Manager quickly.',
-    items: [
-      { title: 'Create an account', details: 'Register with email and sign in to access your workspace.' },
-      { title: 'Create your first project', details: 'Use the Dashboard to create a project and start organizing tasks.' },
-      { title: 'Invite team members', details: 'Generate an invite link from the project board and share it with teammates.' },
-    ],
+    id: "introduction",
+    title: "Introduction",
+    icon: FolderKanban,
+    content: (
+      <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <p>Welcome to <strong>We Work IT</strong>, your centralized hub for software engineering project management and agile team collaboration.</p>
+        <p>We Work IT is designed specifically for modern engineering teams. It brings together kanban boards, real-time syncs, automated sprint metrics, and deep GitHub integrations into a single, cohesive interface. Our goal is to make managing your software development lifecycle as seamless and unobtrusive as possible.</p>
+        <div className="flex items-start gap-3 p-4 bg-primary/5 border border-primary/20 rounded-lg mt-6">
+          <AlertCircle className="size-5 text-primary shrink-0 mt-0.5" />
+          <p className="text-sm font-medium text-foreground">Tip: We Work IT uses real-time WebSockets. Any change you make to a board, task, or dependency is instantly reflected on your teammates' screens without them needing to refresh.</p>
+        </div>
+      </div>
+    )
   },
   {
-    title: 'Projects and Tasks',
-    summary: 'Plan, assign, and track work using the board.',
-    items: [
-      { title: 'Kanban board', details: 'Drag and drop tasks between statuses to update progress.' },
-      { title: 'Custom statuses', details: 'Use Project Settings > Board Columns, or type a custom status when creating/editing tasks.' },
-      { title: 'Task details', details: 'Open any task to edit title, description, assignee, priority, status, sprint, and deadline.' },
-      { title: 'Dependencies', details: 'Add blockers and blocked-by relationships to highlight task sequencing.' },
-      { title: 'Comments and mentions', details: 'Collaborate in task threads and mention teammates using @name.' },
-    ],
+    id: "kanban",
+    title: "Projects & Kanban",
+    icon: CheckCircle2,
+    content: (
+      <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <p>At the core of every workspace is a customizable Kanban board. This provides immediate visual feedback on the state of your work.</p>
+        <ul className="list-disc pl-6 space-y-2 mt-4 marker:text-primary">
+          <li><strong>Creating Tasks:</strong> Click "New Task" in any column. You can assign owners, due dates, estimates, and labels instantly from the board.</li>
+          <li><strong>Custom Workflows:</strong> Unlike rigid tools, We Work IT allows you to define your custom statuses under Project Settings. You can create flows like <em>Backlog &rarr; To Do &rarr; In Review &rarr; QA &rarr; Done</em>.</li>
+          <li><strong>Drag & Drop:</strong> Reorder your priorities rapidly by dragging tasks up and down a column, or transition their state by dragging them horizontally to another status column.</li>
+        </ul>
+      </div>
+    )
   },
   {
-    title: 'Sprints and Planning',
-    summary: 'Structure delivery by sprint cycles and backlog work.',
-    items: [
-      { title: 'Create sprints', details: 'Define sprint name, goal, start date, and end date from the board.' },
-      { title: 'Sprint backlog', details: 'Review sprint and non-sprint tasks in dedicated backlog views.' },
-      { title: 'Roadmap and calendar', details: 'Track scheduling and timelines using roadmap and calendar pages.' },
-    ],
+    id: "sprints",
+    title: "Sprint Management",
+    icon: Activity,
+    content: (
+      <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <p>If your team practices Agile, the Sprint Management tools provide everything you need to execute effectively.</p>
+        <p>Sprints isolate a specific timeframe and goal constraint. Use the <em>Sprint Backlog</em> view to quickly marshal tasks from your main backlog into an upcoming sprint.</p>
+        <h4 className="text-foreground font-semibold mt-6 mb-2">Sprint Reports</h4>
+        <p>When a sprint concludes, the system automatically aggregates the velocity, completed tasks versus rolled-over tasks, and generates visual pie charts showing team workload distribution. This empowers your retrospective meetings with empirical tracking data.</p>
+      </div>
+    )
   },
   {
-    title: 'Logs, Activity, and Time Tracking',
-    summary: 'Understand team activity and time spent.',
-    items: [
-      { title: 'Project logs', details: 'Project Logs show activity events with your local user log time for easier reading.' },
-      { title: 'Global activity feed', details: 'See organization-wide activity grouped by day and contributor.' },
-      { title: 'Time logging', details: 'Log task hours/minutes and review project time reports and sprint reports.' },
-      { title: 'Dashboard insights', details: 'Use widgets and charts to view completion trends and workload distribution.' },
-    ],
+    id: "dependencies",
+    title: "Dependencies & Roadmaps",
+    icon: Workflow,
+    content: (
+      <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <p>Complex engineering tasks rarely exist in a vacuum. We Work IT features highly interactive topological mapping of task blockers.</p>
+        <p>Inside any task modal, use the "Linked Tasks" section to declare if a task is <code>Blocked By</code> another task, or if it <code>Blocks</code> something else. The system understands these relationships globally.</p>
+        <p>The <strong>Dependency Diagram</strong> view then renders a beautiful, interactive node graph using Dagre, helping product managers identify massive bottlenecks or critical pathing instantly.</p>
+      </div>
+    )
   },
   {
-    title: 'Communication and Notifications',
-    summary: 'Stay aligned with built-in messaging and alerts.',
-    items: [
-      { title: 'Project chat', details: 'Use project messages for team-wide communication.' },
-      { title: 'Direct messages', details: 'Chat one-on-one with project members when needed.' },
-      { title: 'Notifications', details: 'Receive updates for assignments, status changes, and activity events.' },
-    ],
+    id: "time",
+    title: "Time Tracking",
+    icon: Clock,
+    content: (
+      <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <p>Tracking the time dedicated to specific issues is vital for evaluating accurate estimations and tracking burnout.</p>
+        <ul className="list-disc pl-6 space-y-2 mt-4 marker:text-primary">
+          <li><strong>Logging Time:</strong> Open a task and navigate to the "Time" tab. You can input hours and minutes natively.</li>
+          <li><strong>Time Reports:</strong> Project managers can view aggregated time reports, filtering by user and timeframe to generate CSV exports suitable for invoicing.</li>
+        </ul>
+      </div>
+    )
   },
   {
-    title: 'Integrations and Settings',
-    summary: 'Configure project behavior and external integrations.',
-    items: [
-      { title: 'GitHub integration', details: 'Connect a GitHub App to link pull requests and automate task status updates.' },
-      { title: 'Board configuration', details: 'Edit project columns/statuses from Project Settings and apply workflow changes instantly.' },
-      { title: 'Profile and presence', details: 'Update your status (Online, Busy, Away, etc.) and manage account settings.' },
-    ],
+    id: "github",
+    title: "GitHub Integrations",
+    icon: GitPullRequest,
+    content: (
+      <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <p>Our native GitHub integration eliminates the manual overhead of updating ticket statuses.</p>
+        <p>By connecting a repository in your Project Settings, the system listens for webhooks. When a developer creates a Pull Request and mentions a Task ID (e.g., <code>TSK-124</code>) in the description, the platform automatically links the PR. Furthermore, when the PR is merged, the task gracefully auto-transitions to the configured "Done" status.</p>
+        <p>You can monitor active branches, recently opened PRs, and commit velocity directly on the "GitHub Activity" dashboard tab.</p>
+      </div>
+    )
   },
+  {
+    id: "api",
+    title: "API Integrations",
+    icon: Code2,
+    content: (
+      <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <p>For operations that demand custom automations, We Work IT exposes a robust, secure REST API.</p>
+        <div className="bg-sidebar border border-sidebar-border rounded-lg p-4 font-mono text-sm overflow-x-auto text-sidebar-foreground">
+          <span className="text-blue-400">GET</span> /api/v1/projects/:id/tasks <br />
+          <span className="text-emerald-400">POST</span> /api/v1/tasks <br />
+          <span className="text-emerald-400">POST</span> /api/v1/tasks/:id/comments
+        </div>
+        <p className="mt-4">You can provision organizational or personal access tokens securely within your user settings page. We strongly support webhook registrations for external services requiring realtime task state updates (e.g., Slack or custom internal CRMs).</p>
+      </div>
+    )
+  }
 ]
 
 export default function DocumentationPage() {
+  const [activeHash, setActiveHash] = useState(DOC_CONTENTS[0].id)
+
+  // Intersection observer to track which section is currently on screen
+  useEffect(() => {
+    const handleScroll = () => {
+      const sections = DOC_CONTENTS.map(c => document.getElementById(c.id))
+      const scrollPosition = window.scrollY + 100 // offset for fixed header
+
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const section = sections[i]
+        if (section && section.offsetTop <= scrollPosition) {
+          setActiveHash(section.id)
+          break
+        }
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    // Trigger once on mount
+    handleScroll()
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const scrollToHash = (id: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    const element = document.getElementById(id)
+    if (element) {
+      const offset = 80 // Height of sticky nav + padding
+      const bodyRect = document.body.getBoundingClientRect().top
+      const elementRect = element.getBoundingClientRect().top
+      const elementPosition = elementRect - bodyRect
+      const offsetPosition = elementPosition - offset
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      })
+      window.history.pushState(null, '', `#${id}`)
+    }
+  }
+
   return (
-    <div className="flex h-dvh">
-      <Sidebar />
-      <main className="flex-1 overflow-hidden bg-background">
-        <PageHeader
-          breadcrumb={<span className="text-muted-foreground">Documentation</span>}
-          title="User Guide"
-          subtitle="Feature overview and step-by-step guidance for using Task Manager."
-        />
+    <div className="min-h-screen bg-background flex flex-col font-sans">
+      {/* ── Top Nav ── */}
+      <nav className="h-16 border-b border-border/40 px-4 md:px-8 flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-md z-50">
+        <Link to="/" className="flex items-center gap-2 group outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg">
+          <img src="/logo.png" alt="We Work IT Logo" className="size-7 object-contain drop-shadow-sm" />
+          <span className="font-bold tracking-tight text-lg">We Work IT <span className="font-normal text-muted-foreground ml-1">Docs</span></span>
+        </Link>
+        <Link to="/" className="text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-muted/50">
+          Back to Home
+        </Link>
+      </nav>
 
-        <div className="h-[calc(100vh-5rem)] overflow-auto">
-          <div className="mx-auto max-w-5xl space-y-6 px-6 py-8 sm:px-8">
-            {DOC_SECTIONS.map((section) => (
-              <section key={section.title} className="overflow-hidden border border-border/60 bg-card">
-                <div className="border-b border-border/40 px-6 py-4">
-                  <div className="flex items-center gap-3">
-                    <Badge variant="secondary" className="rounded-sm text-[10px] uppercase tracking-wide">
-                      Section
-                    </Badge>
-                    <h2 className="text-base font-semibold">{section.title}</h2>
+      {/* ── Main Layout ── */}
+      <main className="flex-1 w-full max-w-[90rem] mx-auto flex flex-col md:flex-row items-start relative px-4 md:px-8">
+
+        {/* Left Sidebar Table of Contents (Sticky) */}
+        <aside className="hidden md:block w-64 shrink-0 py-10 sticky top-16 h-[calc(100vh-4rem)] overflow-y-auto hidden-scrollbar border-r border-border/30 pr-6 mr-8">
+          <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-6 pl-2">Documentation</h3>
+          <nav className="space-y-1">
+            {DOC_CONTENTS.map(doc => (
+              <a
+                key={doc.id}
+                href={`#${doc.id}`}
+                onClick={(e) => scrollToHash(doc.id, e)}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors border",
+                  activeHash === doc.id
+                    ? "bg-primary/10 text-primary border-primary/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50 border-transparent"
+                )}
+              >
+                <doc.icon className={cn("size-4", activeHash === doc.id && "text-primary")} />
+                {doc.title}
+              </a>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Content Area */}
+        <div className="flex-1 max-w-4xl py-10 pb-32 w-full">
+          {/* Mobile TOC Header Dropdown simulation or just let mobile scroll */}
+          <div className="md:hidden mb-10 overflow-x-auto pb-4 flex gap-2 snap-x scrollbar-hide">
+            {DOC_CONTENTS.map(doc => (
+              <button
+                key={doc.id}
+                onClick={(e) => scrollToHash(doc.id, e as any)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 shrink-0 rounded-full text-sm border font-medium snap-start",
+                  activeHash === doc.id
+                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                    : "bg-card text-muted-foreground border-border/50 hover:bg-muted"
+                )}
+              >
+                {doc.title}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-24">
+            {DOC_CONTENTS.map(doc => (
+              <section key={doc.id} id={doc.id} className="scroll-mt-24 group border-b border-border/30 pb-16 last:border-0">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="grid size-12 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-inner">
+                    <doc.icon className="size-6" />
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">{section.summary}</p>
+                  <h2 className="text-3xl font-bold tracking-tight text-foreground/90 group-hover:text-foreground transition-colors">{doc.title}</h2>
                 </div>
-
-                <div className="space-y-3 px-6 py-5">
-                  {section.items.map((item) => (
-                    <div key={item.title} className="rounded-md border border-border/40 bg-muted/20 p-4">
-                      <h3 className="text-sm font-medium">{item.title}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">{item.details}</p>
-                    </div>
-                  ))}
+                <div className="text-lg">
+                  {doc.content}
                 </div>
               </section>
             ))}
           </div>
         </div>
+
       </main>
     </div>
   )

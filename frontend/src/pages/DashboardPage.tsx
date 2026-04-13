@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Sidebar from '@/components/layout/Sidebar'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { useCreateProject, useProjectsDashboard } from '@/hooks/useProjects'
@@ -41,6 +42,13 @@ export default function DashboardPage() {
   const { data: session } = useSession()
   const [name, setName] = useState('')
   const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (session?.user?.role === 'admin') {
+      navigate('/admin/dashboard', { replace: true })
+    }
+  }, [session, navigate])
 
   const dueThisWeek = useQuery({
     queryKey: ['dashboard-due-this-week'],

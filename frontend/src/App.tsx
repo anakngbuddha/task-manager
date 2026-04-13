@@ -24,6 +24,9 @@ import ProjectActivityPage from './pages/ProjectActivityPage'
 import ProjectGithubActivityPage from './pages/ProjectGithubActivityPage'
 import ProjectDependencyDiagramPage from './pages/ProjectDependencyDiagramPage'
 import DocumentationPage from './pages/DocumentationPage'
+import LandingPage from './pages/LandingPage'
+import AdminDashboardPage from './pages/admin/AdminDashboardPage'
+import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -39,16 +42,43 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { data: session, isPending } = useSession()
+
+  if (isPending) return (
+    <div className="flex h-dvh items-center justify-center">
+      <p className="text-muted-foreground">Loading...</p>
+    </div>
+  )
+
+  // Authentication check
+  if (!session) return <Navigate to="/login" replace />
+
+  // Authorization check
+  if (session.user.role !== 'admin') return <Navigate to="/dashboard" replace />
+
+  return <>{children}</>
+}
+
+import { useAnalytics } from './hooks/useAnalytics'
+
+function AnalyticsWrapper() {
+  useAnalytics()
+  return null
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <AnalyticsWrapper />
       <Routes>
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
         </Route>
         <Route path="/invite/:code" element={<InvitePage />} />
-        <Route path="/" element={
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/dashboard" element={
           <ProtectedRoute>
             <DashboardPage />
           </ProtectedRoute>
@@ -58,11 +88,7 @@ export default function App() {
             <ActivityPage />
           </ProtectedRoute>
         } />
-        <Route path="/docs" element={
-          <ProtectedRoute>
-            <DocumentationPage />
-          </ProtectedRoute>
-        } />
+        <Route path="/docs" element={<DocumentationPage />} />
         <Route path="/projects/:id" element={
           <ProtectedRoute>
             <ProjectPage />
@@ -147,6 +173,16 @@ export default function App() {
           <ProtectedRoute>
             <ProfilePage />
           </ProtectedRoute>
+        } />
+        <Route path="/admin/dashboard" element={
+          <AdminRoute>
+            <AdminDashboardPage />
+          </AdminRoute>
+        } />
+        <Route path="/admin/analytics" element={
+          <AdminRoute>
+            <AdminAnalyticsPage />
+          </AdminRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

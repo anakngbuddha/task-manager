@@ -104,7 +104,7 @@ export default function LoginPage() {
         return
       }
       // Force hard redirect to ensure session is picked up
-      window.location.href = '/'
+      window.location.href = '/dashboard'
     } catch (err: any) {
       setError(err?.message ?? 'Login failed')
       setLoading(false)
