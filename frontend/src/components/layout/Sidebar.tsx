@@ -311,7 +311,7 @@ export default function Sidebar() {
         </div>
 
         {/* Admin System */}
-        {session?.user?.role === 'admin' && (
+        {(session?.user as any)?.role === 'admin' && (
           <div className="pt-1">
             <Link
               to="/admin/dashboard"

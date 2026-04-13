@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Users, Folder, CheckCircle, TrendingUp } from 'lucide-react'
-import { useSession } from '../../lib/auth-client'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Button } from '../../components/ui/button'
 import { api } from '../../lib/api'
 

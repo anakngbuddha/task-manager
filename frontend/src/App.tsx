@@ -55,7 +55,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   if (!session) return <Navigate to="/login" replace />
 
   // Authorization check
-  if (session.user.role !== 'admin') return <Navigate to="/dashboard" replace />
+  if ((session.user as any).role !== 'admin') return <Navigate to="/dashboard" replace />
 
   return <>{children}</>
 }

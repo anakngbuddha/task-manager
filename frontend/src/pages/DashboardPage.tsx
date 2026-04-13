@@ -45,7 +45,7 @@ export default function DashboardPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (session?.user?.role === 'admin') {
+    if ((session?.user as any)?.role === 'admin') {
       navigate('/admin/dashboard', { replace: true })
     }
   }, [session, navigate])

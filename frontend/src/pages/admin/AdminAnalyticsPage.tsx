@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/card'
-import { useSession } from '../../lib/auth-client'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Button } from '../../components/ui/button'
 import { api } from '../../lib/api'
 import {
@@ -11,14 +10,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line
+  ResponsiveContainer
 } from 'recharts'
 
 export default function AdminAnalyticsPage() {
-  const { data: session } = useSession()
-  const navigate = useNavigate()
   const [data, setData] = useState({
     topPages: [] as any[],
     topClicks: [] as any[],

@@ -46,7 +46,7 @@ export default function LandingPage() {
             {!isPending && (
               session ? (
                 <Button asChild className="rounded-full px-6 shadow-lg shadow-primary/25 group">
-                  <Link to={session.user.role === 'admin' ? "/admin/dashboard" : "/dashboard"}>
+                  <Link to={(session.user as any).role === 'admin' ? "/admin/dashboard" : "/dashboard"}>
                     Go to Dashboard
                     <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
                   </Link>
@@ -103,7 +103,7 @@ export default function LandingPage() {
 
             <motion.div variants={itemVars} className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
               <Button asChild size="lg" className="rounded-full shadow-xl shadow-primary/20 w-full sm:w-auto text-base px-8 h-12">
-                <Link to={session ? (session.user.role === 'admin' ? "/admin/dashboard" : "/dashboard") : "/register"}>
+                <Link to={session ? ((session.user as any).role === 'admin' ? "/admin/dashboard" : "/dashboard") : "/register"}>
                   Get Started for Free
                   <ChevronRight className="ml-1 size-4" />
                 </Link>
