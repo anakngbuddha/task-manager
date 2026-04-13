@@ -21,6 +21,8 @@ import { taskGithubLinkRoutes } from './routes/taskGithubLinks.js';
 import { scheduleRoutes } from './routes/schedules.js';
 import { uploadRoutes } from './routes/upload.js';
 import { tagRoutes } from './routes/tags.js';
+import { adminRoutes } from './routes/admin.routes.js';
+import { analyticsRoutes } from './routes/analytics.routes.js';
 import multipart from '@fastify/multipart';
 import 'dotenv/config';
 if (!process.env.JWT_SECRET) {
@@ -119,6 +121,8 @@ app.register(taskGithubLinkRoutes, { prefix: '/api' });
 app.register(scheduleRoutes, { prefix: '/api' });
 app.register(uploadRoutes, { prefix: '/api' });
 app.register(tagRoutes, { prefix: '/api' });
+app.register(adminRoutes, { prefix: '/api' });
+app.register(analyticsRoutes, { prefix: '/api' });
 app.get('/health', async () => {
     return { status: 'ok' };
 });

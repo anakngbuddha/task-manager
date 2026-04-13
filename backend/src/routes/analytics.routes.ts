@@ -24,9 +24,15 @@ export async function analyticsRoutes(app: FastifyInstance) {
       // Try reading userId from session if they are authenticated, it's fine if they aren't.
       let userId: string | null = null
       
-      const session = req.cookies?.['better-auth.session_token'] 
-                      || req.cookies?.['__Secure-better-auth.session_token']
-                      || req.headers.authorization?.replace('Bearer ', '')
+      let sessionToken: string | undefined
+      const getCookie = (name: string) => {
+        const match = req.headers.cookie?.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'))
+        return match ? match[3] : undefined
+      }
+      
+      sessionToken = getCookie('better-auth.session_token') || getCookie('__Secure-better-auth.session_token')
+      
+      const session = sessionToken || req.headers.authorization?.replace('Bearer ', '')
 
       if (session) {
         // Try getting userId from db session

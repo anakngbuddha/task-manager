@@ -8,6 +8,14 @@ export const auth = betterAuth({
     database: prismaAdapter(prisma, {
         provider: 'mysql',
     }),
+    user: {
+        additionalFields: {
+            role: {
+                type: 'string',
+                defaultValue: 'user'
+            }
+        }
+    },
     emailAndPassword: {
         enabled: true,
         requireEmailVerification: true,
