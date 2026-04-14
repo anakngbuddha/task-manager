@@ -114,7 +114,7 @@ export function createMemberWriteHandlers(
       }
 
       try {
-        const { data } = await api.post(`/projects/${projectId}/invites`, { email })
+        await api.post(`/projects/${projectId}/invites`, { email })
         return {
           lines: [
             { type: 'success', content: `✓ Invite sent to: ${email}` },

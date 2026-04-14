@@ -12,7 +12,6 @@ import { api } from '@/lib/api'
 import type { CommandHandler, CommandResult } from '../commandTypes'
 import { assertVFSRole, authDeniedLines } from '../vfsAuth'
 
-const ADMIN_ONLY = ['MASTER_ADMIN'] as const
 const ADMIN_OR_PM = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
 
 export function createProjectWriteHandlers(
@@ -59,7 +58,7 @@ export function createProjectWriteHandlers(
 
     // ── archive (mark project complete) ───────────────────────────────────────
     // Usage: archive  (marks the current project as COMPLETED)
-    archive: async (parsed, context): Promise<CommandResult> => {
+    archive: async (_parsed, context): Promise<CommandResult> => {
       if (!projectId) {
         return { lines: [{ type: 'stderr', content: 'archive: this command must be run from within a project terminal.' }] }
       }

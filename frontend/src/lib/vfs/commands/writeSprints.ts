@@ -14,14 +14,6 @@ import type { VirtualFileSystem } from '../VirtualFileSystem'
 
 const WRITE_ROLES = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
 
-function extractEntityId(filename: string): string {
-  const base = filename.replace(/\.json$/, '')
-  const match = base.match(/__([a-zA-Z0-9]{8,})$/)
-  if (match) return match[1]
-  // try uuid-style: xxxx_planning / xxxx_active
-  const parts = base.split('_')
-  return parts.length > 1 ? parts.slice(0, -1).join('_') : base
-}
 
 export function createSprintWriteHandlers(
   vfs: VirtualFileSystem,

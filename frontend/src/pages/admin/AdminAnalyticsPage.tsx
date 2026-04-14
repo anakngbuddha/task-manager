@@ -284,7 +284,7 @@ export default function AdminAnalyticsPage() {
                       cx="50%"
                       cy="50%"
                       outerRadius={90}
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={(props: any) => `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`}
                     >
                       <Cell fill="#6366f1" />
                       <Cell fill="#22c55e" />
@@ -323,7 +323,7 @@ export default function AdminAnalyticsPage() {
                         cx="50%"
                         cy="50%"
                         outerRadius={75}
-                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        label={(props: any) => `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`}
                       >
                         <Cell fill="#6366f1" />
                         <Cell fill="#14b8a6" />
@@ -415,8 +415,8 @@ export default function AdminAnalyticsPage() {
                     cx="50%"
                     cy="50%"
                     outerRadius={90}
-                    label={({ priority, percent }) =>
-                      `${priority} ${(percent * 100).toFixed(0)}%`
+                    label={(props: any) =>
+                      `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`
                     }
                   >
                     {ext.priorityDistribution.map(entry => (
@@ -542,7 +542,7 @@ export default function AdminAnalyticsPage() {
                     tickFormatter={v => `${v}%`}
                     domain={[0, 100]}
                   />
-                  <Tooltip formatter={(v: number) => [`${v}%`, 'Read Rate']} />
+                  <Tooltip formatter={(v: any) => [`${v}%`, 'Read Rate']} />
                   <Line
                     type="monotone"
                     dataKey="readRate"

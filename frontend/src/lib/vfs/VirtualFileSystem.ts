@@ -11,7 +11,7 @@ import type { VFSNode, VFSFile, VFSDirectory } from './types'
 import {
   MOUNT_TABLE,
   getMountChildren,
-  STATUS_PATH_MAP,
+
   type TaskStatus,
 } from './mounts'
 import {

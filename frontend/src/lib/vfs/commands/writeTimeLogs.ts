@@ -23,7 +23,7 @@ function extractTaskId(filename: string): string {
 
 export function createTimeLogWriteHandlers(
   vfs: VirtualFileSystem,
-  projectId: string
+  _projectId: string
 ): Record<string, CommandHandler> {
   return {
     // ── log ───────────────────────────────────────────────────────────────────
@@ -82,7 +82,7 @@ export function createTimeLogWriteHandlers(
       }
 
       try {
-        const { data } = await api.post(`/tasks/${taskId}/time-logs`, body)
+        await api.post(`/tasks/${taskId}/time-logs`, body)
         const hrs = (durationMinutes / 60).toFixed(2)
         return {
           lines: [

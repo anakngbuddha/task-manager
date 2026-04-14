@@ -89,16 +89,6 @@ const HELP_TEXT: Record<string, string[]> = {
 
 const ALL_COMMANDS = Object.keys(HELP_TEXT)
 
-const BANNER = `
- __   _______ ____
- \\ \\ / /  ___/ ___|
-  \\ V /| |_  \\___ \\
-   | | |  _|  ___) |
-   |_| |_|   |____/   Virtual File System
-
- Type "help" for available commands.
- Type "ls" to explore the project tree.
-`.trim()
 
 /** Build an HTML table string for ls output */
 function buildLsTable(nodes: VFSNode[]): string {

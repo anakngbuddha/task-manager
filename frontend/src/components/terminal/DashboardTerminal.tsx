@@ -19,7 +19,7 @@ interface DashboardTerminalProps {
   userName?: string | null
 }
 
-export default function DashboardTerminal({ userName }: DashboardTerminalProps) {
+export default function DashboardTerminal({}: DashboardTerminalProps) {
   const { data: session } = useSession()
   const [isOpen, setIsOpen] = useState<boolean>(() => {
     try { return localStorage.getItem(DASHBOARD_KEY) === 'true' }

@@ -10,24 +10,11 @@
  */
 import { api } from '@/lib/api'
 import { assertVFSRole, authDeniedLines } from '../vfsAuth'
-import type { CommandHandler, CommandResult, OutputLineSpec } from '../commandTypes'
+import type { CommandHandler, CommandResult } from '../commandTypes'
 import type { VirtualFileSystem } from '../VirtualFileSystem'
-import { TASK_STATUSES, STATUS_PATH_MAP } from '../mounts'
+import { STATUS_PATH_MAP } from '../mounts'
 
 const WRITE_ROLES = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
-
-function slug(str: string) {
-  return str.toLowerCase().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 60)
-}
-
-function resolveStatusFromPath(filePath: string): string | null {
-  const parts = filePath.split('/').filter(Boolean)
-  if (parts[0] === 'tasks' && parts.length >= 2) {
-    const statusSlug = parts[1]
-    return STATUS_PATH_MAP[statusSlug] ?? null
-  }
-  return null
-}
 
 /**
  * Resolve a filename-encoded entity id from a .json file name.
@@ -167,7 +154,7 @@ export function createTaskWriteHandlers(
       }
 
       try {
-        const { data: updated } = await api.patch(`/tasks/${entityId}`, { status: newStatus })
+        await api.patch(`/tasks/${entityId}`, { status: newStatus })
         return {
           lines: [
             { type: 'success', content: `✓ Task moved to ${newStatus}` },

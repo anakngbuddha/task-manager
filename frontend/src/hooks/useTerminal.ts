@@ -8,7 +8,7 @@
  *   - Async command execution with loading state
  *   - Welcome banner on first mount
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSession } from '@/lib/auth-client'
 import { VirtualFileSystem } from '@/lib/vfs/VirtualFileSystem'
 import { CommandRegistry, BANNER } from '@/lib/vfs/commandRegistry'
