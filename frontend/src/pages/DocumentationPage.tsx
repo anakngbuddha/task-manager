@@ -127,9 +127,16 @@ const DOC_CONTENTS = [
         <p>Most write commands mirror a standard UNIX system, allowing efficient, keyboard-centric management.</p>
         <div className="bg-sidebar border border-sidebar-border rounded-lg p-4 font-mono text-sm overflow-x-auto text-sidebar-foreground">
           <ul className="space-y-2">
-            <li><span className="text-emerald-400">touch</span> &lt;type&gt; - Create an entity.
-              <br/><span className="text-muted-foreground ml-4">Ex: touch tasks/todo/my-new-task.json --priority=HIGH --assignee=user@example.com</span>
-              <br/><span className="text-muted-foreground ml-4">Ex: touch sprints/sprint-1.json --goal="MVP"</span>
+            <li><span className="text-emerald-400">touch project</span> &lt;name&gt; - Create a new project (Run from Workspace Dashboard Terminal).
+              <br/><span className="text-muted-foreground ml-4">Ex: touch project "Mobile App Redesign"</span>
+            </li>
+            <li className="mt-2"><span className="text-emerald-400">touch tasks/</span>&lt;status&gt;/&lt;title&gt;.json - Create a new task.
+              <br/><span className="text-muted-foreground ml-4">Ex: touch tasks/todo/fix-login-bug.json --priority=HIGH --assignee=mark@example.com</span>
+            </li>
+            <li className="mt-2"><span className="text-emerald-400">touch sprints/</span>&lt;title&gt;.json - Create a new sprint backlog.
+              <br/><span className="text-muted-foreground ml-4">Ex: touch sprints/alpha-release.json --goal="MVP Features"</span>
+            </li>
+            <li className="mt-2"><span className="text-emerald-400">touch schedules/</span>&lt;title&gt;.json - Create a new calendar event.
               <br/><span className="text-muted-foreground ml-4">Ex: touch schedules/sync.json --at=2025-12-31T00:00:00Z --type=MEETING</span>
             </li>
             <li className="mt-2"><span className="text-emerald-400">rm</span> &lt;path&gt; - Delete an entity.
@@ -138,6 +145,7 @@ const DOC_CONTENTS = [
             <li className="mt-2"><span className="text-emerald-400">mv</span> &lt;src&gt; &lt;dest&gt; - Move task status column.
               <br/><span className="text-muted-foreground ml-4">Ex: mv tasks/todo/task__123.json tasks/in_progress/</span>
             </li>
+            <li className="mt-2"><span className="text-emerald-400">archive</span> - Mark the current project as completed.</li>
           </ul>
         </div>
 

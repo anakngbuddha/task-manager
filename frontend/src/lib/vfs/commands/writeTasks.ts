@@ -65,12 +65,33 @@ export function createTaskWriteHandlers(
         return { lines: [{ type: 'stderr', content: `touch: invalid priority "${priority}". Use LOW, MEDIUM, HIGH, or URGENT.` }] }
       }
 
+      let assigneeId: string | null = null
+      const rawAssignee = parsed.flags['assignee'] as string
+      if (rawAssignee) {
+        if (rawAssignee.toUpperCase() === 'EVERYONE' || rawAssignee === '@everyone') {
+          assigneeId = 'EVERYONE'
+        } else {
+          try {
+            const { data: members } = await api.get(`/projects/${projectId}/members`)
+            const matched = (members as any[]).find(
+              (m: any) => (m.user?.email ?? m.email ?? '').toLowerCase() === rawAssignee.toLowerCase()
+            )
+            if (!matched) {
+              return { lines: [{ type: 'stderr', content: `touch: assignee not found in project: "${rawAssignee}"` }] }
+            }
+            assigneeId = matched.userId
+          } catch {
+            return { lines: [{ type: 'stderr', content: 'touch: failed to resolve assignee email.' }] }
+          }
+        }
+      }
+
       const body: Record<string, unknown> = {
         title: rawTitle,
         projectId,
         status,
         priority,
-        assigneeId: (parsed.flags['assignee'] as string) ?? null,
+        assigneeId,
         deadline: (parsed.flags['deadline'] as string) ?? null,
       }
 

@@ -14,7 +14,7 @@ const HELP_TEXT: Record<string, string[]> = {
   pwd:    ['Print the current virtual directory.', '  Usage: pwd'],
   cd:     ['Change the current virtual directory.', '  Usage: cd <path>', '  Example: cd tasks/todo', '         cd ..', '         cd /sprints'],
   ls:     ['List contents of a directory.', '  Usage: ls [path]', '  Example: ls', '         ls tasks/in_progress'],
-  cat:    ['Print the full JSON details of a file.', '  Usage: cat <file>', '  Example: cat tasks/todo/my-task__a1b2c3d4.json'],
+  cat:    ['Print the full JSON details of a file.', '  Usage: cat <file>', '  Example: cat tasks/todo/my-task__a1b2c3d4'],
   find:   ['Search for files matching filters.', '  Usage: find <path> [--key=value ...]', '  Example: find tasks/ --priority=HIGH', '         find tasks/todo --title=auth'],
   stat:   ['Show aggregate statistics for a directory.', '  Usage: stat [path]', '  Example: stat tasks/', '         stat sprints/'],
   whoami: ['Show your current user info and project role.', '  Usage: whoami'],
@@ -23,35 +23,35 @@ const HELP_TEXT: Record<string, string[]> = {
   // ── Write — Tasks (MASTER_ADMIN, PROJECT_MANAGER) ─────────────────────────
   touch:  [
     'Create a new entity.',
-    '  touch tasks/<status>/<name>.json --priority=HIGH [--assignee=<email>] [--deadline=<ISO>] [--sprint=<name>]',
-    '  touch sprints/<name>.json [--goal="..."] [--start=<ISO>] [--end=<ISO>]',
-    '  touch schedules/<name>.json --at=<ISO> [--end=<ISO>] [--type=MEETING] [--attendees=a@b,c@d]',
+    '  touch tasks/<status>/<name> --priority=HIGH [--assignee=<email>] [--deadline=<ISO>] [--sprint=<name>]',
+    '  touch sprints/<name> [--goal="..."] [--start=<ISO>] [--end=<ISO>]',
+    '  touch schedules/<name> --at=<ISO> [--end=<ISO>] [--type=MEETING] [--attendees=a@b,c@d]',
     '  touch project <name>',
   ],
   rm: [
     'Delete an entity.',
-    '  rm tasks/<status>/<file>.json          [MASTER_ADMIN, PROJECT_MANAGER]',
-    '  rm sprints/<file>.json                 [MASTER_ADMIN, PROJECT_MANAGER]',
-    '  rm members/<email>.json                [MASTER_ADMIN only]',
+    '  rm tasks/<status>/<file>          [MASTER_ADMIN, PROJECT_MANAGER]',
+    '  rm sprints/<file>                 [MASTER_ADMIN, PROJECT_MANAGER]',
+    '  rm members/<email>                [MASTER_ADMIN only]',
   ],
   mv: [
     '[MASTER_ADMIN, PROJECT_MANAGER] Move a task to another status column.',
-    '  Usage: mv tasks/<status>/<file>.json tasks/<new-status>/',
-    '  Example: mv tasks/todo/fix-bug__abc.json tasks/in_progress/',
+    '  Usage: mv tasks/<status>/<file> tasks/<new-status>/',
+    '  Example: mv tasks/todo/fix-bug__abc tasks/in_progress/',
   ],
   // ── Write — Sprints ────────────────────────────────────────────────────────
   start: [
     '[MASTER_ADMIN, PROJECT_MANAGER] Start a planning sprint.',
-    '  Usage: start sprints/<file>.json --start=<ISO> --end=<ISO>',
+    '  Usage: start sprints/<file> --start=<ISO> --end=<ISO>',
   ],
   close: [
     '[MASTER_ADMIN, PROJECT_MANAGER] Complete an active sprint.',
-    '  Usage: close sprints/<file>.json [--move-to=TODO]',
+    '  Usage: close sprints/<file> [--move-to=TODO]',
   ],
   // ── Write — Members ────────────────────────────────────────────────────────
   setrole: [
     '[MASTER_ADMIN, PROJECT_MANAGER] Change a member\'s role.',
-    '  Usage: setrole members/<email>.json --role=MEMBER|PROJECT_MANAGER',
+    '  Usage: setrole members/<email> --role=MEMBER|PROJECT_MANAGER',
   ],
   invite: [
     '[MASTER_ADMIN, PROJECT_MANAGER] Invite a user to the project by email.',
@@ -69,8 +69,8 @@ const HELP_TEXT: Record<string, string[]> = {
   // ── Write — Time ───────────────────────────────────────────────────────────
   log: [
     '[Any member] Log time against a task.',
-    '  Usage: log tasks/<status>/<file>.json --minutes=60 --title="Fix bug" --desc="Details..."',
-    '  Alt:   log tasks/todo/my-task__abc.json --hours=1.5 --title="Review"',
+    '  Usage: log tasks/<status>/<file> --minutes=60 --title="Fix bug" --desc="Details..."',
+    '  Alt:   log tasks/todo/my-task__abc --hours=1.5 --title="Review"',
   ],
   // ── Write — GitHub ─────────────────────────────────────────────────────────
   github: [
