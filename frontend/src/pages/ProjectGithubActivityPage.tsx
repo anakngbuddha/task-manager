@@ -26,6 +26,7 @@ import {
   Eye,
   Loader2,
 } from 'lucide-react'
+import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 const EVENT_ICONS: Record<string, typeof GitCommit> = {
   PUSH: GitCommit,
@@ -295,6 +296,7 @@ export default function ProjectGithubActivityPage() {
           </div>
         </div>
       </main>
+      <ProjectTerminal projectId={projectId!} projectName={project?.name} projectMembers={project?.members} />
     </div>
   )
 }

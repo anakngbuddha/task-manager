@@ -6,6 +6,7 @@ import { useProject } from '@/hooks/useProject'
 import { useProjectTimeReport } from '@/hooks/useTimeLogs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 function formatHours(hours: number) {
   if (!Number.isFinite(hours)) return '0.00'
@@ -104,6 +105,7 @@ export default function ProjectTimeReportPage() {
           )}
         </section>
       </main>
+      <ProjectTerminal projectId={projectId!} projectName={project?.name} projectMembers={project?.members} />
     </div>
   )
 }

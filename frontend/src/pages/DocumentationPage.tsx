@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FolderKanban, Workflow, Activity, GitPullRequest, Code2, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
+import { FolderKanban, Workflow, Activity, GitPullRequest, Code2, Clock, CheckCircle2, AlertCircle, Terminal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -98,6 +98,79 @@ const DOC_CONTENTS = [
           <span className="text-emerald-400">POST</span> /api/v1/tasks/:id/comments
         </div>
         <p className="mt-4">You can provision organizational or personal access tokens securely within your user settings page. We strongly support webhook registrations for external services requiring realtime task state updates (e.g., Slack or custom internal CRMs).</p>
+      </div>
+    )
+  },
+  {
+    id: "cli",
+    title: "Command Line Interface (CLI)",
+    icon: Terminal,
+    content: (
+      <div className="space-y-4 text-muted-foreground leading-relaxed">
+        <p>We Work IT includes a powerful, retro-styled Virtual File System (VFS) terminal built directly into the UI. You can open it from anywhere inside a project by hitting <code>Ctrl + `</code> or clicking the terminal widget at the bottom left of your dashboard.</p>
+        
+        <h4 className="text-foreground font-semibold mt-6 mb-2">Read & Navigation Commands</h4>
+        <div className="bg-sidebar border border-sidebar-border rounded-lg p-4 font-mono text-sm overflow-x-auto text-sidebar-foreground">
+          <ul className="space-y-2">
+            <li><span className="text-blue-400">pwd</span> - Print current virtual directory.</li>
+            <li><span className="text-blue-400">cd</span> &lt;path&gt; - Change directory. <i>Ex: cd tasks/todo</i></li>
+            <li><span className="text-blue-400">ls</span> [path] - List contents. <i>Ex: ls sprints</i></li>
+            <li><span className="text-blue-400">cat</span> &lt;file&gt; - View JSON entity details. <i>Ex: cat tasks/todo/my-task__123.json</i></li>
+            <li><span className="text-blue-400">find</span> &lt;path&gt; [--key=value...] - Search files. <i>Ex: find tasks/ --priority=HIGH</i></li>
+            <li><span className="text-blue-400">stat</span> [path] - View directory stats. <i>Ex: stat tasks/</i></li>
+            <li><span className="text-blue-400">whoami</span> - Show session info and project role.</li>
+            <li><span className="text-blue-400">help</span> [cmd] - Show help documentation. <i>Ex: help ls</i></li>
+          </ul>
+        </div>
+
+        <h4 className="text-foreground font-semibold mt-6 mb-2">Write Commands (Requires Admin/PM Role)</h4>
+        <p>Most write commands mirror a standard UNIX system, allowing efficient, keyboard-centric management.</p>
+        <div className="bg-sidebar border border-sidebar-border rounded-lg p-4 font-mono text-sm overflow-x-auto text-sidebar-foreground">
+          <ul className="space-y-2">
+            <li><span className="text-emerald-400">touch</span> &lt;type&gt; - Create an entity.
+              <br/><span className="text-muted-foreground ml-4">Ex: touch tasks/todo/my-new-task.json --priority=HIGH --assignee=user@example.com</span>
+              <br/><span className="text-muted-foreground ml-4">Ex: touch sprints/sprint-1.json --goal="MVP"</span>
+              <br/><span className="text-muted-foreground ml-4">Ex: touch schedules/sync.json --at=2025-12-31T00:00:00Z --type=MEETING</span>
+            </li>
+            <li className="mt-2"><span className="text-emerald-400">rm</span> &lt;path&gt; - Delete an entity.
+              <br/><span className="text-muted-foreground ml-4">Ex: rm tasks/todo/task__123.json</span>
+            </li>
+            <li className="mt-2"><span className="text-emerald-400">mv</span> &lt;src&gt; &lt;dest&gt; - Move task status column.
+              <br/><span className="text-muted-foreground ml-4">Ex: mv tasks/todo/task__123.json tasks/in_progress/</span>
+            </li>
+          </ul>
+        </div>
+
+        <h4 className="text-foreground font-semibold mt-6 mb-2">Sprint & Team Management Commands</h4>
+        <div className="bg-sidebar border border-sidebar-border rounded-lg p-4 font-mono text-sm overflow-x-auto text-sidebar-foreground">
+          <ul className="space-y-2">
+            <li><span className="text-indigo-400">start</span> &lt;sprint_path&gt; - Start a planning sprint.
+              <br/><span className="text-muted-foreground ml-4">Ex: start sprints/sprint-1.json --start=2025-01-01 --end=2025-01-14</span>
+            </li>
+            <li className="mt-2"><span className="text-indigo-400">close</span> &lt;sprint_path&gt; - Complete an active sprint.
+              <br/><span className="text-muted-foreground ml-4">Ex: close sprints/sprint-1.json --move-to=TODO</span>
+            </li>
+            <li className="mt-2"><span className="text-indigo-400">setrole</span> &lt;member_path&gt; --role=&lt;role&gt; - Change member role.
+              <br/><span className="text-muted-foreground ml-4">Ex: setrole members/user@example.com --role=PROJECT_MANAGER</span>
+            </li>
+            <li className="mt-2"><span className="text-indigo-400">invite</span> &lt;email&gt; - Invite user to project.</li>
+          </ul>
+        </div>
+
+        <h4 className="text-foreground font-semibold mt-6 mb-2">Collaboration & Tooling Commands</h4>
+        <div className="bg-sidebar border border-sidebar-border rounded-lg p-4 font-mono text-sm overflow-x-auto text-sidebar-foreground">
+          <ul className="space-y-2">
+            <li><span className="text-purple-400">log</span> &lt;task_path&gt; - Log time against a task.
+              <br/><span className="text-muted-foreground ml-4">Ex: log tasks/todo/task__123.json --minutes=120 --title="Frontend Dev" --desc="Built UI"</span>
+            </li>
+            <li className="mt-2"><span className="text-purple-400">msg</span> "&lt;text&gt;" - Broadcast to project chat.</li>
+            <li className="mt-2"><span className="text-purple-400">dm</span> &lt;email&gt; "&lt;text&gt;" - Direct message user.</li>
+            <li className="mt-2"><span className="text-purple-400">github status</span> - View GitHub connection health.</li>
+            <li className="mt-2"><span className="text-purple-400">github setmap</span> - Update github PR mappings.
+              <br/><span className="text-muted-foreground ml-4">Ex: github setmap --pr_merged=DONE --pr_opened=IN_REVIEW</span>
+            </li>
+          </ul>
+        </div>
       </div>
     )
   }

@@ -36,6 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 const COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
 const STATUS_LABELS: Record<string, string> = {
@@ -605,6 +606,13 @@ export default function ProjectPage() {
           }}
         />
       )}
+
+      {/* ── VFS Terminal ── */}
+      <ProjectTerminal
+        projectId={projectId!}
+        projectName={project?.name ?? 'Project'}
+        projectMembers={project?.members ?? members}
+      />
     </div>
   )
 }

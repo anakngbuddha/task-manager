@@ -27,6 +27,7 @@ import { useSession } from '@/lib/auth-client'
 import { useProjectMembers } from '@/hooks/useProjectMembers'
 import { TagPill } from '@/components/board/TagInput'
 import type { Tag } from '@/hooks/useTaskTags'
+import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 function DroppableContainer({ id, children, className }: { id: string, children: React.ReactNode, className?: string }) {
   const { setNodeRef, isOver } = useDroppable({ id })
@@ -348,6 +349,7 @@ export default function SprintBacklogPage() {
           }}
         />
       )}
+      <ProjectTerminal projectId={projectId!} projectName={project?.name} projectMembers={project?.members} />
     </div>
   )
 }

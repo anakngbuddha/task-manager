@@ -21,6 +21,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 export default function ProjectMembersPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -285,6 +286,7 @@ export default function ProjectMembersPage() {
           )}
         </div>
       </main>
+      <ProjectTerminal projectId={projectId!} projectMembers={members} />
     </div>
   )
 }

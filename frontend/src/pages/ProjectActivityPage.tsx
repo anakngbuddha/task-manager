@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { ArrowLeft, Activity } from 'lucide-react'
 import TimeLogTimelineItem from '@/components/activity/TimeLogTimelineItem'
 import TimeLogDetailDialog from '@/components/activity/TimeLogDetailDialog'
+import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 export default function ProjectActivityPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -112,6 +113,7 @@ export default function ProjectActivityPage() {
         event={activeLogEvent}
         onClose={() => setActiveLogEvent(null)}
       />
+      <ProjectTerminal projectId={projectId!} projectName={project?.name} projectMembers={project?.members} />
     </div>
   )
 }

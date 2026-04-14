@@ -21,6 +21,7 @@ import TasksByStatusChart from '@/components/dashboard/TasksByStatusChart'
 import ProjectCompletionChart from '@/components/dashboard/ProjectCompletionChart'
 import ProjectListCard from '@/components/dashboard/ProjectListCard'
 import DashboardTasks from '@/components/dashboard/DashboardTasks'
+import DashboardTerminal from '@/components/terminal/DashboardTerminal'
 
 function greetingLabel() {
   const h = new Date().getHours()
@@ -187,6 +188,7 @@ export default function DashboardPage() {
           )}
         </section>
       </main>
+      <DashboardTerminal userName={session?.user?.name} />
     </div>
   )
 }
