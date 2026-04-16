@@ -36,7 +36,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 const COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
 const STATUS_LABELS: Record<string, string> = {
@@ -535,7 +534,7 @@ export default function ProjectPage() {
           <Button
             type="button"
             size="sm"
-            className="fixed bottom-6 right-6 z-20 h-11 rounded-full px-4 shadow-lg md:bottom-8 md:right-8"
+            className="fixed bottom-24 right-6 z-20 h-11 rounded-full px-4 shadow-lg"
             onClick={() => setChatOpen((prev) => !prev)}
           >
             <MessageCircle className="mr-2 size-4" />
@@ -543,7 +542,7 @@ export default function ProjectPage() {
           </Button>
 
           {chatOpen && (
-            <div className="fixed bottom-20 right-6 z-20 w-72 max-w-[92vw] overflow-hidden rounded-xl border border-border/70 bg-background/95 shadow-xl backdrop-blur md:bottom-24 md:right-8">
+            <div className="fixed bottom-40 right-6 z-20 w-72 max-w-[92vw] overflow-hidden rounded-xl border border-border/70 bg-background/95 shadow-xl backdrop-blur">
               <div className="px-4 py-3">
                 <p className="text-sm font-medium">Messages moved</p>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -607,12 +606,6 @@ export default function ProjectPage() {
         />
       )}
 
-      {/* ── VFS Terminal ── */}
-      <ProjectTerminal
-        projectId={projectId!}
-        projectName={project?.name ?? 'Project'}
-        projectMembers={project?.members ?? members}
-      />
     </div>
   )
 }

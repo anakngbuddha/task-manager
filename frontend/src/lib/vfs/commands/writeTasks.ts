@@ -32,21 +32,59 @@ export function createTaskWriteHandlers(
 ): Record<string, CommandHandler> {
   return {
     // ── touch task ────────────────────────────────────────────────────────────
-    // Usage: touch tasks/<status>/<title>.json --priority=HIGH [--assignee=<email>]
-    //        [--deadline=2025-12-31T00:00:00.000Z] [--sprint=<sprint-name>]
+    // Usage: touch tasks/<status>/<title>.json --priority=HIGH [--project=<id>]
+    //        [--assignee=<email>] [--deadline=2025-12-31T00:00:00.000Z] [--sprint=<sprint-name>]
     'touch-task': async (parsed, context): Promise<CommandResult> => {
       try { assertVFSRole(context.userRole, [...WRITE_ROLES], 'touch task') }
       catch (e: any) { return { lines: authDeniedLines(context.userRole, [...WRITE_ROLES], 'touch task') } }
 
-      const targetPath = parsed.args[0]
-      if (!targetPath || !targetPath.startsWith('tasks/')) {
-        return { lines: [{ type: 'stderr', content: 'touch: path must be under tasks/<status>/<filename>.json' }] }
+      // Automatically uplift any `key=value` args to flags in case they forgot `--`
+      for (const arg of parsed.args.slice(1)) {
+        if (arg.includes('=') && !arg.startsWith('--')) {
+          const [k, ...v] = arg.split('=')
+          parsed.flags[k] = v.join('=')
+        }
       }
 
-      const parts = targetPath.split('/')
-      if (parts.length < 3) {
-        return { lines: [{ type: 'stderr', content: 'touch: expected tasks/<status>/<title>.json' }] }
+      // Allow overriding the project via --project=<id or name>
+      let targetProjectId = (parsed.flags['project'] as string) || projectId
+      
+      // If the user provided a plain name for --project (not a UUID), resolve it.
+      if (targetProjectId && targetProjectId !== '__workspace__' && !targetProjectId.includes('-')) {
+        try {
+          const { data: apiProjects } = await api.get('/projects')
+          const matchedProject = (apiProjects as any[]).find((p) => 
+            p.name.toLowerCase().includes(targetProjectId.toLowerCase())
+          )
+          if (matchedProject) {
+            targetProjectId = matchedProject.id
+          }
+        } catch {
+          // ignore, fall back to literal value
+        }
       }
+
+      if (!targetProjectId || targetProjectId === '__workspace__') {
+        return {
+          lines: [
+            { type: 'stderr', content: 'touch: no project context. Use --project=<project-name> or navigate to a project first.' },
+          ],
+        }
+      }
+
+      const inputPath = parsed.args[0]
+      if (!inputPath) {
+        return { lines: [{ type: 'stderr', content: 'touch: missing file operand' }] }
+      }
+
+      // Resolve the relative input path against VFS cwd
+      const resolvedPath = vfs.resolve(inputPath)
+      const parts = resolvedPath.split('/').filter(Boolean) // e.g. ['tasks', 'todo', 'my-task']
+
+      if (parts.length < 3 || parts[0] !== 'tasks') {
+        return { lines: [{ type: 'stderr', content: 'touch: path must resolve to tasks/<status>/<title>.json' }] }
+      }
+
 
       const statusSlug = parts[1]
       const status = STATUS_PATH_MAP[statusSlug]
@@ -72,7 +110,7 @@ export function createTaskWriteHandlers(
           assigneeId = 'EVERYONE'
         } else {
           try {
-            const { data: members } = await api.get(`/projects/${projectId}/members`)
+            const { data: members } = await api.get(`/projects/${targetProjectId}/members`)
             const matched = (members as any[]).find(
               (m: any) => (m.user?.email ?? m.email ?? '').toLowerCase() === rawAssignee.toLowerCase()
             )
@@ -86,18 +124,28 @@ export function createTaskWriteHandlers(
         }
       }
 
+      let deadlineIso: string | null = null
+      const rawDeadline = parsed.flags['deadline'] as string
+      if (rawDeadline) {
+        const d = new Date(rawDeadline)
+        if (isNaN(d.getTime())) {
+          return { lines: [{ type: 'stderr', content: `touch: invalid deadline date format "${rawDeadline}"` }] }
+        }
+        deadlineIso = d.toISOString()
+      }
+
       const body: Record<string, unknown> = {
         title: rawTitle,
-        projectId,
+        projectId: targetProjectId,
         status,
         priority,
         assigneeId,
-        deadline: (parsed.flags['deadline'] as string) ?? null,
+        deadline: deadlineIso,
       }
 
       if (parsed.flags['sprint']) {
         // Resolve sprint name → id via list
-        const { data: sprints } = await api.get(`/projects/${projectId}/sprints`)
+        const { data: sprints } = await api.get(`/projects/${targetProjectId}/sprints`)
         const sprint = (sprints as any[]).find(
           (s: any) => s.name?.toLowerCase() === String(parsed.flags['sprint']).toLowerCase()
         )
@@ -112,7 +160,7 @@ export function createTaskWriteHandlers(
         return {
           lines: [
             { type: 'success', content: `✓ Task created: "${created.title}"` },
-            { type: 'json', content: JSON.stringify({ id: created.id, status: created.status, priority: created.priority }) },
+            { type: 'json', content: JSON.stringify({ id: created.id, status: created.status, priority: created.priority, projectId: targetProjectId }) },
           ],
         }
       } catch (err: any) {

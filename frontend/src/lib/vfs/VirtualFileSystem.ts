@@ -7,6 +7,7 @@
  * Instances are created fresh per terminal session and receive
  * the projectId at construction time.
  */
+import { api } from '@/lib/api'
 import type { VFSNode, VFSFile, VFSDirectory } from './types'
 import {
   MOUNT_TABLE,
@@ -22,11 +23,20 @@ import {
   fetchScheduleFiles,
   fetchTimelogTaskDirs,
   fetchTimelogFiles,
+  fetchProjectFiles,
 } from './dataAdapters'
+
+/** Pending project switch info — set by cd, cleared after read */
+export interface PendingProjectSwitch {
+  id: string
+  name: string
+}
 
 export class VirtualFileSystem {
   private _cwd = '/'
-  public readonly projectId: string
+  /** Mutable — changes when user cds into a project from /projects */
+  public projectId: string
+  public _pendingProjectSwitch: PendingProjectSwitch | null = null
 
   constructor(projectId: string) {
     this.projectId = projectId
@@ -88,10 +98,20 @@ export class VirtualFileSystem {
   async listDir(dirPath?: string): Promise<VFSNode[]> {
     const target = dirPath ? this.resolve(dirPath) : this._cwd
 
-    // Root: list all top-level mount dirs
+    // Root: list top-level mount dirs filtered by context
     if (target === '/') {
       const childPaths = getMountChildren('/')
-      return childPaths.map((p) => this.staticDir(p)!).filter(Boolean)
+      const isWorkspace = this.projectId === '__workspace__'
+      const filtered = childPaths.filter((p) => {
+        if (isWorkspace) {
+          // Workspace level: show cross-user entities only  
+          // schedules & projects exist independently of a project
+          return p === '/projects' || p === '/schedules'
+        }
+        // Inside a project: show everything EXCEPT /projects
+        return p !== '/projects'
+      })
+      return filtered.map((p) => this.staticDir(p)!).filter(Boolean)
     }
 
     // Check if it's a static mount directory
@@ -122,6 +142,9 @@ export class VirtualFileSystem {
 
       case 'schedules':
         return await fetchScheduleFiles(this.projectId)
+
+      case 'projects':
+        return await fetchProjectFiles()
 
       case 'timelogs': {
         // Return a virtual directory node per task
@@ -172,6 +195,40 @@ export class VirtualFileSystem {
     if (MOUNT_TABLE[target]) {
       this._cwd = target
       return this._cwd
+    }
+
+    // Handle: cd into a project from /projects — fuzzy name match
+    // e.g. "cd test", "cd testt2__abc", "cd my-project" when cwd = /projects
+    if (target.startsWith('/projects/') && target.split('/').length === 3) {
+      const slug = target.split('/')[2].toLowerCase()
+      try {
+        const { data } = await api.get('/projects')
+        const projects: any[] = data ?? []
+        // Match by: exact slug, name prefix, or id prefix
+        const match = projects.find((p: any) => {
+          const safeName = (p.name ?? '')
+            .toLowerCase()
+            .replace(/[^a-z0-9_-]/g, '-')
+            .slice(0, 40)
+          const fullSlug = `${safeName}__${String(p.id).slice(0, 8)}_${(p.status ?? 'active').toLowerCase()}`
+          return (
+            fullSlug === slug ||
+            safeName === slug ||
+            safeName.startsWith(slug) ||
+            String(p.id).startsWith(slug)
+          )
+        })
+        if (!match) {
+          throw new Error(`cd: no such project: "${slug}". Use ls to see available projects.`)
+        }
+        // Switch project context and reset to project root
+        this.projectId = match.id
+        this._cwd = '/'
+        this._pendingProjectSwitch = { id: match.id, name: match.name }
+        return '/'
+      } catch (err: any) {
+        throw new Error(err.message ?? `cd: failed to resolve project "${slug}"`)
+      }
     }
 
     // Check if it's a /timelogs/<taskDir>

@@ -1,113 +1,170 @@
 /**
- * ProjectTerminal — role-aware terminal wrapper injected into project pages.
+ * GlobalTerminal — the single, app-wide terminal instance.
  *
- * Reads the user's effective role for the current project,
- * passes it into TerminalPanel, and manages open/close state.
+ * Mounted once in the authenticated layout (Sidebar.tsx) so it is always
+ * present regardless of which page the user is on.
  *
- * Usage (in any project sub-page):
- *   <ProjectTerminal projectId={projectId} projectName={project?.name ?? ''} />
+ * Features:
+ *  - Floating mode: draggable + resizable overlay (free-form, like a window)
+ *  - Pinned mode: full-width panel docked to the bottom (VS Code style)
+ *  - Minimized: slim title bar at the bottom — history is preserved
+ *  - Closed: panel gone, history cleared on next open
+ *
+ * The toggle button lives at bottom-RIGHT so it never blocks the sidebar
+ * profile footer area.
+ *
+ * Keyboard shortcut: Ctrl+` toggles open/minimized.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useCallback, useRef } from 'react'
+import { useParams } from 'react-router-dom'
 import { useSession } from '@/lib/auth-client'
 import { useProject } from '@/hooks/useProject'
+import { useTerminalContext } from '@/contexts/TerminalContext'
 import { TerminalPanel } from './TerminalPanel'
 import type { CommandContext } from '@/lib/vfs/commandTypes'
 
-interface ProjectTerminalProps {
-  projectId: string
-  projectName?: string
-  /** Optionally override — pass the already-fetched project members */
-  projectMembers?: Array<{ userId: string; role: string }>
-}
-
 type EffectiveRole = CommandContext['userRole']
 
-function deriveRole(members: Array<{ userId: string; role: string }>, userId: string): EffectiveRole {
-  const member = members.find((m) => m.userId === userId)
-  if (!member) return 'MEMBER'
-  if (member.role === 'MASTER_ADMIN') return 'MASTER_ADMIN'
-  if (member.role === 'PROJECT_MANAGER') return 'PROJECT_MANAGER'
+/**
+ * Derives the effective VFS role for a user.
+ * Priority:
+ *  1. Their membership role in the current project (if they are a member)
+ *  2. Their system-level role from better-auth session (admin → MASTER_ADMIN)
+ *  3. Fallback to MEMBER
+ */
+function deriveRole(
+  members: Array<{ userId: string; role: string }>,
+  userId: string,
+  systemRole?: string | null
+): EffectiveRole {
+  // Check explicit project membership first
+  const m = members.find((m) => m.userId === userId)
+  if (m) {
+    if (m.role === 'MASTER_ADMIN') return 'MASTER_ADMIN'
+    if (m.role === 'PROJECT_MANAGER') return 'PROJECT_MANAGER'
+    return 'MEMBER'
+  }
+  // Fall back to system-level role (better-auth stores 'admin' on session.user.role)
+  if (systemRole === 'admin' || systemRole === 'MASTER_ADMIN') return 'MASTER_ADMIN'
   return 'MEMBER'
 }
 
-export default function ProjectTerminal({ projectId, projectName, projectMembers }: ProjectTerminalProps) {
-  const [open, setOpen] = useState(false)
+export default function GlobalTerminal() {
+  const { mode, open, minimize, restore, close, setProjectContext } = useTerminalContext()
   const { data: session } = useSession()
-  const { data: project } = useProject(projectId)
+
+  // Read projectId from route if we are inside a project page
+  const { id: projectId } = useParams<{ id?: string }>()
+  const { data: project } = useProject(projectId ?? '')
 
   const myId = session?.user?.id ?? ''
-  const members = projectMembers ?? project?.members ?? []
-  const effectiveRole = deriveRole(members, myId)
-  const resolvedName = projectName || project?.name || 'Project'
+  const systemRole = (session?.user as any)?.role ?? null
+  const members = project?.members ?? []
+  // Pass the system role so MASTER_ADMIN is recognized even without explicit project membership
+  const effectiveRole = projectId ? deriveRole(members, myId, systemRole) : (systemRole === 'admin' || systemRole === 'MASTER_ADMIN' ? 'MASTER_ADMIN' : null)
+  const resolvedName = project?.name ?? 'Workspace'
+  const resolvedId = projectId ?? '__workspace__'
 
-  // Global keyboard shortcut: Ctrl+` to toggle terminal
+  // Keep global context in sync with current page's project.
+  // IMPORTANT: Only update when the ROUTE changes — not when the terminal
+  // switches project internally via `cd projects/<name>`.
+  // We track the last route-driven projectId to avoid clobbering terminal switches.
+  const prevRouteIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (prevRouteIdRef.current !== resolvedId) {
+      prevRouteIdRef.current = resolvedId
+      setProjectContext(resolvedId, resolvedName, effectiveRole)
+    }
+  }, [resolvedId, resolvedName, effectiveRole, setProjectContext])
+
+  // Ctrl+` keyboard shortcut
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
         e.preventDefault()
-        setOpen((prev) => !prev)
+        if (mode === 'closed') {
+          open('floating')
+        } else if (mode === 'minimized') {
+          restore()
+        } else {
+          minimize()
+        }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [mode, open, minimize, restore])
 
-  const handleClose = useCallback(() => setOpen(false), [])
+  const user = session?.user
+    ? { id: session.user.id, name: session.user.name ?? null, email: session.user.email ?? null }
+    : null
+
+  const isVisible = mode === 'floating' || mode === 'pinned'
+  const isMinimized = mode === 'minimized'
 
   return (
     <>
-      {/* Floating toggle button — bottom-right of viewport */}
-      <button
-        id="terminal-toggle-btn"
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        title="Toggle Terminal (Ctrl+`)"
-        aria-label="Toggle VFS Terminal"
-        style={{
-          position: 'fixed',
-          bottom: '1.5rem',
-          left: '1.5rem',
-          zIndex: 9998,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.4rem',
-          padding: '0.45rem 0.85rem',
-          background: open ? 'rgba(63,185,80,0.18)' : 'rgba(13,17,23,0.92)',
-          border: `1px solid ${open ? 'rgba(63,185,80,0.5)' : '#30363d'}`,
-          borderRadius: '8px',
-          color: open ? '#3fb950' : '#8b949e',
-          fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-          fontSize: '12px',
-          cursor: 'pointer',
-          backdropFilter: 'blur(12px)',
-          boxShadow: open
-            ? '0 0 12px rgba(63,185,80,0.25), 0 4px 16px rgba(0,0,0,0.4)'
-            : '0 4px 16px rgba(0,0,0,0.4)',
-          transition: 'all 0.2s ease',
-          userSelect: 'none',
-        }}
-      >
-        <span style={{ fontSize: '13px' }}>{'>'}_</span>
-        <span>{open ? 'Hide Terminal' : 'Terminal'}</span>
-        <span
-          style={{
-            fontSize: '10px',
-            opacity: 0.5,
-            fontFamily: 'system-ui, sans-serif',
-            letterSpacing: '0.02em',
-          }}
+      {/* ── Toggle button (bottom-right, never near sidebar) ── */}
+      {mode === 'closed' && (
+        <button
+          id="terminal-toggle-btn"
+          type="button"
+          onClick={() => open('floating')}
+          title="Open Terminal (Ctrl+`)"
+          aria-label="Open VFS Terminal"
+          className="term-toggle-btn"
         >
-          Ctrl+`
-        </span>
-      </button>
+          <span className="term-toggle-btn-icon">&gt;_</span>
+          <span>Terminal</span>
+          <span className="term-toggle-btn-shortcut">Ctrl+`</span>
+        </button>
+      )}
 
-      {/* Terminal overlay */}
-      {open && (
+      {/* ── Minimized bar (click to restore) ── */}
+      {isMinimized && (
+        <div
+          className="term-minimized-bar"
+          onClick={restore}
+          role="button"
+          tabIndex={0}
+          aria-label="Restore terminal"
+          onKeyDown={(e) => e.key === 'Enter' && restore()}
+        >
+          <span className="term-minimized-bar-dot" />
+          <span className="term-minimized-bar-label">&gt;_ vfs — {resolvedName}</span>
+          <span className="term-minimized-bar-hint">click to restore</span>
+          {/* Close button in minimized bar */}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); close() }}
+            title="Close terminal (clears history)"
+            aria-label="Close terminal"
+            style={{
+              marginLeft: '8px',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--term-red)',
+              cursor: 'pointer',
+              fontSize: '12px',
+              padding: '0 2px',
+              lineHeight: 1,
+              opacity: 0.7,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── The actual terminal panel ── */}
+      {isVisible && (
         <TerminalPanel
-          projectId={projectId}
+          projectId={resolvedId}
           projectName={resolvedName}
           userRole={effectiveRole}
-          onClose={handleClose}
+          user={user}
         />
       )}
     </>

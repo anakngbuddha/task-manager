@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useSession } from './lib/auth-client'
+import { TerminalProvider } from './contexts/TerminalContext'
+import GlobalTerminal from './components/terminal/ProjectTerminal'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import AuthLayout from './components/layout/AuthLayout'
@@ -39,7 +41,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!session) return <Navigate to="/login" replace />
 
-  return <>{children}</>
+  return (
+    <TerminalProvider>
+      {children}
+      <GlobalTerminal />
+    </TerminalProvider>
+  )
 }
 
 function AdminRoute({ children }: { children: React.ReactNode }) {

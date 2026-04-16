@@ -8,11 +8,12 @@ import type { VFSNode } from '../types'
 import type { VFSFile } from '../types'
 import type { CommandHandler, CommandResult, OutputLineSpec } from '../commandTypes'
 import type { VirtualFileSystem } from '../VirtualFileSystem'
+import { api } from '@/lib/api'
 
 const HELP_TEXT: Record<string, string[]> = {
   // ── Read / Navigation ──────────────────────────────────────────────────────
   pwd:    ['Print the current virtual directory.', '  Usage: pwd'],
-  cd:     ['Change the current virtual directory.', '  Usage: cd <path>', '  Example: cd tasks/todo', '         cd ..', '         cd /sprints'],
+  cd:     ['Change the current virtual directory.', '  Usage: cd <path>', '  Example: cd tasks/todo', '         cd ..', '         cd /sprints', '         cd projects'],
   ls:     ['List contents of a directory.', '  Usage: ls [path]', '  Example: ls', '         ls tasks/in_progress'],
   cat:    ['Print the full JSON details of a file.', '  Usage: cat <file>', '  Example: cat tasks/todo/my-task__a1b2c3d4'],
   find:   ['Search for files matching filters.', '  Usage: find <path> [--key=value ...]', '  Example: find tasks/ --priority=HIGH', '         find tasks/todo --title=auth'],
@@ -23,7 +24,8 @@ const HELP_TEXT: Record<string, string[]> = {
   // ── Write — Tasks (MASTER_ADMIN, PROJECT_MANAGER) ─────────────────────────
   touch:  [
     'Create a new entity.',
-    '  touch tasks/<status>/<name> --priority=HIGH [--assignee=<email>] [--deadline=<ISO>] [--sprint=<name>]',
+    '  touch tasks/<status>/<name> --priority=HIGH [--project=<id>] [--assignee=<email>] [--deadline=<ISO>] [--sprint=<name>]',
+    '    --project=<id>  Override the current project (use when at workspace level)',
     '  touch sprints/<name> [--goal="..."] [--start=<ISO>] [--end=<ISO>]',
     '  touch schedules/<name> --at=<ISO> [--end=<ISO>] [--type=MEETING] [--attendees=a@b,c@d]',
     '  touch project <name>',
@@ -118,14 +120,44 @@ export function createNavigationHandlers(vfs: VirtualFileSystem): Record<string,
     },
 
     // ── cd ───────────────────────────────────────────────────────────
-    cd: async (parsed): Promise<CommandResult> => {
+    cd: async (parsed, context): Promise<CommandResult> => {
       const target = parsed.args[0] ?? '/'
       try {
         const newCwd = await vfs.cd(target)
-        return {
-          lines: [],
-          newCwd,
+
+        // Check if a project switch occurred (cd into /projects/<name>)
+        const switchInfo = vfs._pendingProjectSwitch
+        vfs._pendingProjectSwitch = null   // consume it
+
+        if (switchInfo) {
+          // Fetch the user's role in the new project
+          let derivedRole: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER' | null = 'MEMBER'
+          try {
+            const { data: members } = await api.get(`/projects/${switchInfo.id}/members`)
+            const me = (members as any[]).find(
+              (m: any) => m.userId === context.user?.id
+            )
+            if (me) {
+              derivedRole = me.role as typeof derivedRole
+            }
+          } catch {
+            // If we can't fetch members, fall back to MEMBER
+          }
+
+          return {
+            lines: [
+              { type: 'success', content: `✓ Switched to project: "${switchInfo.name}"` },
+              { type: 'system', content: `  Role: ${derivedRole}` },
+              { type: 'system', content: '  Type "ls" to explore, "whoami" to confirm.' },
+            ],
+            newCwd,
+            newProjectId: switchInfo.id,
+            newProjectName: switchInfo.name,
+            newUserRole: derivedRole,
+          }
         }
+
+        return { lines: [], newCwd }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: err.message ?? 'cd: unknown error' }] }
       }

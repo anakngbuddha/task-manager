@@ -24,7 +24,6 @@ import MessageBubble, {
 } from '@/components/messages/MessageBubble'
 import MessageInputBar from '@/components/messages/MessageInputBar'
 import ConversationSidebar from '@/components/messages/ConversationSidebar'
-import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 export default function ProjectMessagesPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -565,7 +564,6 @@ export default function ProjectMessagesPage() {
           />
         </main>
       </div>
-      <ProjectTerminal projectId={projectId!} projectName={project?.name} projectMembers={project?.members} />
     </div>
   )
 }

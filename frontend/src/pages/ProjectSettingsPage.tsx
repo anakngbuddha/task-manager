@@ -29,7 +29,6 @@ import {
   Unplug,
   Plus,
 } from 'lucide-react'
-import ProjectTerminal from '@/components/terminal/ProjectTerminal'
 
 export default function ProjectSettingsPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -455,7 +454,6 @@ export default function ProjectSettingsPage() {
           </div>
         </div>
       </main>
-      <ProjectTerminal projectId={projectId!} projectName={project?.name} projectMembers={project?.members} />
     </div>
   )
 }

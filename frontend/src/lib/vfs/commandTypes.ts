@@ -34,4 +34,8 @@ export interface CommandResult {
   lines: OutputLineSpec[]
   newCwd?: string
   clear?: boolean
+  /** When set, the terminal should switch its active project context */
+  newProjectId?: string
+  newProjectName?: string
+  newUserRole?: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER' | null
 }

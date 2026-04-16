@@ -104,6 +104,11 @@ export const MOUNT_TABLE: Record<string, MountEntry> = {
     label: 'timelogs',
     leaf: false,
   },
+  '/projects': {
+    entityType: 'projects',
+    label: 'projects',
+    leaf: true,
+  },
 }
 
 /** Return the direct children of a given virtual path from the mount table. */

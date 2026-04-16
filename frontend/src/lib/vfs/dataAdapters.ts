@@ -109,7 +109,10 @@ export async function fetchTagFiles(projectId: string): Promise<VFSFile[]> {
 // ── Schedules ─────────────────────────────────────────────────────────
 
 export async function fetchScheduleFiles(projectId: string): Promise<VFSFile[]> {
-  const { data } = await api.get('/schedules', { params: { projectId } })
+  // If no real project, fetch all schedules for the current user (cross-project)
+  const isWorkspace = !projectId || projectId === '__workspace__'
+  const params = isWorkspace ? {} : { projectId }
+  const { data } = await api.get('/schedules', { params })
   const schedules: any[] = data ?? []
 
   return schedules.map((s): VFSFile => {
@@ -175,6 +178,30 @@ export async function fetchTimelogFiles(taskId: string, basePath: string): Promi
       entityType: 'timelog',
       entityId: String(log.id),
       data: log,
+    }
+  })
+}
+
+// ── Projects ─────────────────────────────────────────────────────────
+
+export async function fetchProjectFiles(): Promise<VFSFile[]> {
+  const { data } = await api.get('/projects')
+  const projects: any[] = data ?? []
+
+  return projects.map((p): VFSFile => {
+    const safeName = (p.name ?? 'project')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-')
+      .slice(0, 40)
+    const statusSlug = (p.status ?? 'active').toLowerCase()
+    const name = `${safeName}__${String(p.id).slice(0, 8)}_${statusSlug}.json`
+    return {
+      name,
+      path: `/projects/${name}`,
+      type: 'file',
+      entityType: 'project',
+      entityId: String(p.id),
+      data: p,
     }
   })
 }
