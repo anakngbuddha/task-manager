@@ -18,6 +18,8 @@ export type VFSEntityType =
   | 'timelogs'
   | 'timelogs-task'  // sub-directory like /timelogs/task-xxx
   | 'timelog'
+  | 'projects'
+  | 'project'
 
 export interface VFSNode {
   /** Display name (what ls shows) */

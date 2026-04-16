@@ -15,7 +15,7 @@
  *
  * Keyboard shortcut: Ctrl+` toggles open/minimized.
  */
-import { useEffect, useCallback, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSession } from '@/lib/auth-client'
 import { useProject } from '@/hooks/useProject'
