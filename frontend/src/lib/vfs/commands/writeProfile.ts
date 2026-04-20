@@ -86,23 +86,29 @@ export function createProfileWriteHandlers(
           resolveOnce({ lines: [{ type: 'system', content: 'upload: cancelled.' }] })
         })
 
+        let focusTimeout: ReturnType<typeof setTimeout>
         // Fallback cancel path: after the picker closes, the window regains
-        // focus. We wait 300ms to allow onchange to fire first (if a file was
+        // focus. We wait 500ms to allow onchange to fire first (if a file was
         // selected), then resolve as cancelled if nothing happened.
         const onWindowFocus = () => {
-          setTimeout(() => {
+          focusTimeout = setTimeout(() => {
             resolveOnce({ lines: [{ type: 'system', content: 'upload: cancelled.' }] })
-          }, 300)
+          }, 500)
         }
         window.addEventListener('focus', onWindowFocus, { once: true })
 
         input.onchange = async (e) => {
-          // File was selected — remove the focus fallback
+          // File was selected — clear the timeout and remove focus listener
+          clearTimeout(focusTimeout)
           window.removeEventListener('focus', onWindowFocus)
 
           const file = (e.target as HTMLInputElement).files?.[0]
           if (!file) {
             return resolveOnce({ lines: [{ type: 'system', content: 'upload: no file selected.' }] })
+          }
+
+          if (!window.confirm(`Are you sure you want to upload "${file.name}"?`)) {
+            return resolveOnce({ lines: [{ type: 'system', content: 'upload: cancelled by user.' }] })
           }
 
           try {
