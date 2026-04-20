@@ -122,7 +122,7 @@ export class VirtualFileSystem {
       const taskDirs = await fetchTimelogTaskDirs(this.projectId)
       const taskProxy = taskDirs.find((d) => d.name === taskDirName)
       if (!taskProxy) throw new Error(`No such directory: ${target}`)
-      return this.listTimelogDir(taskProxy.entityId, target)
+      return this.listTimelogDir(taskProxy.entityId!, target)
     }
 
     // Check if it's a static mount directory
@@ -331,7 +331,7 @@ export class VirtualFileSystem {
       const taskDirs = await fetchTimelogTaskDirs(this.projectId)
       const taskProxy = taskDirs.find((d) => d.name === taskDirName)
       if (!taskProxy) throw new Error(`cat: no such file or directory`)
-      return fetchTimelogFiles(taskProxy.entityId, parentPath)
+      return fetchTimelogFiles(taskProxy.entityId!, parentPath)
     }
 
     if (parentMount && parentMount.entityType === 'tasks-status') {

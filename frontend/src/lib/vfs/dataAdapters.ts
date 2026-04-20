@@ -6,7 +6,7 @@
  * objects that the VirtualFileSystem can surface as "files".
  */
 import { api } from '@/lib/api'
-import type { VFSFile } from './types'
+import type { VFSFile, VFSNode } from './types'
 import { STATUS_SLUG_MAP, type TaskStatus } from './mounts'
 
 // ── Tasks ──────────────────────────────────────────────────────────
@@ -142,9 +142,9 @@ export async function fetchScheduleFiles(projectId: string): Promise<VFSFile[]> 
  * virtual subdirectory nodes (VFSDirectory logic is handled in VirtualFileSystem).
  */
 // BUG-12 fix: Session-scoped cache for TaskDirs to prevent N+1 cascades during ls
-const _taskDirsCache: Record<string, { time: number, data: VFSFile[] }> = {}
+const _taskDirsCache: Record<string, { time: number, data: VFSNode[] }> = {}
 
-export async function fetchTimelogTaskDirs(projectId: string): Promise<VFSFile[]> {
+export async function fetchTimelogTaskDirs(projectId: string): Promise<VFSNode[]> {
   const now = Date.now()
   if (_taskDirsCache[projectId] && now - _taskDirsCache[projectId].time < 30000) {
     return _taskDirsCache[projectId].data
@@ -155,7 +155,7 @@ export async function fetchTimelogTaskDirs(projectId: string): Promise<VFSFile[]
   const tasks: any[] = data ?? []
 
   // Filter only tasks that may have time logs (all tasks qualify)
-  const result = tasks.map((t): VFSFile => {
+  const result = tasks.map((t): VFSNode => {
     const safeName = (t.title ?? 'task')
       .toLowerCase()
       .replace(/[^a-z0-9_-]/g, '-')
@@ -277,11 +277,11 @@ export async function fetchProfileSettings(): Promise<VFSFile[]> {
   return result
 }
 
-export async function fetchProfileFiles(): Promise<VFSFile[]> {
+export async function fetchProfileFiles(): Promise<VFSNode[]> {
   const { data } = await api.get('/files') // projectId is omitted, fetches root files
   const files: any[] = data ?? []
 
-  return files.map((f): VFSFile => {
+  return files.map((f): VFSNode => {
     // f.type === 'FOLDER' or 'FILE'
     const isFolder = f.type === 'FOLDER'
     const name = isFolder ? `${f.name}` : f.name

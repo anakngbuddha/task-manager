@@ -142,7 +142,6 @@ export function FileExplorer({
     setStaged(null)
   }
 
-  const fileToUpload = staged?.compressed ?? staged?.original
   const willCompress = staged?.compressed != null && staged.compressed.size < staged.original.size
   const compressionSaving = willCompress && staged
     ? (((staged.original.size - staged.compressed!.size) / staged.original.size) * 100).toFixed(1)

@@ -27,7 +27,7 @@ export type VFSEntityType =
   | 'profile-github'
   | 'profile-file'
 
-export interface VFSNode {
+export interface BaseVFSNode {
   /** Display name (what ls shows) */
   name: string
   /** Absolute virtual path */
@@ -42,16 +42,20 @@ export interface VFSNode {
   parentTaskId?: string
 }
 
-export interface VFSDirectory extends VFSNode {
+export interface VFSDirectory extends BaseVFSNode {
   type: 'dir'
 }
 
-export interface VFSFile extends VFSNode {
+export interface VFSFile extends BaseVFSNode {
   type: 'file'
   entityId: string
   /** Cached payload — filled lazily by VirtualFileSystem.readFile */
   data?: Record<string, unknown>
 }
+
+/** The discriminated union for all nodes in the VFS */
+export type VFSNode = VFSDirectory | VFSFile
+
 
 /** Thin descriptor: what type of content to output */
 export type OutputSpecType =
