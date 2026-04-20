@@ -10,6 +10,19 @@ import type { CommandHandler, CommandResult, OutputLineSpec } from '../commandTy
 import type { VirtualFileSystem } from '../VirtualFileSystem'
 import { api } from '@/lib/api'
 
+/**
+ * Escapes a string for safe insertion into innerHTML.
+ * Prevents XSS from user-controlled values (task names, project names, emails, paths).
+ */
+function escapeHtml(str: unknown): string {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 const HELP_TEXT: Record<string, string[]> = {
   // ── Read / Navigation ──────────────────────────────────────────────────────
   pwd:    ['Print the current virtual directory.', '  Usage: pwd'],
@@ -24,11 +37,23 @@ const HELP_TEXT: Record<string, string[]> = {
   // ── Write — Tasks (MASTER_ADMIN, PROJECT_MANAGER) ─────────────────────────
   touch:  [
     'Create a new entity.',
-    '  touch tasks/<status>/<name> --priority=HIGH [--project=<id>] [--assignee=<email>] [--deadline=<ISO>] [--sprint=<name>]',
-    '    --project=<id>  Override the current project (use when at workspace level)',
+    '  touch tasks/<status>/<name> --assignee=<email|everyone> --deadline="YYYY-MM-DDTHH:MM" [--priority=MEDIUM] [--description="..."] [--sprint=<name>] [--project=<name>]',
+    '    REQUIRED: --assignee  (use an email or "everyone" to assign all members)',
+    '    REQUIRED: --deadline  (future date, e.g. "2026-12-31T23:59")',
+    '    Optional: --priority  (LOW | MEDIUM | HIGH | URGENT, default: MEDIUM)',
+    '    Optional: --description  (task description text)',
+    '    Optional: --sprint  (sprint name to include task in)',
+    '    Optional: --project  (override current project by name)',
     '  touch sprints/<name> [--goal="..."] [--start=<ISO>] [--end=<ISO>]',
     '  touch schedules/<name> --at=<ISO> [--end=<ISO>] [--type=MEETING] [--attendees=a@b,c@d]',
     '  touch project <name>',
+    '',
+    '  Example: touch tasks/todo/fix-login.json --assignee=everyone --deadline="2026-05-01T09:00" --priority=HIGH',
+  ],
+
+  mkdir: [
+    'Create a new directory.',
+    '  mkdir profile/files/<folder>         — create a personal file folder',
   ],
   rm: [
     'Delete an entity.',
@@ -87,6 +112,20 @@ const HELP_TEXT: Record<string, string[]> = {
     '[MASTER_ADMIN, PROJECT_MANAGER] Mark the current project as completed.',
     '  Usage: archive',
   ],
+  // ── Write — Profile & Files ───────────────────────────────────────
+  upload: [
+    'Upload a file using the native browser file picker.',
+    '  upload                    — upload to personal profile files',
+    '  upload profile/files      — same as above',
+    '  upload projects/<name>    — upload to current project files',
+  ],
+  open: [
+    'Navigate the browser to a page.',
+    '  open profile              — go to your profile page',
+    '  open profile/settings     — go to settings',
+    '  open change-password      — go to change-password page',
+    '  open activity             — go to the activity feed',
+  ],
 }
 
 const ALL_COMMANDS = Object.keys(HELP_TEXT)
@@ -101,7 +140,8 @@ function buildLsTable(nodes: VFSNode[]): string {
       const isDir = n.type === 'dir'
       const icon = isDir ? '📁' : '📄'
       const nameClass = isDir ? 'term-dir' : 'term-file'
-      const displayName = isDir ? `${n.name}/` : n.name
+      const safeName = escapeHtml(n.name)
+      const displayName = isDir ? `${safeName}/` : safeName
       return `<span class="${nameClass}">${icon} ${displayName}</span>`
     })
     .join('\n')
@@ -205,11 +245,11 @@ export function createNavigationHandlers(vfs: VirtualFileSystem): Record<string,
       }
       const color = roleColors[userRole ?? 'MEMBER'] ?? '#c9d1d9'
       const html = [
-        `<span class="term-json-key">user:</span>     <span class="term-json-str">"${user.name ?? user.email}"</span>`,
-        `<span class="term-json-key">email:</span>    <span class="term-json-str">"${user.email}"</span>`,
-        `<span class="term-json-key">project:</span>  <span class="term-json-str">"${projectName}"</span>`,
-        `<span class="term-json-key">role:</span>     <span style="color:${color};font-weight:600">${userRole ?? 'MEMBER'}</span>`,
-        `<span class="term-json-key">cwd:</span>      <span class="term-dir">${vfs.cwd}</span>`,
+        `<span class="term-json-key">user:</span>     <span class="term-json-str">"${escapeHtml(user.name ?? user.email)}"</span>`,
+        `<span class="term-json-key">email:</span>    <span class="term-json-str">"${escapeHtml(user.email)}"</span>`,
+        `<span class="term-json-key">project:</span>  <span class="term-json-str">"${escapeHtml(projectName)}"</span>`,
+        `<span class="term-json-key">role:</span>     <span style="color:${escapeHtml(color)};font-weight:600">${escapeHtml(userRole ?? 'MEMBER')}</span>`,
+        `<span class="term-json-key">cwd:</span>      <span class="term-dir">${escapeHtml(vfs.cwd)}</span>`,
       ].join('\n')
       return { lines: [{ type: 'table', content: html }] }
     },
@@ -228,7 +268,7 @@ export function createNavigationHandlers(vfs: VirtualFileSystem): Record<string,
           return { lines: [{ type: 'system', content: 'No results found.' }] }
         }
         const html = results
-          .map((r: VFSFile) => `<span class="term-file">📄 ${r.path}</span>`)
+          .map((r: VFSFile) => `<span class="term-file">📄 ${escapeHtml(r.path)}</span>`)
           .join('\n')
         return {
           lines: [
@@ -247,7 +287,7 @@ export function createNavigationHandlers(vfs: VirtualFileSystem): Record<string,
       try {
         const stats = await vfs.stat(target)
         const html = [
-          `<span class="term-json-key">path:</span>        <span class="term-dir">${stats.path}</span>`,
+          `<span class="term-json-key">path:</span>        <span class="term-dir">${escapeHtml(stats.path)}</span>`,
           `<span class="term-json-key">directories:</span> <span class="term-json-num">${stats.directories}</span>`,
           `<span class="term-json-key">files:</span>       <span class="term-json-num">${stats.files}</span>`,
           `<span class="term-json-key">total:</span>       <span class="term-json-num">${stats.total}</span>`,

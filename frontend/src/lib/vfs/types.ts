@@ -20,6 +20,12 @@ export type VFSEntityType =
   | 'timelog'
   | 'projects'
   | 'project'
+  | 'activity'
+  | 'profile'
+  | 'profile-files'
+  | 'profile-settings'
+  | 'profile-github'
+  | 'profile-file'
 
 export interface VFSNode {
   /** Display name (what ls shows) */

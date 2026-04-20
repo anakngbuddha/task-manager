@@ -52,7 +52,15 @@ export default function Sidebar() {
 
   useEffect(() => {
     localStorage.setItem('sidebar:expanded', expanded ? '1' : '0')
+    document.documentElement.style.setProperty('--sidebar-width', expanded ? '18rem' : '3.5rem')
   }, [expanded])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      document.documentElement.style.removeProperty('--sidebar-width')
+    }
+  }, [])
 
   const activeRoot = useMemo(() => {
     if (location.pathname.startsWith('/projects/')) return 'projects'

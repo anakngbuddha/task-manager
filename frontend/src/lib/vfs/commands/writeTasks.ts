@@ -22,32 +22,32 @@ const WRITE_ROLES = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
  */
 function extractEntityId(filename: string): string {
   const base = filename.replace(/\.json$/, '')
-  const match = base.match(/__([a-zA-Z0-9]{8,})$/)
+  const match = base.match(/__([a-zA-Z0-9]+)$/)
   return match ? match[1] : base
 }
 
 export function createTaskWriteHandlers(
-  vfs: VirtualFileSystem,
-  projectId: string
+  vfs: VirtualFileSystem
 ): Record<string, CommandHandler> {
   return {
     // ── touch task ────────────────────────────────────────────────────────────
     // Usage: touch tasks/<status>/<title>.json --priority=HIGH [--project=<id>]
-    //        [--assignee=<email>] [--deadline=2025-12-31T00:00:00.000Z] [--sprint=<sprint-name>]
+    //        --assignee=<email> --deadline=2025-12-31T00:00:00.000Z [--description=<text>] [--sprint=<sprint-name>]
     'touch-task': async (parsed, context): Promise<CommandResult> => {
       try { assertVFSRole(context.userRole, [...WRITE_ROLES], 'touch task') }
       catch (e: any) { return { lines: authDeniedLines(context.userRole, [...WRITE_ROLES], 'touch task') } }
 
+      const flags = { ...parsed.flags }
       // Automatically uplift any `key=value` args to flags in case they forgot `--`
       for (const arg of parsed.args.slice(1)) {
         if (arg.includes('=') && !arg.startsWith('--')) {
           const [k, ...v] = arg.split('=')
-          parsed.flags[k] = v.join('=')
+          flags[k] = v.join('=')
         }
       }
 
       // Allow overriding the project via --project=<id or name>
-      let targetProjectId = (parsed.flags['project'] as string) || projectId
+      let targetProjectId = (flags['project'] as string) || vfs.projectId
       
       // If the user provided a plain name for --project (not a UUID), resolve it.
       if (targetProjectId && targetProjectId !== '__workspace__' && !targetProjectId.includes('-')) {
@@ -103,36 +103,72 @@ export function createTaskWriteHandlers(
         return { lines: [{ type: 'stderr', content: `touch: invalid priority "${priority}". Use LOW, MEDIUM, HIGH, or URGENT.` }] }
       }
 
-      let assigneeId: string | null = null
-      const rawAssignee = parsed.flags['assignee'] as string
-      if (rawAssignee) {
-        if (rawAssignee.toUpperCase() === 'EVERYONE' || rawAssignee === '@everyone') {
-          assigneeId = 'EVERYONE'
-        } else {
-          try {
-            const { data: members } = await api.get(`/projects/${targetProjectId}/members`)
-            const matched = (members as any[]).find(
-              (m: any) => (m.user?.email ?? m.email ?? '').toLowerCase() === rawAssignee.toLowerCase()
-            )
-            if (!matched) {
-              return { lines: [{ type: 'stderr', content: `touch: assignee not found in project: "${rawAssignee}"` }] }
-            }
-            assigneeId = matched.userId
-          } catch {
-            return { lines: [{ type: 'stderr', content: 'touch: failed to resolve assignee email.' }] }
-          }
+      // ── REQUIRED: --assignee ────────────────────────────────────────────────
+      const rawAssignee = flags['assignee'] as string | undefined
+      if (!rawAssignee) {
+        return {
+          lines: [
+            { type: 'stderr', content: 'touch: --assignee=<email|everyone> is required.' },
+            { type: 'system', content: '  Assign to a specific member: --assignee=user@email.com' },
+            { type: 'system', content: '  Assign to everyone:          --assignee=everyone' },
+          ],
         }
       }
 
-      let deadlineIso: string | null = null
-      const rawDeadline = parsed.flags['deadline'] as string
-      if (rawDeadline) {
-        const d = new Date(rawDeadline)
-        if (isNaN(d.getTime())) {
-          return { lines: [{ type: 'stderr', content: `touch: invalid deadline date format "${rawDeadline}"` }] }
+      let assigneeId: string | null = null
+      if (rawAssignee.toUpperCase() === 'EVERYONE' || rawAssignee === '@everyone') {
+        assigneeId = 'EVERYONE'
+      } else {
+        try {
+          const { data: members } = await api.get(`/projects/${targetProjectId}/members`)
+          const matched = (members as any[]).find(
+            (m: any) => (m.user?.email ?? m.email ?? '').toLowerCase() === rawAssignee.toLowerCase()
+          )
+          if (!matched) {
+            const validEmails = (members as any[]).map((m: any) => m.user?.email ?? m.email ?? '').filter(Boolean)
+            return {
+              lines: [
+                { type: 'stderr', content: `touch: assignee not found in project: "${rawAssignee}"` },
+                { type: 'system', content: `Valid members: ${validEmails.join(', ')}` },
+                { type: 'system', content: 'Or use --assignee=everyone to assign to all members.' },
+              ],
+            }
+          }
+          assigneeId = matched.userId
+        } catch {
+          return { lines: [{ type: 'stderr', content: 'touch: failed to resolve assignee email.' }] }
         }
-        deadlineIso = d.toISOString()
       }
+
+      // ── REQUIRED: --deadline ────────────────────────────────────────────────
+      const rawDeadline = flags['deadline'] as string | undefined
+      if (!rawDeadline) {
+        return {
+          lines: [
+            { type: 'stderr', content: 'touch: --deadline=<datetime> is required.' },
+            { type: 'system', content: '  Example: --deadline="2026-12-31T23:59"' },
+            { type: 'system', content: '  Format:  YYYY-MM-DDTHH:MM  (interpreted as your local time)' },
+          ],
+        }
+      }
+      const d = new Date(rawDeadline)
+      if (isNaN(d.getTime())) {
+        return {
+          lines: [
+            { type: 'stderr', content: `touch: invalid deadline format: "${rawDeadline}"` },
+            { type: 'system', content: '  Example: --deadline="2026-12-31T23:59"' },
+          ],
+        }
+      }
+      if (d.getTime() <= Date.now()) {
+        return {
+          lines: [
+            { type: 'stderr', content: 'touch: deadline cannot be in the past.' },
+            { type: 'system', content: `  You provided: ${d.toLocaleString()}` },
+          ],
+        }
+      }
+      const deadlineIso = d.toISOString()
 
       const body: Record<string, unknown> = {
         title: rawTitle,
@@ -141,27 +177,42 @@ export function createTaskWriteHandlers(
         priority,
         assigneeId,
         deadline: deadlineIso,
+        description: (flags['description'] as string) || ''
       }
 
-      if (parsed.flags['sprint']) {
+      if (flags['sprint']) {
         // Resolve sprint name → id via list
         const { data: sprints } = await api.get(`/projects/${targetProjectId}/sprints`)
         const sprint = (sprints as any[]).find(
-          (s: any) => s.name?.toLowerCase() === String(parsed.flags['sprint']).toLowerCase()
+          (s: any) => s.name?.toLowerCase() === String(flags['sprint']).toLowerCase()
         )
         if (!sprint) {
-          return { lines: [{ type: 'stderr', content: `touch: sprint "${parsed.flags['sprint']}" not found.` }] }
+          return { lines: [{ type: 'stderr', content: `touch: sprint "${flags['sprint']}" not found.` }] }
         }
         body.sprintId = sprint.id
       }
 
       try {
         const { data: created } = await api.post('/tasks', body)
+        const bulkCount: number | undefined = (created as any).bulkCount
+
+        if (bulkCount && bulkCount > 1) {
+          return {
+            lines: [
+              { type: 'success', content: `✓ Task "${created.title}" created for ${bulkCount} members (one task each).` },
+              { type: 'system',  content: `  All ${bulkCount} project members have been assigned their own task copy.` },
+              { type: 'json',    content: JSON.stringify({ id: created.id, status: created.status, priority: created.priority, assignedTo: `${bulkCount} members`, deadline: deadlineIso }) },
+            ],
+            invalidations: [['tasks', targetProjectId], ['sprints', targetProjectId]]
+          }
+        }
+
         return {
           lines: [
             { type: 'success', content: `✓ Task created: "${created.title}"` },
-            { type: 'json', content: JSON.stringify({ id: created.id, status: created.status, priority: created.priority, projectId: targetProjectId }) },
+            { type: 'json',    content: JSON.stringify({ id: created.id, status: created.status, priority: created.priority, projectId: targetProjectId, deadline: deadlineIso }) },
           ],
+          invalidations: [['tasks', targetProjectId], ['sprints', targetProjectId]]
         }
       } catch (err: any) {
         const msg = err?.response?.data?.error ?? err.message
@@ -186,7 +237,10 @@ export function createTaskWriteHandlers(
 
       try {
         await api.delete(`/tasks/${entityId}`)
-        return { lines: [{ type: 'success', content: `✓ Task deleted: ${filename}` }] }
+        return {
+          lines: [{ type: 'success', content: `✓ Removed task: ${filename}` }],
+          invalidations: [['tasks', vfs.projectId], ['sprints', vfs.projectId]]
+        }
       } catch (err: any) {
         const msg = err?.response?.data?.error ?? err.message
         return { lines: [{ type: 'stderr', content: `rm: ${msg}` }] }
@@ -210,13 +264,13 @@ export function createTaskWriteHandlers(
 
       // Resolve target status
       const resolvedDst = vfs.resolve(dstPath.replace(/\/$/, ''))
-      const newStatusSlug = resolvedDst.split('/').pop() ?? ''
-      const newStatus = STATUS_PATH_MAP[newStatusSlug]
+      const targetSlug = resolvedDst.split('/').pop() ?? ''
+      const newStatus = STATUS_PATH_MAP[targetSlug]
 
       if (!newStatus) {
         return {
           lines: [
-            { type: 'stderr', content: `mv: unknown target status "${newStatusSlug}".` },
+            { type: 'stderr', content: `mv: unknown target status "${targetSlug}".` },
             { type: 'system', content: `Valid: ${Object.keys(STATUS_PATH_MAP).join(', ')}` },
           ],
         }
@@ -225,11 +279,9 @@ export function createTaskWriteHandlers(
       try {
         await api.patch(`/tasks/${entityId}`, { status: newStatus })
         return {
-          lines: [
-            { type: 'success', content: `✓ Task moved to ${newStatus}` },
-            { type: 'system', content: `  ${filename} → tasks/${newStatusSlug}/` },
-          ],
-          newCwd: vfs.resolve(`tasks/${newStatusSlug}`),
+          lines: [{ type: 'success', content: `✓ Task moved: ${filename} → /tasks/${targetSlug}` }],
+          newCwd: `/tasks/${targetSlug}`, // Switch PWD natively to show where it arrived
+          invalidations: [['tasks', vfs.projectId], ['sprints', vfs.projectId]]
         }
       } catch (err: any) {
         const msg = err?.response?.data?.error ?? err.message

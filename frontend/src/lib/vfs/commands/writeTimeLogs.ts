@@ -17,13 +17,12 @@ const ANY_MEMBER = ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'] as const
  */
 function extractTaskId(filename: string): string {
   const base = filename.replace(/\.json$/, '')
-  const match = base.match(/__([a-zA-Z0-9]{8,})$/)
+  const match = base.match(/__([a-zA-Z0-9]+)$/)
   return match ? match[1] : base
 }
 
 export function createTimeLogWriteHandlers(
-  vfs: VirtualFileSystem,
-  _projectId: string
+  vfs: VirtualFileSystem
 ): Record<string, CommandHandler> {
   return {
     // ── log ───────────────────────────────────────────────────────────────────
@@ -90,6 +89,7 @@ export function createTimeLogWriteHandlers(
             { type: 'system', content: `  Task: ${filename}` },
             { type: 'system', content: `  Note: ${logTitle}` },
           ],
+          invalidations: [['timeLogs', taskId], ['tasks', vfs.projectId]]
         }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `log: ${err?.response?.data?.error ?? err.message}` }] }

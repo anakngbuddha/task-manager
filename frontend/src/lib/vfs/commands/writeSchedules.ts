@@ -8,13 +8,14 @@
 import { api } from '@/lib/api'
 import { assertVFSRole, authDeniedLines } from '../vfsAuth'
 import type { CommandHandler, CommandResult } from '../commandTypes'
+import type { VirtualFileSystem } from '../VirtualFileSystem'
 
 const ANY_MEMBER = ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'] as const
 
 const SCHEDULE_TYPES = ['MEETING', 'REVIEW', 'STANDUP', 'OTHER', 'DEADLINE', 'RETROSPECTIVE'] as const
 
 export function createScheduleWriteHandlers(
-  projectId: string
+  vfs: VirtualFileSystem
 ): Record<string, CommandHandler> {
   return {
     // ── touch schedule ────────────────────────────────────────────────────────
@@ -56,7 +57,12 @@ export function createScheduleWriteHandlers(
         title,
         type: rawType,
         scheduledAt: at,
-        projectId,
+      }
+
+      // BUG-21 fix: only include projectId when inside a real project context
+      const currentProjectId = vfs.projectId
+      if (currentProjectId && currentProjectId !== '__workspace__') {
+        body.projectId = currentProjectId
       }
 
       if (parsed.flags['end']) body.endAt = parsed.flags['end']

@@ -178,9 +178,22 @@ export function TerminalPanel({ projectId, projectName, userRole, user }: Termin
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
     }
-  }, [geo.width, geo.height])
+  // BUG-22 fix: added geo.x and geo.y to deps so drag logic never sees stale origins
+  }, [geo.width, geo.height, geo.x, geo.y])
 
   const isPinned = mode === 'pinned'
+
+  useEffect(() => {
+    const root = document.documentElement
+    if (isPinned) {
+      root.style.setProperty('--terminal-pinned-height', `${pinnedHeight}px`)
+    } else {
+      root.style.setProperty('--terminal-pinned-height', '0px')
+    }
+    return () => {
+      root.style.removeProperty('--terminal-pinned-height')
+    }
+  }, [isPinned, pinnedHeight])
 
   // ── Shared content ──
   const titleBarContent = (

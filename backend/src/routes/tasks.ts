@@ -191,7 +191,7 @@ export async function taskRoutes(app: FastifyInstance) {
         data: { taskId: t.id },
       })))
 
-      return reply.status(201).send(tasks[0])
+      return reply.status(201).send({ ...tasks[0], bulkCount: tasks.length })
     }
 
     const task = await taskService.create({

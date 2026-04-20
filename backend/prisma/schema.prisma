@@ -8,37 +8,38 @@ datasource db {
 }
 
 model User {
-  id            String          @id @default(cuid())
-  email         String          @unique
-  name          String?
-  avatar        String?
-  image         String?
-  emailVerified Boolean         @default(false)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
-  status        UserStatus      @default(ONLINE)
-  lastSeenAt    DateTime        @default(now())
-  tasks         Task[]
-  timeLogs      TimeLog[]
-  projects      ProjectMember[]
-  accounts      Account[]
-  sessions      Session[]
-  createdInvites ProjectInvite[] @relation("ProjectInviteCreatedBy")
-  acceptedInvites ProjectInvite[] @relation("ProjectInviteAcceptedBy")
-  taskComments  TaskComment[]
-  projectMessages ProjectMessage[]
-  directMessagesSent ProjectDirectMessage[] @relation("DirectMessageSender")
-  directMessagesReceived ProjectDirectMessage[] @relation("DirectMessageRecipient")
-  activityEvents ActivityEvent[] @relation("ActivityActor")
-  notifications Notification[]
-  projectChatReads ProjectChatReadState[]
-  directChatReads DirectChatReadState[]
-  dashboardLayouts DashboardLayout[]
-  githubInstallations GithubInstallation[]
-  createdSchedules Schedule[]
+  id                       String                    @id @default(cuid())
+  email                    String                    @unique
+  name                     String?
+  avatar                   String?
+  image                    String?
+  emailVerified            Boolean                   @default(false)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  status                   UserStatus                @default(ONLINE)
+  lastSeenAt               DateTime                  @default(now())
+  tasks                    Task[]
+  timeLogs                 TimeLog[]
+  projects                 ProjectMember[]
+  accounts                 Account[]
+  sessions                 Session[]
+  createdInvites           ProjectInvite[]           @relation("ProjectInviteCreatedBy")
+  acceptedInvites          ProjectInvite[]           @relation("ProjectInviteAcceptedBy")
+  taskComments             TaskComment[]
+  projectMessages          ProjectMessage[]
+  directMessagesSent       ProjectDirectMessage[]    @relation("DirectMessageSender")
+  directMessagesReceived   ProjectDirectMessage[]    @relation("DirectMessageRecipient")
+  activityEvents           ActivityEvent[]           @relation("ActivityActor")
+  notifications            Notification[]
+  projectChatReads         ProjectChatReadState[]
+  directChatReads          DirectChatReadState[]
+  dashboardLayouts         DashboardLayout[]
+  githubInstallations      GithubInstallation[]
+  createdSchedules         Schedule[]
   scheduleNotificationLogs ScheduleNotificationLog[]
-  analyticsEvents AnalyticsEvent[]
-  role          String          @default("user")
+  analyticsEvents          AnalyticsEvent[]
+  role                     String                    @default("user")
+  fileNodes                FileNode[]
 }
 
 model Account {
@@ -84,28 +85,29 @@ model Verification {
 }
 
 model Project {
-  id           String          @id @default(cuid())
-  name         String
-  status       ProjectStatus   @default(ACTIVE)
-  boardColumns Json            @default("[\"TODO\", \"IN_PROGRESS\", \"IN_REVIEW\", \"DONE\", \"READY\"]")
-  githubStatusMap Json?
-  createdAt    DateTime        @default(now())
-  tasks     Task[]
-  sprints   Sprint[]
-  members   ProjectMember[]
-  invites   ProjectInvite[]
-  messages  ProjectMessage[]
-  directMessages ProjectDirectMessage[]
-  activityEvents ActivityEvent[]
-  notifications Notification[]
-  projectChatReads ProjectChatReadState[]
-  directChatReads DirectChatReadState[]
-  dashboardLayouts DashboardLayout[]
-  githubInstallations GithubInstallation[]
-  projectRepositories ProjectRepository[]
-  repoEvents     RepoEvent[]
-  schedules Schedule[]
+  id                      String                          @id @default(cuid())
+  name                    String
+  status                  ProjectStatus                   @default(ACTIVE)
+  boardColumns            Json                            @default("[\"TODO\", \"IN_PROGRESS\", \"IN_REVIEW\", \"DONE\", \"READY\"]")
+  githubStatusMap         Json?
+  createdAt               DateTime                        @default(now())
+  tasks                   Task[]
+  sprints                 Sprint[]
+  members                 ProjectMember[]
+  invites                 ProjectInvite[]
+  messages                ProjectMessage[]
+  directMessages          ProjectDirectMessage[]
+  activityEvents          ActivityEvent[]
+  notifications           Notification[]
+  projectChatReads        ProjectChatReadState[]
+  directChatReads         DirectChatReadState[]
+  dashboardLayouts        DashboardLayout[]
+  githubInstallations     GithubInstallation[]
+  projectRepositories     ProjectRepository[]
+  repoEvents              RepoEvent[]
+  schedules               Schedule[]
   dependencyDiagramLayout ProjectDependencyDiagramLayout?
+  fileNodes               FileNode[]
 }
 
 model ProjectDependencyDiagramLayout {
@@ -114,40 +116,41 @@ model ProjectDependencyDiagramLayout {
   layout    Json
   updatedAt DateTime @updatedAt
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([updatedAt])
 }
 
 model Task {
-  id                    String     @id @default(cuid())
-  title                 String
-  description           String?
-  status                String     @default("TODO")
-  priority              Priority   @default(MEDIUM)
-  projectId             String
-  assigneeId            String?
-  sprintId              String?
-  parentId              String?
-  startDate             DateTime?
-  deadline              DateTime?
-  completedAt           DateTime?
-  githubPrUrl           String?
-  deadlineReminderSent  Boolean    @default(false)
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  project               Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee              User?      @relation(fields: [assigneeId], references: [id])
-  sprint                Sprint?    @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  parent                Task?      @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
-  subtasks              Task[]     @relation("TaskSubtasks")
-  timeLogs              TimeLog[]
-  comments              TaskComment[]
-  blockingTasks         TaskDependency[] @relation("BlockingTasks")
-  blockedByTasks        TaskDependency[] @relation("BlockedTasks")
+  id                       String                    @id @default(cuid())
+  title                    String
+  description              String?
+  status                   String                    @default("TODO")
+  priority                 Priority                  @default(MEDIUM)
+  projectId                String
+  assigneeId               String?
+  sprintId                 String?
+  parentId                 String?
+  startDate                DateTime?
+  deadline                 DateTime?
+  completedAt              DateTime?
+  githubPrUrl              String?
+  deadlineReminderSent     Boolean                   @default(false)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  project                  Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee                 User?                     @relation(fields: [assigneeId], references: [id])
+  sprint                   Sprint?                   @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  parent                   Task?                     @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks                 Task[]                    @relation("TaskSubtasks")
+  timeLogs                 TimeLog[]
+  comments                 TaskComment[]
+  blockingTasks            TaskDependency[]          @relation("BlockingTasks")
+  blockedByTasks           TaskDependency[]          @relation("BlockedTasks")
   scheduleNotificationLogs ScheduleNotificationLog[]
-  githubLinks           TaskGithubLink[]
-  tags                  TaskTag[]
+  githubLinks              TaskGithubLink[]
+  tags                     TaskTag[]
+  attachments              TaskAttachment[]
 
   @@index([projectId])
   @@index([assigneeId])
@@ -160,8 +163,8 @@ model TaskDependency {
   type           String   @default("BLOCKS")
   createdAt      DateTime @default(now())
 
-  blockingTask   Task     @relation("BlockingTasks", fields: [blockingTaskId], references: [id], onDelete: Cascade)
-  blockedTask    Task     @relation("BlockedTasks", fields: [blockedTaskId], references: [id], onDelete: Cascade)
+  blockingTask Task @relation("BlockingTasks", fields: [blockingTaskId], references: [id], onDelete: Cascade)
+  blockedTask  Task @relation("BlockedTasks", fields: [blockedTaskId], references: [id], onDelete: Cascade)
 
   @@unique([blockingTaskId, blockedTaskId])
   @@index([blockedTaskId])
@@ -212,18 +215,18 @@ model ProjectMember {
 }
 
 model TaskComment {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   taskId    String
   authorId  String
   parentId  String?
   content   String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  task      Task        @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author    User        @relation(fields: [authorId], references: [id])
-  parent    TaskComment? @relation("TaskCommentThread", fields: [parentId], references: [id])
-  replies   TaskComment[] @relation("TaskCommentThread")
+  task    Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author  User          @relation(fields: [authorId], references: [id])
+  parent  TaskComment?  @relation("TaskCommentThread", fields: [parentId], references: [id])
+  replies TaskComment[] @relation("TaskCommentThread")
 
   @@index([taskId])
 }
@@ -237,8 +240,8 @@ model ProjectMessage {
   fileName  String?
   createdAt DateTime @default(now())
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id])
 
   @@index([projectId, createdAt])
 }
@@ -279,7 +282,7 @@ model ActivityEvent {
 }
 
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   projectId String?
   type      String
@@ -288,7 +291,7 @@ model Notification {
   href      String
   data      Json?
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -375,13 +378,13 @@ enum Role {
 }
 
 model TimeLog {
-  id               String   @id @default(cuid())
-  taskId           String
-  userId           String
+  id              String   @id @default(cuid())
+  taskId          String
+  userId          String
   durationMinutes Int
-  note             String?
+  note            String?
   loggedAt        DateTime
-  createdAt        DateTime @default(now())
+  createdAt       DateTime @default(now())
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -406,40 +409,40 @@ model DashboardLayout {
 }
 
 model GithubInstallation {
-  id             String             @id @default(cuid())
-  installationId Int                @unique
+  id             String   @id @default(cuid())
+  installationId Int      @unique
   userId         String
   projectId      String?
   repos          Json?
-  createdAt      DateTime           @default(now())
+  createdAt      DateTime @default(now())
 
-  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project        Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  repositories   GithubRepository[]
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repositories GithubRepository[]
 }
 
 model GithubRepository {
-  id             String             @id @default(cuid())
+  id             String  @id @default(cuid())
   installationId String
   repoFullName   String
   repoId         Int
-  isActive       Boolean            @default(true)
+  isActive       Boolean @default(true)
 
-  installation   GithubInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  installation        GithubInstallation  @relation(fields: [installationId], references: [id], onDelete: Cascade)
   projectRepositories ProjectRepository[]
-  repoEvents       RepoEvent[]
+  repoEvents          RepoEvent[]
 
   @@unique([installationId, repoFullName])
 }
 
 model ProjectRepository {
-  id        String           @id @default(cuid())
+  id        String   @id @default(cuid())
   projectId String
   repoId    String
-  createdAt DateTime         @default(now())
+  createdAt DateTime @default(now())
 
-  project   Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  repo      GithubRepository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  project Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repo    GithubRepository @relation(fields: [repoId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, repoId])
   @@index([projectId])
@@ -463,8 +466,8 @@ model RepoEvent {
   githubDeliveryId String?
   createdAt        DateTime @default(now())
 
-  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  repo             GithubRepository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  project Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  repo    GithubRepository @relation(fields: [repoId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
   @@index([repoId, createdAt])
@@ -488,7 +491,7 @@ model TaskGithubLink {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@unique([taskId, url])
   @@index([taskId])
@@ -518,21 +521,21 @@ enum ScheduleAttendeeResponse {
 }
 
 model Schedule {
-  id          String         @id @default(cuid())
-  title       String         @db.VarChar(100)
+  id          String       @id @default(cuid())
+  title       String       @db.VarChar(100)
   type        ScheduleType
   scheduledAt DateTime
   endAt       DateTime?
-  details     String?        @db.VarChar(2000)
+  details     String?      @db.VarChar(2000)
   location    String?
   projectId   String?
   creatorId   String
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-  creator   User              @relation(fields: [creatorId], references: [id])
-  project   Project?          @relation(fields: [projectId], references: [id])
-  attendees ScheduleAttendee[]
+  creator          User                      @relation(fields: [creatorId], references: [id])
+  project          Project?                  @relation(fields: [projectId], references: [id])
+  attendees        ScheduleAttendee[]
   notificationLogs ScheduleNotificationLog[]
 
   @@index([creatorId, scheduledAt])
@@ -540,7 +543,7 @@ model Schedule {
 }
 
 model ScheduleAttendee {
-  id         String   @id @default(cuid())
+  id         String                   @id @default(cuid())
   scheduleId String
   userId     String?
   email      String
@@ -573,15 +576,59 @@ model ScheduleNotificationLog {
 model AnalyticsEvent {
   id        String   @id @default(cuid())
   userId    String?
-  eventType String   // "PAGE_VIEW", "CLICK", "ERROR"
+  eventType String // "PAGE_VIEW", "CLICK", "ERROR"
   pageUrl   String?
   elementId String?
   metadata  Json?
   createdAt DateTime @default(now())
 
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([eventType])
   @@index([createdAt])
   @@index([userId])
+}
+
+// ─── File System ───────────────────────────────
+
+enum FileType {
+  FILE
+  FOLDER
+}
+
+model FileNode {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String?
+  parentId  String?
+  name      String
+  type      FileType
+  mimeType  String?
+  size      Int?
+  fileUrl   String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent      FileNode?  @relation("FolderChildren", fields: [parentId], references: [id])
+  children    FileNode[] @relation("FolderChildren")
+  attachments TaskAttachment[]
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([parentId])
+}
+
+model TaskAttachment {
+  id         String   @id @default(cuid())
+  taskId     String
+  fileNodeId String
+  createdAt  DateTime @default(now())
+
+  task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fileNode FileNode @relation(fields: [fileNodeId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+  @@index([fileNodeId])
 }

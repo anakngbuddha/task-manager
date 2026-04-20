@@ -58,16 +58,3 @@ export function authDeniedLines(
     { type: 'stderr' as const, content: `  Required  : ${requiredStr}` },
   ]
 }
-
-/** Role ordering: higher index = more permissions */
-const ROLE_RANK: Record<string, number> = {
-  MEMBER: 1,
-  PROJECT_MANAGER: 2,
-  MASTER_ADMIN: 3,
-}
-
-/** Returns true if userRole has at least the same rank as minimumRole */
-export function hasAtLeastRole(userRole: EffectiveRole, minimumRole: EffectiveRole): boolean {
-  if (!userRole || !minimumRole) return false
-  return (ROLE_RANK[userRole] ?? 0) >= (ROLE_RANK[minimumRole] ?? 0)
-}

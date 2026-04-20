@@ -15,8 +15,7 @@ const ADMIN_ONLY = ['MASTER_ADMIN'] as const
 const WRITE_ROLES = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
 
 export function createMemberWriteHandlers(
-  vfs: VirtualFileSystem,
-  projectId: string
+  vfs: VirtualFileSystem
 ): Record<string, CommandHandler> {
   return {
     // ── rm member ─────────────────────────────────────────────────────────────
@@ -32,7 +31,7 @@ export function createMemberWriteHandlers(
       const filename = resolvedPath.split('/').pop()?.replace(/\.json$/, '') ?? ''
 
       // Members are named by email, email is the filename
-      const { data: members } = await api.get(`/projects/${projectId}/members`)
+      const { data: members } = await api.get(`/projects/${vfs.projectId}/members`)
       const matched = (members as any[]).find(
         (m: any) => (m.user?.email ?? m.email ?? '').toLowerCase() === filename.toLowerCase()
       )
@@ -46,8 +45,11 @@ export function createMemberWriteHandlers(
       }
 
       try {
-        await api.delete(`/projects/${projectId}/members/${matched.userId}`)
-        return { lines: [{ type: 'success', content: `✓ Member removed: ${filename}` }] }
+        await api.delete(`/projects/${vfs.projectId}/members/${matched.userId}`)
+        return {
+          lines: [{ type: 'success', content: `✓ Removed member: ${filename}` }],
+          invalidations: [['project-members', vfs.projectId], ['project', vfs.projectId]]
+        }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `rm member: ${err?.response?.data?.error ?? err.message}` }] }
       }
@@ -70,7 +72,7 @@ export function createMemberWriteHandlers(
       const resolvedPath = vfs.resolve(targetPath)
       const filename = resolvedPath.split('/').pop()?.replace(/\.json$/, '') ?? ''
 
-      const { data: members } = await api.get(`/projects/${projectId}/members`)
+      const { data: members } = await api.get(`/projects/${vfs.projectId}/members`)
       const matched = (members as any[]).find(
         (m: any) => (m.user?.email ?? m.email ?? '').toLowerCase() === filename.toLowerCase()
       )
@@ -91,11 +93,12 @@ export function createMemberWriteHandlers(
       }
 
       try {
-        await api.patch(`/projects/${projectId}/members/${matched.userId}/role`, { role: newRole })
+        await api.patch(`/projects/${vfs.projectId}/members/${matched.userId}/role`, { role: newRole })
         return {
           lines: [
             { type: 'success', content: `✓ Role updated: ${filename} → ${newRole}` },
           ],
+          invalidations: [['project-members', vfs.projectId], ['project', vfs.projectId]]
         }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `setrole: ${err?.response?.data?.error ?? err.message}` }] }
@@ -114,12 +117,13 @@ export function createMemberWriteHandlers(
       }
 
       try {
-        await api.post(`/projects/${projectId}/invites`, { email })
+        await api.post(`/projects/${vfs.projectId}/invites`, { email })
         return {
           lines: [
-            { type: 'success', content: `✓ Invite sent to: ${email}` },
-            { type: 'system', content: `  They will receive a link to join "${context.projectName}".` },
+            { type: 'success', content: `✓ Sent invitation to ${email}` },
+            { type: 'system', content: '  User will appear in members/ once they accept.' },
           ],
+          invalidations: [['project-members', vfs.projectId], ['project', vfs.projectId]]
         }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `invite: ${err?.response?.data?.error ?? err.message}` }] }

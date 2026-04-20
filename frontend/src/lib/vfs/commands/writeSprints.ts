@@ -14,10 +14,31 @@ import type { VirtualFileSystem } from '../VirtualFileSystem'
 
 const WRITE_ROLES = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
 
+/**
+ * BUG-07 fix: sprint files now use safeName__id8.json format (ID-stable).
+ * Extract the 8-char ID slice from the sprint filename so lookups work
+ * regardless of current sprint status.
+ */
+function extractSprintId(filename: string): string {
+  const base = filename.replace(/\.json$/, '')
+  const match = base.match(/__([a-zA-Z0-9]+)$/)
+  return match ? match[1] : base
+}
+
+/**
+ * Fetch the full sprint object by the ID embedded in its filename.
+ * Matches against the first N chars of s.id where N == idSlice.length.
+ */
+async function resolveSprint(projectId: string, filename: string): Promise<any | null> {
+  const idSlice = extractSprintId(filename)
+  const { data: sprints } = await api.get(`/projects/${projectId}/sprints`)
+  return (sprints as any[]).find(
+    (s: any) => String(s.id).slice(0, idSlice.length) === idSlice
+  ) ?? null
+}
 
 export function createSprintWriteHandlers(
-  vfs: VirtualFileSystem,
-  projectId: string
+  vfs: VirtualFileSystem
 ): Record<string, CommandHandler> {
   return {
     // ── touch sprint ─────────────────────────────────────────────────────────
@@ -36,16 +57,29 @@ export function createSprintWriteHandlers(
 
       const body: Record<string, unknown> = { name: rawName.trim() }
       if (parsed.flags['goal']) body.goal = parsed.flags['goal']
-      if (parsed.flags['start']) body.startDate = parsed.flags['start']
-      if (parsed.flags['end']) body.endDate = parsed.flags['end']
+      
+      // BUG-20 fix: Validate date strings
+      if (parsed.flags['start']) {
+        if (Number.isNaN(Date.parse(parsed.flags['start'] as string))) {
+          return { lines: [{ type: 'stderr', content: 'touch sprint: invalid start date format. Must be ISO 8601.' }] }
+        }
+        body.startDate = parsed.flags['start']
+      }
+      if (parsed.flags['end']) {
+        if (Number.isNaN(Date.parse(parsed.flags['end'] as string))) {
+          return { lines: [{ type: 'stderr', content: 'touch sprint: invalid end date format. Must be ISO 8601.' }] }
+        }
+        body.endDate = parsed.flags['end']
+      }
 
       try {
-        const { data } = await api.post(`/projects/${projectId}/sprints`, body)
+        const { data } = await api.post(`/projects/${vfs.projectId}/sprints`, body)
         return {
           lines: [
             { type: 'success', content: `✓ Sprint created: "${data.name}"` },
             { type: 'json', content: JSON.stringify({ id: data.id, status: data.status }) },
           ],
+          invalidations: [['sprints', vfs.projectId], ['tasks', vfs.projectId]]
         }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `touch sprint: ${err?.response?.data?.error ?? err.message}` }] }
@@ -61,24 +95,18 @@ export function createSprintWriteHandlers(
       const targetPath = parsed.args[0]
       if (!targetPath) return { lines: [{ type: 'stderr', content: 'rm: missing operand' }] }
 
-      // Resolve full path then find sprint by name match
-      const resolvedPath = vfs.resolve(targetPath)
-      const filename = resolvedPath.split('/').pop() ?? ''
-
-      // Sprint files are named: <safename>_<status>.json
-      // Try to locate by listing sprints and matching filename
-      const { data: sprints } = await api.get(`/projects/${projectId}/sprints`)
-      const safe = (name: string, status: string) =>
-        `${name.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 40)}_${status.toLowerCase()}.json`
-
-      const matched = (sprints as any[]).find((s: any) => safe(s.name, s.status) === filename)
+      const filename = vfs.resolve(targetPath).split('/').pop() ?? ''
+      const matched = await resolveSprint(vfs.projectId, filename)
       if (!matched) {
         return { lines: [{ type: 'stderr', content: `rm: sprint not found: "${filename}"` }] }
       }
 
       try {
-        await api.delete(`/projects/${projectId}/sprints/${matched.id}`)
-        return { lines: [{ type: 'success', content: `✓ Sprint deleted: "${matched.name}"` }] }
+        await api.delete(`/projects/${vfs.projectId}/sprints/${matched.id}`)
+        return {
+          lines: [{ type: 'success', content: `✓ Sprint removed: ${filename}` }],
+          invalidations: [['sprints', vfs.projectId], ['tasks', vfs.projectId]]
+        }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `rm sprint: ${err?.response?.data?.error ?? err.message}` }] }
       }
@@ -100,18 +128,18 @@ export function createSprintWriteHandlers(
       }
 
       const filename = vfs.resolve(targetPath).split('/').pop() ?? ''
-      const { data: sprints } = await api.get(`/projects/${projectId}/sprints`)
-      const safe = (name: string, status: string) =>
-        `${name.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 40)}_${status.toLowerCase()}.json`
-      const matched = (sprints as any[]).find((s: any) => safe(s.name, s.status) === filename)
+      const matched = await resolveSprint(vfs.projectId, filename)
       if (!matched) return { lines: [{ type: 'stderr', content: `start: sprint not found: "${filename}"` }] }
       if (matched.status !== 'PLANNING') {
         return { lines: [{ type: 'stderr', content: `start: sprint "${matched.name}" is ${matched.status}, not PLANNING.` }] }
       }
 
       try {
-        const { data } = await api.post(`/projects/${projectId}/sprints/${matched.id}/start`, { startDate, endDate })
-        return { lines: [{ type: 'success', content: `✓ Sprint "${data.name}" started (${startDate} → ${endDate})` }] }
+        const { data } = await api.post(`/projects/${vfs.projectId}/sprints/${matched.id}/start`, { startDate, endDate })
+        return {
+          lines: [{ type: 'success', content: `✓ Sprint "${data.name}" started (${startDate} → ${endDate})` }],
+          invalidations: [['sprints', vfs.projectId], ['tasks', vfs.projectId]]
+        }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `start sprint: ${err?.response?.data?.error ?? err.message}` }] }
       }
@@ -129,17 +157,14 @@ export function createSprintWriteHandlers(
       const moveTo = (parsed.flags['move-to'] as string)?.toUpperCase() ?? 'TODO'
 
       const filename = vfs.resolve(targetPath).split('/').pop() ?? ''
-      const { data: sprints } = await api.get(`/projects/${projectId}/sprints`)
-      const safe = (name: string, status: string) =>
-        `${name.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 40)}_${status.toLowerCase()}.json`
-      const matched = (sprints as any[]).find((s: any) => safe(s.name, s.status) === filename)
+      const matched = await resolveSprint(vfs.projectId, filename)
       if (!matched) return { lines: [{ type: 'stderr', content: `close: sprint not found: "${filename}"` }] }
       if (matched.status !== 'ACTIVE') {
         return { lines: [{ type: 'stderr', content: `close: sprint "${matched.name}" is ${matched.status}, not ACTIVE.` }] }
       }
 
       try {
-        await api.post(`/projects/${projectId}/sprints/${matched.id}/complete`, {
+        await api.post(`/projects/${vfs.projectId}/sprints/${matched.id}/complete`, {
           moveIncompleteTasksTo: moveTo,
         })
         return {
@@ -147,6 +172,7 @@ export function createSprintWriteHandlers(
             { type: 'success', content: `✓ Sprint "${matched.name}" completed.` },
             { type: 'system', content: `  Incomplete tasks moved to: ${moveTo}` },
           ],
+          invalidations: [['sprints', vfs.projectId], ['tasks', vfs.projectId]]
         }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `close sprint: ${err?.response?.data?.error ?? err.message}` }] }

@@ -1,5 +1,5 @@
 /**
- * Project-level commands: touch project, ls projects, archive
+ * Project-level commands: touch project, archive
  *
  * These run at workspace/dashboard level (no projectId scope).
  * Backend auth:
@@ -10,13 +10,13 @@
  */
 import { api } from '@/lib/api'
 import type { CommandHandler, CommandResult } from '../commandTypes'
+import type { VirtualFileSystem } from '../VirtualFileSystem'
 import { assertVFSRole, authDeniedLines } from '../vfsAuth'
 
 const ADMIN_OR_PM = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
 
 export function createProjectWriteHandlers(
-  /** Current projectId — may be null when called from dashboard terminal */
-  projectId: string | null
+  vfs: VirtualFileSystem
 ): Record<string, CommandHandler> {
   return {
     // ── touch project ─────────────────────────────────────────────────────────
@@ -29,8 +29,8 @@ export function createProjectWriteHandlers(
       }
 
       const name = (parsed.flags['name'] as string)
-        || parsed.args.slice(1).join(' ')   // "touch project My Project Name"
-        || parsed.args[0]                   // fallback
+        || parsed.args.join(' ')   // "touch project My Project Name"
+        || parsed.args[0]          // fallback
 
       if (!name?.trim()) {
         return {
@@ -50,6 +50,7 @@ export function createProjectWriteHandlers(
             { type: 'json', content: JSON.stringify({ id: data.id, name: data.name, status: data.status }) },
             { type: 'system', content: `  Navigate to: /projects/${data.id}` },
           ],
+          invalidations: [['projects'], ['projects-dashboard']]
         }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `touch project: ${err?.response?.data?.error ?? err.message}` }] }
@@ -59,19 +60,22 @@ export function createProjectWriteHandlers(
     // ── archive (mark project complete) ───────────────────────────────────────
     // Usage: archive  (marks the current project as COMPLETED)
     archive: async (_parsed, context): Promise<CommandResult> => {
-      if (!projectId) {
+      // Read projectId from VFS at call time (fixes BUG-02)
+      const currentProjectId = vfs.projectId
+      if (!currentProjectId || currentProjectId === '__workspace__') {
         return { lines: [{ type: 'stderr', content: 'archive: this command must be run from within a project terminal.' }] }
       }
       try { assertVFSRole(context.userRole, [...ADMIN_OR_PM], 'archive') }
       catch { return { lines: authDeniedLines(context.userRole, [...ADMIN_OR_PM], 'archive') } }
 
       try {
-        await api.patch(`/projects/${projectId}`, { status: 'COMPLETED' })
+        await api.patch(`/projects/${currentProjectId}`, { status: 'COMPLETED' })
         return {
           lines: [
             { type: 'success', content: `✓ Project archived (marked as COMPLETED).` },
             { type: 'system', content: '  The project is now read-only. Navigate to dashboard to create a new project.' },
           ],
+          invalidations: [['projects'], ['projects-dashboard']]
         }
       } catch (err: any) {
         return { lines: [{ type: 'stderr', content: `archive: ${err?.response?.data?.error ?? err.message}` }] }

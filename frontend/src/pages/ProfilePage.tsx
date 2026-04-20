@@ -17,6 +17,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { Badge } from '@/components/ui/badge'
 import { GitBranch, Unplug, Loader2, Link2, RefreshCw } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
+import { FileExplorer } from '@/components/files/FileExplorer'
 
 export default function ProfilePage() {
   const { data: session } = useSession()
@@ -46,6 +47,8 @@ export default function ProfilePage() {
   const [polling, setPolling] = useState(false)
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [justDisconnected, setJustDisconnected] = useState(false)
+
+  // No Drive state needed anymore
 
   // Clean up URL params after reading them
   useEffect(() => {
@@ -214,6 +217,16 @@ export default function ProfilePage() {
             </p>
             <div className="mt-4">
               <ContributionHeatmap countsByDay={contrib?.countsByDay ?? {}} days={365} />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-background/60 backdrop-blur p-4">
+            <p className="text-sm font-medium">My Files</p>
+            <p className="mt-1 text-xs text-muted-foreground mb-4">
+              Manage your personal files. You can attach these files to tasks anywhere in the app.
+            </p>
+            <div className="border border-border/60 rounded-md overflow-hidden h-[400px]">
+              <FileExplorer className="h-full" />
             </div>
           </div>
 

@@ -22,6 +22,8 @@ import {
 } from '@/hooks/useTaskGithubLinks'
 import TagInput from '@/components/board/TagInput'
 import { useTaskTags } from '@/hooks/useTaskTags'
+import { FileExplorerDialog } from '@/components/files/FileExplorerDialog'
+import { useTaskAttachments, useLinkTaskAttachment, useUnlinkTaskAttachment, type FileNode } from '@/hooks/useFiles'
 
 function sanitizeUrl(url: string): string {
   try {
@@ -127,6 +129,30 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
 
   const [depType, setDepType] = useState<'BLOCKS' | 'IS_BLOCKED_BY'>('IS_BLOCKED_BY')
   const [depTargetId, setDepTargetId] = useState<string>('')
+
+  // File System Attachments
+  const { data: attachments = [] } = useTaskAttachments(task?.id)
+  const linkAttachment = useLinkTaskAttachment()
+  const unlinkAttachment = useUnlinkTaskAttachment()
+  const [explorerOpen, setExplorerOpen] = useState(false)
+
+  const handlePickFile = async (node: FileNode) => {
+    if (!task?.id) return;
+    if (node.type === 'FOLDER') {
+      alert("Cannot attach a folder directly to a task.");
+      return;
+    }
+    try {
+      await linkAttachment.mutateAsync({
+        taskId: task.id,
+        fileNodeId: node.id,
+      });
+      setExplorerOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to attach file');
+    }
+  };
 
   const selectedSprintName = useMemo(() => {
     const id = task?.sprintId ? String(task.sprintId) : null
@@ -479,6 +505,47 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                     >
                       {createDependency.isPending ? '...' : 'Add'}
                     </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border border-border/60 bg-card p-5">
+                <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1">
+                  <LinkIcon className="w-3 h-3 opacity-70"/>
+                  Attachments
+                </p>
+                <div className="space-y-3">
+                  {attachments.length > 0 ? (
+                    <div className="space-y-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                       {attachments.map((att: any) => (
+                           <div key={att.id} className="flex items-center justify-between text-sm bg-muted/10 p-2.5 border border-border/40 hover:bg-muted/30 transition-colors">
+                             <a href={att.fileNode?.fileUrl} target="_blank" rel="noopener noreferrer" className="flex flex-col flex-1 min-w-0">
+                                <div className="flex flex-row items-center gap-2">
+                                  <span className="font-medium text-blue-600 hover:underline truncate">{att.fileNode?.name}</span>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground mt-1.5 flex items-center justify-start">Added by {att.fileNode?.user?.name || 'Unknown'}</span>
+                             </a>
+                             <Button variant="ghost" size="icon" className="h-6 w-6 text-red-500 shrink-0" onClick={() => unlinkAttachment.mutate({ attachmentId: att.id, taskId: task?.id })}>
+                               <X className="size-3" />
+                             </Button>
+                           </div>
+                       ))}
+                    </div>
+                  ) : (
+                     <p className="text-xs text-muted-foreground italic mb-2">No attachments.</p>
+                  )}
+
+                  <div className="mt-3 pt-3 border-t border-border/40">
+                    <Button variant="outline" size="sm" className="w-full gap-2 rounded-none" onClick={() => setExplorerOpen(true)}>
+                      <Plus className="size-4" />
+                      Add Attachment
+                    </Button>
+                    <FileExplorerDialog 
+                      open={explorerOpen} 
+                      onClose={() => setExplorerOpen(false)} 
+                      onPick={handlePickFile} 
+                      projectId={projectId}
+                    />
                   </div>
                 </div>
               </div>

@@ -9,6 +9,7 @@
 import { api } from '@/lib/api'
 import { assertVFSRole, authDeniedLines } from '../vfsAuth'
 import type { CommandHandler, CommandResult } from '../commandTypes'
+import type { VirtualFileSystem } from '../VirtualFileSystem'
 
 const ADMIN_OR_PM = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
 const ANY_MEMBER = ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'] as const
@@ -17,7 +18,7 @@ const ANY_MEMBER = ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'] as const
 const GH_INSTALL_URL = 'https://github.com/apps/wsi-taska/installations/new'
 
 export function createGithubHandlers(
-  projectId: string
+  vfs: VirtualFileSystem
 ): Record<string, CommandHandler> {
   return {
     // ── github ────────────────────────────────────────────────────────────────
@@ -27,13 +28,13 @@ export function createGithubHandlers(
 
       switch (sub) {
         case 'status':
-          return execGithubStatus(projectId, context)
+          return execGithubStatus(vfs.projectId, context)
 
         case 'link':
           return execGithubLink()
 
         case 'setmap':
-          return execGithubSetmap(projectId, parsed, context)
+          return execGithubSetmap(vfs.projectId, parsed, context)
 
         default:
           return {

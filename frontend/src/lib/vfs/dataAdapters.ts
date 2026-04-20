@@ -45,12 +45,13 @@ export async function fetchSprintFiles(projectId: string): Promise<VFSFile[]> {
   const sprints: any[] = data ?? []
 
   return sprints.map((s): VFSFile => {
-    const statusSlug = (s.status ?? 'unknown').toLowerCase()
     const safeName = (s.name ?? 'sprint')
       .toLowerCase()
       .replace(/[^a-z0-9_-]/g, '-')
       .slice(0, 40)
-    const name = `${safeName}_${statusSlug}.json`
+    // BUG-07 fix: embed sprint ID (not status) so the filename stays stable
+    // after the sprint transitions PLANNING → ACTIVE → COMPLETED.
+    const name = `${safeName}__${String(s.id).slice(0, 8)}.json`
     return {
       name,
       path: `/sprints/${name}`,
@@ -140,13 +141,21 @@ export async function fetchScheduleFiles(projectId: string): Promise<VFSFile[]> 
  * To avoid N+1 on every `ls`, we fetch all tasks and return
  * virtual subdirectory nodes (VFSDirectory logic is handled in VirtualFileSystem).
  */
+// BUG-12 fix: Session-scoped cache for TaskDirs to prevent N+1 cascades during ls
+const _taskDirsCache: Record<string, { time: number, data: VFSFile[] }> = {}
+
 export async function fetchTimelogTaskDirs(projectId: string): Promise<VFSFile[]> {
+  const now = Date.now()
+  if (_taskDirsCache[projectId] && now - _taskDirsCache[projectId].time < 30000) {
+    return _taskDirsCache[projectId].data
+  }
+
   // Return the task list so timelog dirs can be computed
   const { data } = await api.get(`/projects/${projectId}/tasks`)
   const tasks: any[] = data ?? []
 
   // Filter only tasks that may have time logs (all tasks qualify)
-  return tasks.map((t): VFSFile => {
+  const result = tasks.map((t): VFSFile => {
     const safeName = (t.title ?? 'task')
       .toLowerCase()
       .replace(/[^a-z0-9_-]/g, '-')
@@ -163,6 +172,9 @@ export async function fetchTimelogTaskDirs(projectId: string): Promise<VFSFile[]
       data: { taskId: t.id, taskTitle: t.title },
     }
   })
+
+  _taskDirsCache[projectId] = { time: now, data: result }
+  return result
 }
 
 export async function fetchTimelogFiles(taskId: string, basePath: string): Promise<VFSFile[]> {
@@ -202,6 +214,84 @@ export async function fetchProjectFiles(): Promise<VFSFile[]> {
       entityType: 'project',
       entityId: String(p.id),
       data: p,
+    }
+  })
+}
+
+// ── Activity ─────────────────────────────────────────────────────────
+
+export async function fetchActivityFiles(projectId: string): Promise<VFSFile[]> {
+  const isWorkspace = !projectId || projectId === '__workspace__'
+  const endpoint = isWorkspace ? '/activity' : `/projects/${projectId}/activity`
+  const { data } = await api.get(endpoint, { params: { take: 50 } })
+  const events: any[] = data ?? []
+
+  return events.map((event): VFSFile => {
+    // Activity event type comes in like "TASK_CREATED"
+    const safeType = (event.type ?? 'event').toLowerCase().replace(/[^a-z0-9_-]/g, '-')
+    // BUG-27 fix: embed full entity ID ensures safe rm matching
+    const name = `${safeType}__${String(event.id)}.json`
+    return {
+      name,
+      // BUG-26 fix: removed dead ternary condition
+      path: `/activity/${name}`,
+      type: 'file',
+      entityType: 'activity',
+      entityId: String(event.id),
+      data: event,
+    }
+  })
+}
+
+// ── Profile ──────────────────────────────────────────────────────────
+
+// BUG-13 fix: Session-scoped cache for profile settings
+let _profileSettingsCache: { time: number, data: VFSFile[] } | null = null
+
+export async function fetchProfileSettings(): Promise<VFSFile[]> {
+  const now = Date.now()
+  if (_profileSettingsCache && now - _profileSettingsCache.time < 60000) {
+    return _profileSettingsCache.data
+  }
+
+  const { data: user } = await api.get('/users/me')
+  const result: VFSFile[] = [
+    {
+      name: 'settings.json',
+      path: `/profile/settings.json`,
+      type: 'file',
+      entityType: 'profile-settings',
+      entityId: user?.id ?? 'me',
+      data: user,
+    },
+    {
+      name: 'github.json',
+      path: `/profile/github.json`,
+      type: 'file',
+      entityType: 'profile-github',
+      entityId: 'github',
+      data: { status: 'check connection via "github connect"' },
+    }
+  ]
+  _profileSettingsCache = { time: now, data: result }
+  return result
+}
+
+export async function fetchProfileFiles(): Promise<VFSFile[]> {
+  const { data } = await api.get('/files') // projectId is omitted, fetches root files
+  const files: any[] = data ?? []
+
+  return files.map((f): VFSFile => {
+    // f.type === 'FOLDER' or 'FILE'
+    const isFolder = f.type === 'FOLDER'
+    const name = isFolder ? `${f.name}` : f.name
+    return {
+      name,
+      path: `/profile/files/${name}`,
+      type: isFolder ? 'dir' : 'file',
+      entityType: 'profile-file',
+      entityId: String(f.id),
+      data: f,
     }
   })
 }

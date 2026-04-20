@@ -25,6 +25,7 @@ import ProjectSettingsPage from './pages/ProjectSettingsPage'
 import ProjectActivityPage from './pages/ProjectActivityPage'
 import ProjectGithubActivityPage from './pages/ProjectGithubActivityPage'
 import ProjectDependencyDiagramPage from './pages/ProjectDependencyDiagramPage'
+import ProjectFilesPage from './pages/ProjectFilesPage'
 import DocumentationPage from './pages/DocumentationPage'
 import LandingPage from './pages/LandingPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
@@ -129,6 +130,11 @@ export default function App() {
         <Route path="/projects/:id/dependencies" element={
           <ProtectedRoute>
             <ProjectDependencyDiagramPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/files" element={
+          <ProtectedRoute>
+            <ProjectFilesPage />
           </ProtectedRoute>
         } />
         <Route path="/projects/:id/time-report" element={

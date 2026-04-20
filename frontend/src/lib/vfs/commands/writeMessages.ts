@@ -8,11 +8,12 @@
 import { api } from '@/lib/api'
 import { assertVFSRole, authDeniedLines } from '../vfsAuth'
 import type { CommandHandler, CommandResult } from '../commandTypes'
+import type { VirtualFileSystem } from '../VirtualFileSystem'
 
 const ANY_MEMBER = ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'] as const
 
 export function createMessageWriteHandlers(
-  projectId: string
+  vfs: VirtualFileSystem
 ): Record<string, CommandHandler> {
   return {
     // ── msg ───────────────────────────────────────────────────────────────────
@@ -32,7 +33,7 @@ export function createMessageWriteHandlers(
       }
 
       try {
-        await api.post(`/projects/${projectId}/messages`, { content })
+        await api.post(`/projects/${vfs.projectId}/messages`, { content })
         return {
           lines: [
             { type: 'success', content: `✓ Message sent to #project-chat` },
@@ -62,7 +63,7 @@ export function createMessageWriteHandlers(
       }
 
       // Resolve email → userId from project members
-      const { data: members } = await api.get(`/projects/${projectId}/members`)
+      const { data: members } = await api.get(`/projects/${vfs.projectId}/members`)
       const matched = (members as any[]).find(
         (m: any) => (m.user?.email ?? '').toLowerCase() === targetEmail.toLowerCase()
       )
@@ -81,7 +82,7 @@ export function createMessageWriteHandlers(
       }
 
       try {
-        await api.post(`/projects/${projectId}/direct/${matched.userId}`, { content })
+        await api.post(`/projects/${vfs.projectId}/direct/${matched.userId}`, { content })
         return {
           lines: [
             { type: 'success', content: `✓ DM sent to ${matched.user?.name ?? targetEmail}` },

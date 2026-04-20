@@ -15,6 +15,7 @@ import { createScheduleWriteHandlers } from './commands/writeSchedules'
 import { createTimeLogWriteHandlers } from './commands/writeTimeLogs'
 import { createGithubHandlers } from './commands/writeGithub'
 import { createProjectWriteHandlers } from './commands/writeProjects'
+import { createProfileWriteHandlers } from './commands/writeProfile'
 
 const BANNER = `
  __   _______ ____
@@ -32,11 +33,12 @@ export { BANNER }
 export class CommandRegistry {
   private vfs: VirtualFileSystem
   private handlers: Record<string, CommandHandler> = {}
-  private projectId: string
+  /** Optional SPA navigate function — used by 'open' command to avoid hard reloads */
+  private navigate?: (path: string) => void
 
-  constructor(vfs: VirtualFileSystem, projectId: string) {
+  constructor(vfs: VirtualFileSystem, navigate?: (path: string) => void) {
     this.vfs = vfs
-    this.projectId = projectId
+    this.navigate = navigate
     this._register()
   }
 
@@ -48,14 +50,17 @@ export class CommandRegistry {
     }
 
     // ── Write handlers ────────────────────────────────────────────────────────
-    const taskHandlers   = createTaskWriteHandlers(this.vfs, this.projectId)
-    const sprintHandlers = createSprintWriteHandlers(this.vfs, this.projectId)
-    const memberHandlers = createMemberWriteHandlers(this.vfs, this.projectId)
-    const msgHandlers    = createMessageWriteHandlers(this.projectId)
-    const schedHandlers  = createScheduleWriteHandlers(this.projectId)
-    const logHandlers    = createTimeLogWriteHandlers(this.vfs, this.projectId)
-    const ghHandlers     = createGithubHandlers(this.projectId)
-    const projHandlers   = createProjectWriteHandlers(this.projectId)
+    // Each factory receives only the VFS instance; handlers read vfs.projectId
+    // at call time so they always target the correct project after a cd switch.
+    const taskHandlers    = createTaskWriteHandlers(this.vfs)
+    const sprintHandlers  = createSprintWriteHandlers(this.vfs)
+    const memberHandlers  = createMemberWriteHandlers(this.vfs)
+    const msgHandlers     = createMessageWriteHandlers(this.vfs)
+    const schedHandlers   = createScheduleWriteHandlers(this.vfs)
+    const logHandlers     = createTimeLogWriteHandlers(this.vfs)
+    const ghHandlers      = createGithubHandlers(this.vfs)
+    const projHandlers    = createProjectWriteHandlers(this.vfs)
+    const profileHandlers = createProfileWriteHandlers(this.vfs, this.navigate)
 
     // Register all flat write handlers
     for (const handlers of [
@@ -67,51 +72,87 @@ export class CommandRegistry {
       logHandlers,
       ghHandlers,
       projHandlers,
+      profileHandlers,
     ]) {
       for (const [name, handler] of Object.entries(handlers)) {
         this.handlers[name] = handler
       }
     }
-
     // ── Dispatch: touch ───────────────────────────────────────────────────────
     // "touch tasks/todo/name.json"  → touch-task
     // "touch sprints/name.json"     → touch-sprint
     // "touch schedules/name.json"   → touch-schedule
     // "touch project ..."           → touch-project
     this.handlers['touch'] = async (parsed, context): Promise<CommandResult> => {
-      const path = parsed.args[0]?.toLowerCase() ?? ''
+      const rawArg = parsed.args[0] ?? ''
 
-      if (!path) {
+      if (!rawArg) {
         return {
           lines: [
             { type: 'stderr', content: 'touch: missing operand.' },
-            { type: 'system', content: '  touch tasks/<status>/<name>.json --priority=HIGH' },
+            { type: 'system', content: '  touch tasks/<status>/<name>.json --assignee=<email|everyone> --deadline="YYYY-MM-DDTHH:MM" [--priority=MEDIUM]' },
             { type: 'system', content: '  touch sprints/<name>.json [--goal="..."]' },
             { type: 'system', content: '  touch schedules/<name>.json --at=<ISO>' },
             { type: 'system', content: '  touch project <name>' },
+            { type: 'system', content: '' },
+            { type: 'system', content: '  Type "help touch" for full details.' },
           ],
         }
       }
 
-      if (path.startsWith('tasks/') || this.vfs.resolve(path).startsWith('/tasks/')) {
+      // BUG-05 fix: use resolved absolute path for routing — do NOT lowercase
+      // the raw arg since path parts like status slugs are case-sensitive.
+      const argLower = rawArg.toLowerCase()
+      const resolved = this.vfs.resolve(rawArg)
+
+      if (resolved.startsWith('/tasks/') || argLower.startsWith('tasks/')) {
         return this.handlers['touch-task'](parsed, context)
       }
-      if (path.startsWith('sprints/') || path === 'sprints') {
+      if (resolved.startsWith('/sprints/') || argLower.startsWith('sprints/')) {
         return this.handlers['touch-sprint'](parsed, context)
       }
-      if (path.startsWith('schedules/') || path === 'schedules') {
+      if (resolved.startsWith('/schedules/') || argLower.startsWith('schedules/')) {
         return this.handlers['touch-schedule'](parsed, context)
       }
-      if (path === 'project' || path.startsWith('project ')) {
+      if (argLower === 'project') {
         // Shift arg: "touch project My Name" → args becomes ["My Name"]
         const shifted: ParsedCommand = { ...parsed, args: parsed.args.slice(1) }
         return this.handlers['touch-project'](shifted, context)
       }
+      if (
+        resolved.startsWith('/profile/files/') ||
+        argLower.startsWith('profile/files/')
+      ) {
+        return { lines: [{ type: 'stderr', content: `touch: cannot create '${rawArg}': use 'mkdir' to create profile folders.` }] }
+      }
 
       return {
         lines: [
-          { type: 'stderr', content: `touch: cannot create '${parsed.args[0]}': unsupported path.` },
+          { type: 'stderr', content: `touch: cannot create '${rawArg}': unsupported path.` },
           { type: 'system', content: '  Supported: tasks/<status>/..., sprints/..., schedules/..., project <name>' },
+        ],
+      }
+    }
+
+    // ── Dispatch: mkdir ───────────────────────────────────────────────────────
+    // "mkdir profile/files/..."     → mkdir-profile-file
+    this.handlers['mkdir'] = async (parsed, context): Promise<CommandResult> => {
+      const path = parsed.args[0]?.toLowerCase() ?? ''
+      
+      if (!path) {
+        return { lines: [{ type: 'stderr', content: 'mkdir: missing operand.' }] }
+      }
+
+      const resolved = this.vfs.resolve(path)
+      
+      if (resolved.startsWith('/profile/files/')) {
+        return this.handlers['mkdir-profile-file'](parsed, context)
+      }
+
+      return {
+        lines: [
+          { type: 'stderr', content: `mkdir: cannot create '${parsed.args[0]}': unsupported path.` },
+          { type: 'system', content: '  Supported: profile/files/<folder>' },
         ],
       }
     }
@@ -167,17 +208,38 @@ export class CommandRegistry {
       }
     }
 
-    // ── Aliases ────────────────────────────────────────────────────────────────
+    // ── Aliases ─────────────────────────────────────────────────────────────────────────────
+    // BUG-06 fix: use vfs.resolve() so relative filenames work when cwd is
+    // already inside /sprints (user types: start my-sprint__abc.json)
     this.handlers['start'] = async (parsed, context): Promise<CommandResult> => {
       const path = parsed.args[0] ?? ''
-      if (path.startsWith('sprints/')) return this.handlers['start-sprint'](parsed, context)
-      return { lines: [{ type: 'stderr', content: `start: unknown target. Did you mean: start sprints/<name>.json` }] }
+      const resolved = this.vfs.resolve(path)
+      if (resolved.startsWith('/sprints/')) return this.handlers['start-sprint'](parsed, context)
+      return { lines: [{ type: 'stderr', content: `start: unknown target. Did you mean: start sprints/<file>.json` }] }
     }
 
     this.handlers['close'] = async (parsed, context): Promise<CommandResult> => {
       const path = parsed.args[0] ?? ''
-      if (path.startsWith('sprints/')) return this.handlers['close-sprint'](parsed, context)
-      return { lines: [{ type: 'stderr', content: `close: unknown target. Did you mean: close sprints/<name>.json` }] }
+      const resolved = this.vfs.resolve(path)
+      if (resolved.startsWith('/sprints/')) return this.handlers['close-sprint'](parsed, context)
+      return { lines: [{ type: 'stderr', content: `close: unknown target. Did you mean: close sprints/<file>.json` }] }
+    }
+
+    // ── upload ────────────────────────────────────────────────────────────────
+    // "upload"                → upload to personal profile files
+    // "upload profile/files" → upload to personal profile files
+    // "upload projects/..."  → upload to current project files
+    this.handlers['upload'] = async (parsed, context): Promise<CommandResult> => {
+      return this.handlers['upload-file'](parsed, context)
+    }
+
+    // ── open ─────────────────────────────────────────────────────────────────
+    // "open profile"          → navigate to /profile
+    // "open profile/settings" → navigate to /settings
+    // "open change-password"  → navigate to /change-password
+    // "open activity"         → navigate to /activity
+    this.handlers['open'] = async (parsed, context): Promise<CommandResult> => {
+      return this.handlers['open-route'](parsed, context)
     }
   }
 

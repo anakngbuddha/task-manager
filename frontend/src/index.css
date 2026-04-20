@@ -144,6 +144,11 @@
     @apply underline-offset-4;
   }
 
+  main {
+    margin-bottom: var(--terminal-pinned-height, 0px);
+    transition: margin-bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
   html {
     @apply font-sans;
   }

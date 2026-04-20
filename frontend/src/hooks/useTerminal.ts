@@ -17,6 +17,8 @@
  * history survives floating ↔ pinned ↔ minimized transitions.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSession } from '@/lib/auth-client'
 import { VirtualFileSystem } from '@/lib/vfs/VirtualFileSystem'
 import { CommandRegistry, BANNER } from '@/lib/vfs/commandRegistry'
@@ -24,9 +26,10 @@ import { parseCommand } from '@/lib/vfs/parser'
 import type { OutputLine } from '@/components/terminal/TerminalOutput'
 import type { CommandContext } from '@/lib/vfs/commandTypes'
 
-let _lineCounter = 0
+// BUG-08 fix: crypto.randomUUID() is used instead of a module-global counter
+// to prevent duplicate IDs across concurrent terminal instances and after HMR.
 function nextId() {
-  return `line-${++_lineCounter}`
+  return `line-${crypto.randomUUID()}`
 }
 
 interface UseTerminalOptions {
@@ -62,6 +65,9 @@ export function useTerminalHook({
   onProjectSwitch,
 }: UseTerminalOptions): UseTerminalReturn {
   const { data: session } = useSession()
+  // BUG-10 fix: obtain the SPA navigate function so 'open' avoids page reloads
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   // ── Internal active project state ──────────────────────────────────────
   // These start from props but become independent after a terminal `cd` switch.
@@ -95,10 +101,26 @@ export function useTerminalHook({
   const vfsRef = useRef<VirtualFileSystem | null>(null)
   const registryRef = useRef<CommandRegistry | null>(null)
 
-  if (!vfsRef.current || vfsRef.current.projectId !== activeProjectId) {
+  // Initialize only on first mount — never during a render cycle.
+  // BUG-01 fix: constructing during render caused cwd resets on any re-render
+  // that temporarily changed activeProjectId (e.g. async role loading).
+  if (!vfsRef.current) {
     vfsRef.current = new VirtualFileSystem(activeProjectId)
-    registryRef.current = new CommandRegistry(vfsRef.current, activeProjectId)
+    registryRef.current = new CommandRegistry(vfsRef.current, navigate)
   }
+
+  // When the user navigates to a different project page via the URL (not via
+  // the terminal `cd` command — that mutates vfs.projectId directly), recreate
+  // the VFS so the directory resets to "/". This runs after paint so there is
+  // no risk of mid-render side-effects.
+  useEffect(() => {
+    if (vfsRef.current && vfsRef.current.projectId !== activeProjectId) {
+      vfsRef.current = new VirtualFileSystem(activeProjectId)
+      registryRef.current = new CommandRegistry(vfsRef.current, navigate)
+      setCwd('/')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProjectId])
 
   // Local output state (used when no external state provided)
   const [localLines, setLocalLines] = useState<OutputLine[]>([])
@@ -193,6 +215,13 @@ export function useTerminalHook({
         }
         // Notify parent for title bar / external UI updates
         onProjectSwitch?.(result.newProjectId, result.newProjectName, result.newUserRole ?? null)
+      }
+
+      // ── API Realtime sync (React Query Invalidation) ──────────
+      if (result.invalidations?.length) {
+        result.invalidations.forEach(queryKey => {
+          queryClient.invalidateQueries({ queryKey })
+        })
       }
 
       const newLines: OutputLine[] = result.lines.map((spec) => ({

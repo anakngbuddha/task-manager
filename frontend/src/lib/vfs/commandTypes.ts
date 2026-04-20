@@ -38,4 +38,6 @@ export interface CommandResult {
   newProjectId?: string
   newProjectName?: string
   newUserRole?: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER' | null
+  /** React Query keys to invalidate after this command runs */
+  invalidations?: any[][]
 }

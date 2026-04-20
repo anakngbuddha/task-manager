@@ -63,6 +63,13 @@ function tokenize(input: string): string[] {
   for (let i = 0; i < input.length; i++) {
     const ch = input[i]
 
+    // BUG-25 fix: handle escaped characters (like \") inside quotes
+    if (ch === '\\' && i + 1 < input.length) {
+      current += input[i + 1]
+      i++
+      continue
+    }
+
     if (ch === "'" && !inDouble) {
       inSingle = !inSingle
       continue

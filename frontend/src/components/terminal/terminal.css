@@ -32,7 +32,7 @@
 
 .term-overlay {
   position: fixed;
-  z-index: 9999;
+  z-index: 45;
   box-shadow: var(--term-shadow);
   border-radius: 8px;
   overflow: hidden;
@@ -80,10 +80,10 @@
 
 .term-overlay--pinned {
   position: fixed;
-  left: 0;
+  left: var(--sidebar-width, 0);
   right: 0;
   bottom: 0;
-  z-index: 9990;
+  z-index: 44;
   border-radius: 0;
   border-left: none;
   border-right: none;
@@ -133,9 +133,9 @@
 .term-minimized-bar {
   position: fixed;
   bottom: 0;
-  left: 50%;
+  left: calc(var(--sidebar-width, 0px) + (100vw - var(--sidebar-width, 0px)) / 2);
   transform: translateX(-50%);
-  z-index: 9990;
+  z-index: 44;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -200,7 +200,7 @@
   position: fixed;
   bottom: 1.5rem;
   right: 1.5rem;
-  z-index: 9988;
+  z-index: 43;
   display: flex;
   align-items: center;
   gap: 0.4rem;

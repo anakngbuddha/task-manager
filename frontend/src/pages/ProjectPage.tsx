@@ -349,6 +349,9 @@ export default function ProjectPage() {
                     <Link to={`/projects/${projectId}/activity`}>Project Logs</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
+                    <Link to={`/projects/${projectId}/files`}>Project Files</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link to={`/projects/${projectId}/github`}>GitHub Activity</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
@@ -534,7 +537,7 @@ export default function ProjectPage() {
           <Button
             type="button"
             size="sm"
-            className="fixed bottom-24 right-6 z-20 h-11 rounded-full px-4 shadow-lg"
+            className="fixed bottom-24 right-6 z-50 h-11 rounded-full px-4 shadow-lg"
             onClick={() => setChatOpen((prev) => !prev)}
           >
             <MessageCircle className="mr-2 size-4" />
@@ -542,7 +545,7 @@ export default function ProjectPage() {
           </Button>
 
           {chatOpen && (
-            <div className="fixed bottom-40 right-6 z-20 w-72 max-w-[92vw] overflow-hidden rounded-xl border border-border/70 bg-background/95 shadow-xl backdrop-blur">
+            <div className="fixed bottom-40 right-6 z-50 w-72 max-w-[92vw] overflow-hidden rounded-xl border border-border/70 bg-background/95 shadow-xl backdrop-blur">
               <div className="px-4 py-3">
                 <p className="text-sm font-medium">Messages moved</p>
                 <p className="mt-1 text-xs text-muted-foreground">

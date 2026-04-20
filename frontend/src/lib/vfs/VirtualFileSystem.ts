@@ -24,6 +24,9 @@ import {
   fetchTimelogTaskDirs,
   fetchTimelogFiles,
   fetchProjectFiles,
+  fetchActivityFiles,
+  fetchProfileSettings,
+  fetchProfileFiles,
 } from './dataAdapters'
 
 /** Pending project switch info — set by cd, cleared after read */
@@ -84,7 +87,7 @@ export class VirtualFileSystem {
       name: entry.label,
       path,
       type: 'dir',
-      entityType: entry.entityType as any,
+      entityType: entry.entityType,
       statusValue: entry.taskStatus,
     }
   }
@@ -104,14 +107,22 @@ export class VirtualFileSystem {
       const isWorkspace = this.projectId === '__workspace__'
       const filtered = childPaths.filter((p) => {
         if (isWorkspace) {
-          // Workspace level: show cross-user entities only  
-          // schedules & projects exist independently of a project
-          return p === '/projects' || p === '/schedules'
+          // Workspace level: show cross-user entities + activity/profile
+          return p === '/projects' || p === '/schedules' || p === '/activity' || p === '/profile'
         }
         // Inside a project: show everything EXCEPT /projects
         return p !== '/projects'
       })
       return filtered.map((p) => this.staticDir(p)!).filter(Boolean)
+    }
+
+    // Check if it's a dynamic timelogs directory first
+    if (target.startsWith('/timelogs/') && target.split('/').length === 3) {
+      const taskDirName = target.split('/')[2]
+      const taskDirs = await fetchTimelogTaskDirs(this.projectId)
+      const taskProxy = taskDirs.find((d) => d.name === taskDirName)
+      if (!taskProxy) throw new Error(`No such directory: ${target}`)
+      return this.listTimelogDir(taskProxy.entityId, target)
     }
 
     // Check if it's a static mount directory
@@ -157,6 +168,19 @@ export class VirtualFileSystem {
           })
         )
       }
+
+      case 'activity':
+        return await fetchActivityFiles(this.projectId)
+
+      case 'profile':
+        // /profile — return the sub-dirs (files) plus virtual settings/github nodes
+        return [
+          ...getMountChildren(target).map((p) => this.staticDir(p)!).filter(Boolean),
+          ...(await fetchProfileSettings()),
+        ]
+
+      case 'profile-files':
+        return await fetchProfileFiles()
 
       default:
         throw new Error(`Cannot list directory: ${target}`)
@@ -211,10 +235,15 @@ export class VirtualFileSystem {
             .replace(/[^a-z0-9_-]/g, '-')
             .slice(0, 40)
           const fullSlug = `${safeName}__${String(p.id).slice(0, 8)}_${(p.status ?? 'active').toLowerCase()}`
+          
+          // Symmetrical alphanumeric comparison to bypass special character failures
+          const cleanName = (p.name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+          const cleanSlug = slug.replace(/[^a-z0-9]/g, '')
+
           return (
             fullSlug === slug ||
-            safeName === slug ||
-            safeName.startsWith(slug) ||
+            (cleanSlug.length > 0 && cleanName === cleanSlug) ||
+            (cleanSlug.length > 0 && cleanName.startsWith(cleanSlug)) ||
             String(p.id).startsWith(slug)
           )
         })
@@ -291,6 +320,9 @@ export class VirtualFileSystem {
     if (parentPath === '/members') return fetchMemberFiles(this.projectId)
     if (parentPath === '/tags') return fetchTagFiles(this.projectId)
     if (parentPath === '/schedules') return fetchScheduleFiles(this.projectId)
+    if (parentPath === '/activity') return fetchActivityFiles(this.projectId)
+    if (parentPath === '/profile') return fetchProfileSettings()
+    if (parentPath === '/profile/files') return fetchProfileFiles()
 
     // /timelogs/<taskDirName>/<logFile>
     if (parts[0] === 'timelogs' && parts.length === 3) {
@@ -321,18 +353,27 @@ export class VirtualFileSystem {
     filters: Record<string, string>
   ): Promise<VFSFile[]> {
     const target = this.resolve(searchPath)
+    let matchedFiles: VFSFile[] = []
+
     const nodes = await this.listDir(target)
 
-    const files = nodes.filter((n): n is VFSFile => n.type === 'file')
-
-    return files.filter((f) => {
-      if (!f.data) return true
-      return Object.entries(filters).every(([key, value]) => {
-        const dataVal = (f.data as any)[key]
-        if (dataVal === undefined) return false
-        return String(dataVal).toLowerCase().includes(value.toLowerCase())
-      })
-    })
+    for (const node of nodes) {
+      if (node.type === 'file') {
+        let matches = true
+        if (Object.keys(filters).length > 0 && node.data) {
+          matches = Object.entries(filters).every(([key, value]) => {
+            const dataVal = (node.data as any)[key]
+            if (dataVal === undefined) return false
+            return String(dataVal).toLowerCase().includes(value.toLowerCase())
+          })
+        }
+        if (matches) matchedFiles.push(node)
+      } else if (node.type === 'dir' && node.name !== '.' && node.name !== '..') {
+        const subFiles = await this.find(`${target}/${node.name}`, filters)
+        matchedFiles = matchedFiles.concat(subFiles)
+      }
+    }
+    return matchedFiles
   }
 
   // ── Stat ──────────────────────────────────────────────────────────
@@ -342,16 +383,30 @@ export class VirtualFileSystem {
    */
   async stat(dirPath: string): Promise<Record<string, unknown>> {
     const target = this.resolve(dirPath)
-    const nodes = await this.listDir(target)
-
-    const dirs = nodes.filter((n) => n.type === 'dir').length
-    const files = nodes.filter((n) => n.type === 'file').length
+    
+    // Recursive stat helper
+    const countNodes = async (p: string): Promise<{ d: number, f: number }> => {
+      const nodes = await this.listDir(p)
+      let d = 0, f = 0
+      for (const node of nodes) {
+        if (node.type === 'file') f++
+        else if (node.type === 'dir' && node.name !== '.' && node.name !== '..') {
+          d++
+          const sub = await countNodes(`${p}/${node.name}`)
+          d += sub.d
+          f += sub.f
+        }
+      }
+      return { d, f }
+    }
+    
+    const { d, f } = await countNodes(target)
 
     return {
       path: target,
-      directories: dirs,
-      files,
-      total: nodes.length,
+      directories: d,
+      files: f,
+      total: d + f,
     }
   }
 }

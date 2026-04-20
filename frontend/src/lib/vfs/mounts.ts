@@ -6,10 +6,11 @@
  * task files, sprint files, etc.) are generated at runtime by
  * dataAdapters.ts based on live API data.
  */
+import type { VFSEntityType } from './types'
 
 export interface MountEntry {
   /** The entity type that owns this directory */
-  entityType: string
+  entityType: VFSEntityType
   /** Human-friendly label (used in ls listings) */
   label: string
   /** If this directory is a sub-filter of tasks, this is the status value */
@@ -107,6 +108,21 @@ export const MOUNT_TABLE: Record<string, MountEntry> = {
   '/projects': {
     entityType: 'projects',
     label: 'projects',
+    leaf: true,
+  },
+  '/activity': {
+    entityType: 'activity',
+    label: 'activity',
+    leaf: true,
+  },
+  '/profile': {
+    entityType: 'profile',
+    label: 'profile',
+    leaf: false,
+  },
+  '/profile/files': {
+    entityType: 'profile-files',
+    label: 'files',
     leaf: true,
   },
 }
