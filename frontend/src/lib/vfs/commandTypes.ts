@@ -23,6 +23,8 @@ export interface CommandContext {
   userRole: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER' | null
   /** The logged-in user info */
   user: { id: string; name?: string | null; email?: string | null } | null
+  /** Interactive prompt callback */
+  promptUser?: (msg: string) => Promise<string>
 }
 
 export type CommandHandler = (

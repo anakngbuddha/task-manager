@@ -130,6 +130,22 @@ export function useTerminalHook({
   const outputLines = externalLines ?? localLines
   const setOutputLines = onLinesChange ?? setLocalLines
 
+  const [isPrompting, setIsPrompting] = useState(false)
+  const promptResolveRef = useRef<((val: string) => void) | null>(null)
+
+  const promptUser = useCallback((msg: string): Promise<string> => {
+    const promptLine: OutputLine = { id: nextId(), type: 'system', content: msg }
+    setOutputLines((prev) => [...prev, promptLine])
+    setIsPrompting(true)
+    return new Promise<string>((resolve) => {
+      promptResolveRef.current = (val: string) => {
+        setIsPrompting(false)
+        promptResolveRef.current = null
+        resolve(val)
+      }
+    })
+  }, [setOutputLines])
+
   // Command history
   const historyRef = useRef<string[]>([])
   const historyPosRef = useRef(-1)
@@ -167,12 +183,22 @@ export function useTerminalHook({
       projectName: activeProjectName,
       userRole: activeUserRole ?? null,
       user: resolvedUser,
+      promptUser,
     }
-  }, [activeProjectId, activeProjectName, activeUserRole, session, userProp])
+  }, [activeProjectId, activeProjectName, activeUserRole, session, userProp, promptUser])
 
   // Execute a command
   const execute = useCallback(async (input: string) => {
     const trimmed = input.trim()
+
+    if (promptResolveRef.current) {
+      if (trimmed) {
+        setOutputLines((prev) => [...prev, { id: nextId(), type: 'echo', content: `> ${input}` }])
+        promptResolveRef.current(trimmed)
+      }
+      return
+    }
+
     if (!trimmed) return
 
     historyRef.current = [trimmed, ...historyRef.current.slice(0, 49)]
@@ -261,7 +287,7 @@ export function useTerminalHook({
     return hist[newPos]
   }, [])
 
-  return { outputLines, cwd, isLoading, execute, historyUp, historyDown, activeProjectName }
+  return { outputLines, cwd, isLoading: isLoading && !isPrompting, execute, historyUp, historyDown, activeProjectName }
 }
 
 // Keep old export name for backward compat (DashboardTerminal still uses useTerminal)

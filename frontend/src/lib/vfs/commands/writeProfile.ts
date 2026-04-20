@@ -65,7 +65,7 @@ export function createProfileWriteHandlers(
     // BUG-09 fix: promise now handles cancel via both the 'cancel' event and
     // a window 'focus' fallback so the terminal never freezes if the user
     // dismisses the system file picker without selecting a file.
-    'upload-file': async (parsed): Promise<CommandResult> => {
+    'upload-file': async (parsed, context): Promise<CommandResult> => {
       const pathArg = parsed.args[0] ?? ''
       const resolved = vfs.resolve(pathArg)
 
@@ -107,8 +107,16 @@ export function createProfileWriteHandlers(
             return resolveOnce({ lines: [{ type: 'system', content: 'upload: no file selected.' }] })
           }
 
-          if (!window.confirm(`Are you sure you want to upload "${file.name}"?`)) {
-            return resolveOnce({ lines: [{ type: 'system', content: 'upload: cancelled by user.' }] })
+          if (context.promptUser) {
+            const answer = await context.promptUser(`Are you sure you want to upload "${file.name}"? [Y/n]`)
+            if (answer.toLowerCase() !== 'y') {
+              return resolveOnce({ lines: [{ type: 'system', content: 'upload: cancelled by user.' }] })
+            }
+          } else {
+            // Fallback for non-interactive execution
+            if (!window.confirm(`Are you sure you want to upload "${file.name}"?`)) {
+              return resolveOnce({ lines: [{ type: 'system', content: 'upload: cancelled by user.' }] })
+            }
           }
 
           try {
