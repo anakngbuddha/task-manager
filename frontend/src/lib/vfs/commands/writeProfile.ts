@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import { authClient } from '@/lib/auth-client'
 import type { CommandHandler, CommandResult } from '../commandTypes'
 import type { VirtualFileSystem } from '../VirtualFileSystem'
 
@@ -7,6 +8,40 @@ export function createProfileWriteHandlers(
   navigate?: (path: string) => void
 ): Record<string, CommandHandler> {
   return {
+    'passwd': async (parsed): Promise<CommandResult> => {
+      const currentPassword = parsed.args[0]
+      const newPassword = parsed.args[1]
+
+      if (!currentPassword || !newPassword) {
+        return { 
+          lines: [
+            { type: 'stderr', content: 'passwd: missing arguments.' },
+            { type: 'system', content: '  Usage: passwd <currentPassword> <newPassword>' }
+          ] 
+        }
+      }
+
+      if (newPassword.length < 8) {
+        return { lines: [{ type: 'stderr', content: 'passwd: new password must be at least 8 characters long.' }] }
+      }
+
+      try {
+        const res = await authClient.changePassword({
+          newPassword,
+          currentPassword,
+          revokeOtherSessions: true,
+        })
+
+        if (res?.error) {
+          return { lines: [{ type: 'stderr', content: `passwd: ${res.error.message || 'failed to change password'}` }] }
+        }
+
+        return { lines: [{ type: 'success', content: '✓ Password changed successfully.' }] }
+      } catch (err: any) {
+        return { lines: [{ type: 'stderr', content: `passwd: ${err?.message || 'failed to change password'}` }] }
+      }
+    },
+
     'mkdir-profile-file': async (parsed): Promise<CommandResult> => {
       const pathArg = parsed.args[0]
       if (!pathArg) return { lines: [{ type: 'stderr', content: 'mkdir: missing folder name' }] }

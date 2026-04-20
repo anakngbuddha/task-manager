@@ -113,6 +113,11 @@ const HELP_TEXT: Record<string, string[]> = {
     '  Usage: archive',
   ],
   // ── Write — Profile & Files ───────────────────────────────────────
+  passwd: [
+    'Change your account password.',
+    '  Usage: passwd <currentPassword> <newPassword>',
+    '  Example: passwd myOldPass123 myNewPass456',
+  ],
   upload: [
     'Upload a file using the native browser file picker.',
     '  upload                    — upload to personal profile files',
