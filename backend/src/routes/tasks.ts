@@ -59,6 +59,7 @@ const createTaskSchema = z.object({
   // If explicitly 'null', task will not belong to any sprint.
   sprintId: z.string().nullable().optional(),
   parentId: z.string().nullable().optional(),
+  type: z.enum(['EPIC', 'STORY', 'TASK']).optional().default('TASK'),
   startDate: z.string().datetime().nullable().optional(),
   deadline: z.string().datetime({ message: 'Valid deadline is required' }).nullable().optional(),
   githubPrUrl: z.string().url().nullable().optional(),
@@ -72,10 +73,66 @@ const updateTaskSchema = z.object({
   assigneeId: z.string().nullable().optional(),
   // If null, clear sprint assignment.
   sprintId: z.string().nullable().optional(),
+  type: z.enum(['EPIC', 'STORY', 'TASK']).optional().default('TASK'),
+  parentId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
   deadline: z.string().datetime().nullable().optional(),
   githubPrUrl: z.string().url().nullable().optional(),
 })
+
+const hierarchyLevelMap: Record<string, number> = {
+  EPIC: 0, STORY: 1, TASK: 2
+};
+
+async function validateTaskParent({
+  childTaskId,
+  projectId,
+  parentId,
+  childHierarchyLevel,
+}: {
+  childTaskId?: string
+  projectId: string
+  parentId: string
+  childHierarchyLevel: number
+}) {
+  const parentTask = await prisma.task.findUnique({
+    where: { id: parentId },
+    select: { id: true, projectId: true, hierarchyLevel: true, parentId: true },
+  })
+
+  if (!parentTask) {
+    return { ok: false as const, error: 'Parent task not found' }
+  }
+  if (parentTask.projectId !== projectId) {
+    return { ok: false as const, error: 'Parent task must belong to the same project' }
+  }
+  if (childTaskId && parentTask.id === childTaskId) {
+    return { ok: false as const, error: 'A task cannot be its own parent' }
+  }
+  if (childHierarchyLevel <= parentTask.hierarchyLevel) {
+    return {
+      ok: false as const,
+      error: 'Invalid task hierarchy level. A child must have a strictly greater hierarchy level than its parent.',
+    }
+  }
+
+  // Reject cycles when re-parenting an existing task.
+  if (childTaskId) {
+    let cursor: string | null = parentTask.parentId ?? null
+    while (cursor) {
+      if (cursor === childTaskId) {
+        return { ok: false as const, error: 'Invalid hierarchy: cyclic parent relationship detected' }
+      }
+      const next = await prisma.task.findUnique({
+        where: { id: cursor },
+        select: { parentId: true },
+      })
+      cursor = next?.parentId ?? null
+    }
+  }
+
+  return { ok: true as const }
+}
 
 export async function taskRoutes(app: FastifyInstance) {
   app.get('/projects/:projectId/tasks', {
@@ -146,6 +203,20 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
+    const type = body.type || 'TASK';
+    const hierarchyLevel = hierarchyLevelMap[type as string];
+
+    if (body.parentId) {
+      const parentValidation = await validateTaskParent({
+        projectId: body.projectId,
+        parentId: body.parentId,
+        childHierarchyLevel: hierarchyLevel,
+      })
+      if (!parentValidation.ok) {
+        return reply.status(400).send({ error: parentValidation.error })
+      }
+    }
+
     const existingTask = await prisma.task.findFirst({
       where: { projectId: body.projectId, title: body.title }
     })
@@ -169,6 +240,8 @@ export async function taskRoutes(app: FastifyInstance) {
           startDate: body.startDate ? new Date(body.startDate) : null,
           deadline: body.deadline ? new Date(body.deadline) : null,
           parentId: body.parentId ?? null,
+          type: type as any,
+          hierarchyLevel,
         })
       }))
       
@@ -201,6 +274,8 @@ export async function taskRoutes(app: FastifyInstance) {
       startDate: body.startDate ? new Date(body.startDate) : null,
       deadline: body.deadline ? new Date(body.deadline) : null,
       parentId: body.parentId ?? null,
+      type: type as any,
+      hierarchyLevel,
     })
 
     await activityService.record({
@@ -245,10 +320,44 @@ export async function taskRoutes(app: FastifyInstance) {
     preHandler: authenticate,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
+    const rawBody = (req.body ?? {}) as Record<string, unknown>
     const body = updateTaskSchema.parse(req.body)
+    const typeProvided = Object.prototype.hasOwnProperty.call(rawBody, 'type')
+    if (!typeProvided) {
+      delete (body as any).type
+    }
 
     const existing = await taskService.getById(id)
     if (!existing) return reply.status(404).send({ error: 'Task not found' })
+
+    const updateType = body.type || existing.type;
+    const updateHierarchyLevel = hierarchyLevelMap[updateType as string];
+    const parentToCheck = body.parentId !== undefined ? body.parentId : existing.parentId;
+
+    if (parentToCheck) {
+      const parentValidation = await validateTaskParent({
+        childTaskId: id,
+        projectId: existing.projectId,
+        parentId: parentToCheck,
+        childHierarchyLevel: updateHierarchyLevel,
+      })
+      if (!parentValidation.ok) {
+        return reply.status(400).send({ error: parentValidation.error })
+      }
+    }
+
+    if (body.type) {
+      const children = await prisma.task.findMany({
+        where: { parentId: id },
+        select: { id: true, hierarchyLevel: true },
+      })
+      const invalidChild = children.find((child) => child.hierarchyLevel <= updateHierarchyLevel)
+      if (invalidChild) {
+        return reply.status(400).send({
+          error: 'Invalid task hierarchy level. Selected type is incompatible with one or more existing child tasks.',
+        })
+      }
+    }
 
     try {
       await requireProjectRole(existing.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER'])
@@ -299,6 +408,9 @@ export async function taskRoutes(app: FastifyInstance) {
     }
 
     const updateData: any = { ...body }
+    if (body.type || body.parentId !== undefined) {
+      updateData.hierarchyLevel = updateHierarchyLevel;
+    }
     if (normalizedStatus) {
       updateData.status = normalizedStatus
     }

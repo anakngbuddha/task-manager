@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE `task` ADD COLUMN `hierarchyLevel` INTEGER NOT NULL DEFAULT 2,
+    ADD COLUMN `type` ENUM('EPIC', 'STORY', 'TASK') NOT NULL DEFAULT 'TASK';

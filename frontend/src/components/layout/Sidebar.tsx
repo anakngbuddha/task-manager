@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronRight,
   FolderKanban,
+  FolderArchive,
   LayoutGrid,
   LogOut,
   PanelLeft,
@@ -268,6 +269,20 @@ export default function Sidebar() {
 
           {expanded && openSections.projects && (
             <div className="mt-1 ml-2 space-y-0.5 border-l border-sidebar-border/50 pl-3">
+              <Link
+                to="/projects/archive"
+                className={cn(
+                  'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors',
+                  location.pathname === '/projects/archive'
+                    ? 'bg-primary/15 text-sidebar-foreground ring-1 ring-primary/25'
+                    : 'text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                )}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <FolderArchive className="size-3.5" />
+                  Archived
+                </span>
+              </Link>
               {projects.length === 0 ? (
                 <p className="py-1.5 text-xs text-sidebar-foreground/50">No projects yet</p>
               ) : (

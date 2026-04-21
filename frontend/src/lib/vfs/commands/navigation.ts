@@ -112,6 +112,34 @@ const HELP_TEXT: Record<string, string[]> = {
     '[MASTER_ADMIN, PROJECT_MANAGER] Mark the current project as completed.',
     '  Usage: archive',
   ],
+  'project-close': [
+    '[MASTER_ADMIN, PROJECT_MANAGER] Close a project as completed.',
+    '  Usage: project-close [projectId]',
+  ],
+  'close-project': [
+    '[MASTER_ADMIN, PROJECT_MANAGER] Alias of project-close.',
+    '  Usage: close-project [projectId]',
+  ],
+  'project-axe': [
+    '[MASTER_ADMIN, PROJECT_MANAGER] Discontinue a project (AXED).',
+    '  Usage: project-axe [projectId]',
+  ],
+  'axe-project': [
+    '[MASTER_ADMIN, PROJECT_MANAGER] Alias of project-axe.',
+    '  Usage: axe-project [projectId]',
+  ],
+  'project-reopen': [
+    '[MASTER_ADMIN, PROJECT_MANAGER] Re-open a completed or axed project.',
+    '  Usage: project-reopen [projectId]',
+  ],
+  'reopen-project': [
+    '[MASTER_ADMIN, PROJECT_MANAGER] Alias of project-reopen.',
+    '  Usage: reopen-project [projectId]',
+  ],
+  'project-report': [
+    'List all projects and every task with pending/completed state.',
+    '  Usage: project-report',
+  ],
   // ── Write — Profile & Files ───────────────────────────────────────
   passwd: [
     'Change your account password.',
@@ -130,6 +158,7 @@ const HELP_TEXT: Record<string, string[]> = {
     '  open profile/settings     — go to settings',
     '  open change-password      — go to change-password page',
     '  open activity             — go to the activity feed',
+    '  open projects/archive     — go to completed/axed projects',
   ],
 }
 

@@ -130,6 +130,8 @@ model Task {
   projectId                String
   assigneeId               String?
   sprintId                 String?
+  type                     TaskType                  @default(TASK)
+  hierarchyLevel           Int                       @default(2)
   parentId                 String?
   startDate                DateTime?
   deadline                 DateTime?
@@ -141,8 +143,8 @@ model Task {
   project                  Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignee                 User?                     @relation(fields: [assigneeId], references: [id])
   sprint                   Sprint?                   @relation(fields: [sprintId], references: [id], onDelete: SetNull)
-  parent                   Task?                     @relation("TaskSubtasks", fields: [parentId], references: [id], onDelete: Cascade)
-  subtasks                 Task[]                    @relation("TaskSubtasks")
+  parent                   Task?                     @relation("TaskHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children                 Task[]                    @relation("TaskHierarchy")
   timeLogs                 TimeLog[]
   comments                 TaskComment[]
   blockingTasks            TaskDependency[]          @relation("BlockingTasks")
@@ -353,6 +355,7 @@ enum SprintStatus {
 enum ProjectStatus {
   ACTIVE
   COMPLETED
+  AXED
 }
 
 enum Priority {
@@ -360,6 +363,12 @@ enum Priority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum TaskType {
+  EPIC
+  STORY
+  TASK
 }
 
 enum UserStatus {

@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js'
 type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE' | 'READY'
 const TASK_STATUSES: TaskStatus[] = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
 const COMPLETED_STATUSES: TaskStatus[] = ['DONE', 'READY']
+const FINISHED_PROJECT_STATUSES = new Set(['COMPLETED', 'AXED'])
 const MS_PER_HOUR = 1000 * 60 * 60
 
 function countActiveMembers(projects: any[]): number {
@@ -129,7 +130,7 @@ export const projectService = {
         totalTasks,
         doneTasks: doneTasksCount,
         completionPct: totalTasks > 0 ? (doneTasksCount / totalTasks) * 100 : 0,
-        isFinished: (p as any).status === 'COMPLETED',
+        isFinished: FINISHED_PROJECT_STATUSES.has((p as any).status),
         members: mapProjectMembers((p as any).members),
         taskCountsByStatus: statusMap[p.id],
         avgCompletionHours: avgHoursMap[p.id],

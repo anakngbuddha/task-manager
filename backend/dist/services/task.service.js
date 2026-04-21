@@ -3,10 +3,11 @@ const DONE_STATUSES = ['DONE', 'READY'];
 export const taskService = {
     async getAll(projectId) {
         return prisma.task.findMany({
-            where: { projectId, parentId: null },
+            where: { projectId },
             include: {
                 assignee: true,
-                subtasks: { include: { assignee: true } },
+                children: { select: { id: true, title: true, type: true, status: true } },
+                parent: { select: { id: true, title: true, type: true } },
                 blockingTasks: { include: { blockedTask: true } },
                 blockedByTasks: { include: { blockingTask: true } },
                 tags: { include: { tag: true } },
@@ -20,7 +21,8 @@ export const taskService = {
             include: {
                 assignee: true,
                 project: true,
-                subtasks: { include: { assignee: true } },
+                parent: { select: { id: true, title: true, type: true } },
+                children: { select: { id: true, title: true, type: true, status: true } },
             },
         });
     },
@@ -28,7 +30,7 @@ export const taskService = {
         const completedAt = data.status && DONE_STATUSES.includes(data.status) ? new Date() : null;
         return prisma.task.create({
             data: { ...data, completedAt },
-            include: { assignee: true, subtasks: true },
+            include: { assignee: true, children: true, parent: true },
         });
     },
     async update(id, data) {

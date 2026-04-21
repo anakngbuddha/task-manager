@@ -24,6 +24,8 @@ import TagInput from '@/components/board/TagInput'
 import { useTaskTags } from '@/hooks/useTaskTags'
 import { FileExplorerDialog } from '@/components/files/FileExplorerDialog'
 import { useTaskAttachments, useLinkTaskAttachment, useUnlinkTaskAttachment, type FileNode } from '@/hooks/useFiles'
+import { TASK_TYPE_CONFIG, VALID_PARENT_TYPES } from '@/lib/taskTypes'
+import type { TaskType } from '@/lib/taskTypes'
 
 function sanitizeUrl(url: string): string {
   try {
@@ -117,6 +119,9 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const [logDate, setLogDate] = useState(getTodayLocalDateForInput())
   const [logError, setLogError] = useState('')
   const [githubPrUrl, setGithubPrUrl] = useState('')
+  const [taskTypeEdit, setTaskTypeEdit] = useState<TaskType>('TASK')
+  const [openChildTask, setOpenChildTask] = useState<any>(null)
+  const typeConfig = TASK_TYPE_CONFIG[((task?.type as TaskType) ?? 'TASK')]
 
   const { data: comments = [] } = useTaskComments(task?.id)
   const addComment = useAddTaskComment()
@@ -207,6 +212,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       setLogDate(getTodayLocalDateForInput())
       setLogError('')
       setGithubPrUrl(task.githubPrUrl ?? '')
+      setTaskTypeEdit((task.type as TaskType) ?? 'TASK')
     }
   }, [task])
 
@@ -234,6 +240,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
       sprintId: sprintId === 'NONE' ? null : sprintId,
       deadline: deadline ? new Date(deadline).toISOString() : null,
       githubPrUrl: githubPrUrl.trim() || null,
+      type: taskTypeEdit,
     })
     onClose()
   }
@@ -241,6 +248,18 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const handleDelete = async () => {
     await deleteTask.mutateAsync({ id: task.id, projectId })
     onClose()
+  }
+
+  const handleInlineTypeChange = async (nextType: TaskType) => {
+    if (!task?.id || !projectId || nextType === ((task?.type as TaskType) ?? 'TASK')) return
+    const hasChildren = (task?.children?.length ?? 0) > 0
+    if (hasChildren && !window.confirm('Changing type may affect child tasks. Are you sure?')) return
+    await updateTask.mutateAsync({
+      id: task.id,
+      projectId,
+      type: nextType,
+    })
+    setTaskTypeEdit(nextType)
   }
 
   const filteredMembers = useMemo(() => {
@@ -318,7 +337,14 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                   {mode === 'edit' ? 'Edit task' : 'Task details'}
                 </DialogTitle>
                 {mode === 'view' && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded ${typeConfig.badgeColor} ${typeConfig.textColor}`}>
+                        {typeConfig.icon} {typeConfig.label}
+                      </span>
+                      <h2 className="text-base font-semibold">{task?.title}</h2>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
                     <Badge
                       variant="outline"
                       className={`rounded-none border-border/60 px-2 py-0.5 text-xs ${statusBadge[status] ?? ''}`}
@@ -344,6 +370,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                         Assigned to <span className="text-foreground">{task.assignee.name ?? task.assignee.email}</span>
                       </span>
                     )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -394,6 +421,46 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
         {mode === 'view' ? (
           <div className="min-h-[28rem] max-h-[72vh] overflow-auto px-5 py-6 space-y-4">
             <div className="grid gap-4">
+              <div className="border border-border/60 bg-card p-5">
+                <p className="text-xs font-medium text-muted-foreground mb-3">Properties</p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-sm text-muted-foreground">Type</span>
+                    <Select
+                      value={((task?.type as TaskType) ?? 'TASK')}
+                      onValueChange={(v) => handleInlineTypeChange(v as TaskType)}
+                    >
+                      <SelectTrigger className="h-8 w-[220px] rounded-none">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(['EPIC', 'STORY', 'TASK'] as TaskType[]).map((t) => {
+                          const cfg = TASK_TYPE_CONFIG[t]
+                          return (
+                            <SelectItem key={t} value={t}>
+                              <span className="flex items-center gap-1.5">{cfg.icon} {cfg.label}</span>
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {task?.parentId && task?.parent && (
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-sm text-muted-foreground">Parent</span>
+                      <button
+                        type="button"
+                        className="text-sm text-primary hover:underline truncate"
+                        onClick={() => setOpenChildTask(task.parent)}
+                      >
+                        {TASK_TYPE_CONFIG[(task.parent.type as TaskType) ?? 'TASK']?.icon} {task.parent.title}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="border border-border/60 bg-card p-5">
                 <p className="text-xs font-medium text-muted-foreground">Title</p>
                 <p className="mt-2 text-base font-medium leading-snug">{title}</p>
@@ -550,28 +617,34 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                 </div>
               </div>
 
+              {task?.children?.length > 0 && (
               <div className="border border-border/60 bg-card p-5">
-                <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1">Subtasks</p>
+                <p className="text-xs font-medium text-muted-foreground mb-3 flex items-center gap-1">Child tasks ({task.children.length})</p>
                 <div className="space-y-3">
-                  {task?.subtasks?.length > 0 ? (
-                    <div className="space-y-2">
-                       {task.subtasks.map((st: any) => (
-                          <div key={st.id} className="flex items-center justify-between text-sm bg-muted/10 p-2 border border-border/40">
-                             <div className="flex items-center gap-3">
-                                <Badge variant="outline" className={`text-[10px] uppercase rounded-sm px-1.5 ${st.status === 'DONE' ? 'bg-emerald-500/20 text-emerald-700 border-emerald-500/30' : ''}`}>{st.status}</Badge>
-                                <span className={st.status === 'DONE' ? 'line-through text-muted-foreground' : ''}>{st.title}</span>
-                             </div>
-                             <div className="flex items-center gap-2">
-                               {st.assignee && (
-                                 <span className="text-[10px] text-muted-foreground">@{st.assignee.name || st.assignee.email}</span>
-                               )}
-                             </div>
+                  <div className="space-y-2">
+                    {task.children.map((st: any) => {
+                      const childType = (st.type as TaskType) ?? 'TASK'
+                      const childConfig = TASK_TYPE_CONFIG[childType]
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          className="w-full flex items-center justify-between text-sm bg-muted/10 p-2 border border-border/40 hover:bg-muted/20"
+                          onClick={() => setOpenChildTask(st)}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${childConfig.badgeColor} ${childConfig.textColor}`}>
+                              {childConfig.icon} {childConfig.label}
+                            </span>
+                            <span className="truncate text-left">{st.title}</span>
                           </div>
-                       ))}
-                    </div>
-                  ) : (
-                     <p className="text-xs text-muted-foreground italic mb-2">No subtasks.</p>
-                  )}
+                          <Badge variant="outline" className="text-[10px] uppercase rounded-sm px-1.5">
+                            {st.status}
+                          </Badge>
+                        </button>
+                      )
+                    })}
+                  </div>
 
                   {canManageTasks && (
                     <div className="flex flex-col gap-2 mt-3 pt-3 border-t border-border/40">
@@ -590,6 +663,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                                status: 'TODO',
                                priority: 'MEDIUM',
                                parentId: task.id,
+                               type: 'TASK',
+                               sprintId: task?.sprintId ?? null,
                              })
                              setNewSubtaskTitle('')
                              setNewSubtaskDescription('')
@@ -612,6 +687,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                                  status: 'TODO',
                                  priority: 'MEDIUM',
                                  parentId: task.id,
+                                 type: 'TASK',
+                                 sprintId: task?.sprintId ?? null,
                                })
                                setNewSubtaskTitle('')
                                setNewSubtaskDescription('')
@@ -630,6 +707,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                                status: 'TODO',
                                priority: 'MEDIUM',
                                parentId: task.id,
+                               type: 'TASK',
+                               sprintId: task?.sprintId ?? null,
                              })
                              setNewSubtaskTitle('')
                              setNewSubtaskDescription('')
@@ -642,6 +721,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                   )}
                 </div>
               </div>
+              )}
             </div>
 
             <div className="border border-border/60 bg-card p-5">
@@ -811,6 +891,32 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
+                <Label>Type</Label>
+                <Select
+                  value={taskTypeEdit}
+                  onValueChange={(v) => {
+                    const hasChildren = task?.children?.length > 0
+                    if (hasChildren && !window.confirm('Changing type may affect child tasks. Are you sure?')) return
+                    setTaskTypeEdit(v as TaskType)
+                  }}
+                >
+                  <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(['EPIC', 'STORY', 'TASK'] as TaskType[]).map((t) => {
+                      const cfg = TASK_TYPE_CONFIG[t]
+                      return (
+                        <SelectItem key={t} value={t}>
+                          <span className="flex items-center gap-1.5">{cfg.icon} {cfg.label}</span>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+                {VALID_PARENT_TYPES[taskTypeEdit].length === 0 && (
+                  <p className="text-[11px] text-muted-foreground">⚡ Epics span multiple sprints</p>
+                )}
+              </div>
+              <div className="space-y-1">
                 <Label>Status</Label>
                 <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger className="h-10 rounded-none"><SelectValue /></SelectTrigger>
@@ -913,6 +1019,17 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
               </Button>
             </div>
           </div>
+        )}
+
+        {/* Nested child-task dialog */}
+        {openChildTask && (
+          <TaskDialog
+            task={allTasks.find((t: any) => t.id === openChildTask.id) ?? openChildTask}
+            projectId={projectId}
+            projectMembers={projectMembers}
+            open={!!openChildTask}
+            onClose={() => setOpenChildTask(null)}
+          />
         )}
       </DialogContent>
 

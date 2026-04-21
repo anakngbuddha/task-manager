@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import AuthLayout from './components/layout/AuthLayout'
 import DashboardPage from './pages/DashboardPage'
+import ArchivedProjectsPage from './pages/ArchivedProjectsPage'
 import ProjectPage from './pages/ProjectPage'
 import ProjectMessagesPage from './pages/ProjectMessagesPage'
 import ProjectTimeReportPage from './pages/ProjectTimeReportPage'
@@ -89,6 +90,11 @@ export default function App() {
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <DashboardPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/archive" element={
+          <ProtectedRoute>
+            <ArchivedProjectsPage />
           </ProtectedRoute>
         } />
         <Route path="/activity" element={

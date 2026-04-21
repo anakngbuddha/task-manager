@@ -166,12 +166,13 @@ export function createProfileWriteHandlers(
         'profile': '/profile',
         'profile/settings': '/settings',
         'change-password': '/change-password',
-        'activity': '/activity'
+        'activity': '/activity',
+        'projects/archive': '/projects/archive',
       }
 
       const route = routes[target] ?? routes[target.replace(/^\//, '')]
       if (!route) {
-        return { lines: [{ type: 'stderr', content: `open: unknown destination '${target}'. Valid: profile, profile/settings, change-password, activity.` }] }
+        return { lines: [{ type: 'stderr', content: `open: unknown destination '${target}'. Valid: profile, profile/settings, change-password, activity, projects/archive.` }] }
       }
 
       // BUG-10 fix: use SPA navigate when available to avoid full page reload.

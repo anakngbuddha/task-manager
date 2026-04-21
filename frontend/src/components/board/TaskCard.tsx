@@ -3,6 +3,8 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { TagPill } from '@/components/board/TagInput'
 import type { Tag } from '@/hooks/useTaskTags'
+import { TASK_TYPE_CONFIG } from '@/lib/taskTypes'
+import type { TaskType } from '@/lib/taskTypes'
 
 const columnBorderColors: Record<string, string> = {
   TODO: 'border-blue-500',
@@ -34,11 +36,14 @@ export default function TaskCard({ task, onClick, onTagClick }: {
     opacity: isDragging ? 0.4 : 1,
   }
 
-  const borderColor = columnBorderColors[task.status] || 'border-border'
+  const typeKey: TaskType = task.type ?? 'TASK'
+  const typeConfig = TASK_TYPE_CONFIG[typeKey]
+
+  const columnBorderColor = columnBorderColors[task.status] || 'border-border'
   const progressBgColor = columnBgColors[task.status] || 'bg-primary'
 
-  const totalSubtasks = task.subtasks?.length || 0
-  const completedSubtasks = task.subtasks?.filter((t: any) => t.status === 'DONE' || t.status === 'READY').length || 0
+  const totalSubtasks = task.children?.length || 0
+  const completedSubtasks = task.children?.filter((t: any) => t.status === 'DONE' || t.status === 'READY').length || 0
   const progressPercent = totalSubtasks > 0 ? (completedSubtasks / totalSubtasks) * 100 : 0
 
   return (
@@ -48,8 +53,9 @@ export default function TaskCard({ task, onClick, onTagClick }: {
       className={[
         'group cursor-pointer rounded-lg bg-card shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md',
         isDragging ? 'shadow-none z-50' : '',
-        'border',
-        borderColor,
+        'border-t border-r border-b border-l-2',
+        columnBorderColor,
+        typeConfig.borderColor,
       ].join(' ')}
       onClick={() => {
         if (!isDragging) onClick(task)
@@ -57,7 +63,22 @@ export default function TaskCard({ task, onClick, onTagClick }: {
       {...attributes}
       {...listeners}
     >
-      <div className="p-3.5 flex flex-col gap-3">
+      <div className="p-3.5 flex flex-col gap-2.5">
+        {/* Type badge */}
+        <div className="flex items-center gap-1.5">
+          <span className={`inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded ${typeConfig.badgeColor} ${typeConfig.textColor}`}>
+            <span>{typeConfig.icon}</span>
+            <span>{typeConfig.label}</span>
+          </span>
+        </div>
+
+        {/* Parent reference */}
+        {task.parent && (
+          <span className="text-[11px] text-muted-foreground truncate leading-tight">
+            {TASK_TYPE_CONFIG[task.parent.type as TaskType]?.icon ?? ''} {task.parent.title}
+          </span>
+        )}
+
         {/* Title */}
         <h3 className="text-[13px] font-semibold leading-snug line-clamp-2 text-foreground">
           {task.title}
@@ -82,11 +103,11 @@ export default function TaskCard({ task, onClick, onTagClick }: {
           </div>
         )}
 
-        {/* Subtasks Progress */}
+        {/* Children Progress */}
         {totalSubtasks > 0 && (
           <div className="flex flex-col gap-1.5">
             <div className="text-[11px] font-medium text-muted-foreground">
-              {completedSubtasks}/{totalSubtasks} subtasks
+              {completedSubtasks}/{totalSubtasks} child tasks
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
               <div

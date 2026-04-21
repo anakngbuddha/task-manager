@@ -130,7 +130,7 @@ export async function projectRoutes(app: FastifyInstance) {
 
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  status: z.enum(['ACTIVE', 'COMPLETED']).optional(),
+  status: z.enum(['ACTIVE', 'COMPLETED', 'AXED']).optional(),
   boardColumns: z.array(z.string()).optional(),
   githubStatusMap: z.record(z.string(), z.string().nullable()).nullable().optional(),
 })

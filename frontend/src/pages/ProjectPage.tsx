@@ -36,6 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { TASK_TYPE_CONFIG } from '@/lib/taskTypes'
 
 const COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
 const STATUS_LABELS: Record<string, string> = {
@@ -44,6 +45,11 @@ const STATUS_LABELS: Record<string, string> = {
   IN_REVIEW: 'In Review',
   DONE: 'Done',
   READY: 'Ready',
+}
+const PROJECT_STATUS_STYLE: Record<string, string> = {
+  ACTIVE: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30',
+  COMPLETED: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
+  AXED: 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30',
 }
 
 export default function ProjectPage() {
@@ -77,6 +83,7 @@ export default function ProjectPage() {
   const [completeSprintOpen, setCompleteSprintOpen] = useState(false)
   const [boardView, setBoardView] = useState<'SPRINT' | 'BACKLOG'>('SPRINT')
   const [selectedTag, setSelectedTag] = useState<Tag | null>(null)
+  const [selectedEpicId, setSelectedEpicId] = useState<string>('ALL')
 
   const sensors = useSensors(useSensor(PointerSensor, {
     activationConstraint: { distance: 5 },
@@ -166,11 +173,20 @@ export default function ProjectPage() {
         Array.isArray(t.tags) && t.tags.some((tt: any) => tt.tag?.id === selectedTag.id)
       )
     }
+    if (selectedEpicId !== 'ALL') {
+      tasks = tasks.filter((t: any) =>
+        t.id === selectedEpicId ||
+        t.parentId === selectedEpicId ||
+        (t.parent && t.parent.id === selectedEpicId)
+      )
+    }
     return tasks
-  }, [localTasks, currentSprint, boardView, selectedTag])
+  }, [localTasks, currentSprint, boardView, selectedTag, selectedEpicId])
 
   const projectColumns = project?.boardColumns || COLUMNS
   const firstProjectColumn = projectColumns[0] ?? 'TODO'
+  const epics = useMemo(() => localTasks.filter((t: any) => t.type === 'EPIC'), [localTasks])
+  const selectedEpic = useMemo(() => epics.find((e: any) => e.id === selectedEpicId) ?? null, [epics, selectedEpicId])
   const isBoardReady = useMemo(() => {
     if (!localTasks.length) return false
     const lastCol = projectColumns[projectColumns.length - 1]
@@ -245,8 +261,9 @@ export default function ProjectPage() {
     (project?.members ?? []).find((m: any) => m.userId === myId)?.role
     ?? (members ?? []).find((m: any) => m.userId === myId)?.role
   const canManageRoles = effectiveMyRole === 'MASTER_ADMIN' || effectiveMyRole === 'PROJECT_MANAGER'
-  const canCreateTask = canManageRoles
-  const canMoveTasks = canManageRoles
+  const isProjectActive = project?.status === 'ACTIVE'
+  const canCreateTask = canManageRoles && isProjectActive
+  const canMoveTasks = canManageRoles && isProjectActive
 
   const sprintRangeText = useMemo(() => {
     if (!currentSprint) return null
@@ -307,12 +324,14 @@ export default function ProjectPage() {
                         status: firstProjectColumn,
                         projectId: projectId!,
                         parentId: created.id,
+                        type: 'TASK',
+                        sprintId: data.sprintId ?? null,
                       })
                     }
                   }
                 }}
                 defaultStatus={firstProjectColumn}
-                defaultSprintId={currentSprint?.id ?? 'NONE'}
+                allTasks={localTasks}
               />
 
               <CreateSprintDialog
@@ -373,24 +392,50 @@ export default function ProjectPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {canManageRoles && project?.status !== 'COMPLETED' && (
+              {canManageRoles && project?.status === 'ACTIVE' && (
+                <>
+                  <Button
+                    title={isBoardReady ? '' : `All tasks must be marked as ${STATUS_LABELS[projectColumns[projectColumns.length - 1]] || projectColumns[projectColumns.length - 1]} to complete the project.`}
+                    variant="outline"
+                    className="h-9 gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                    onClick={async () => {
+                      if (window.confirm('Are you sure you want to mark this project as completed?')) {
+                        await updateProject.mutateAsync({ id: projectId!, data: { status: 'COMPLETED' } })
+                      }
+                    }}
+                    disabled={updateProject.isPending || !isBoardReady}
+                  >
+                    Project Complete
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="h-9 gap-2 border-rose-500/30 text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                    onClick={async () => {
+                      if (window.confirm('Are you sure you want to discontinue (axe) this project?')) {
+                        await updateProject.mutateAsync({ id: projectId!, data: { status: 'AXED' } })
+                      }
+                    }}
+                    disabled={updateProject.isPending}
+                  >
+                    Discontinue
+                  </Button>
+                </>
+              )}
+              {canManageRoles && (project?.status === 'COMPLETED' || project?.status === 'AXED') && (
                 <Button
-                  title={isBoardReady ? '' : `All tasks must be marked as ${STATUS_LABELS[projectColumns[projectColumns.length - 1]] || projectColumns[projectColumns.length - 1]} to complete the project.`}
                   variant="outline"
-                  className="h-9 gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                  className="h-9"
                   onClick={async () => {
-                    if (window.confirm('Are you sure you want to mark this project as completed?')) {
-                      await updateProject.mutateAsync({ id: projectId!, data: { status: 'COMPLETED' } })
-                    }
+                    await updateProject.mutateAsync({ id: projectId!, data: { status: 'ACTIVE' } })
                   }}
-                  disabled={updateProject.isPending || !isBoardReady}
+                  disabled={updateProject.isPending}
                 >
-                  Project Complete
+                  Re-open Project
                 </Button>
               )}
-              {project?.status === 'COMPLETED' && (
-                <Badge variant="secondary" className="h-9 px-3 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30">
-                  Completed
+              {project?.status && (
+                <Badge variant="secondary" className={`h-9 px-3 ${PROJECT_STATUS_STYLE[project.status] ?? ''}`}>
+                  {project.status}
                 </Badge>
               )}
             </>
@@ -419,6 +464,39 @@ export default function ProjectPage() {
                       <button onClick={() => setBoardView('SPRINT')} className={boardView === 'SPRINT' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Sprint Tasks</button>
                       <button onClick={() => setBoardView('BACKLOG')} className={boardView === 'BACKLOG' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Non-Sprint Tasks</button>
                     </div>
+
+                    {/* Epic filter dropdown */}
+                    <Select value={selectedEpicId} onValueChange={setSelectedEpicId}>
+                      <SelectTrigger id="epic-filter-dropdown" className="h-9 w-[220px] bg-background border-border">
+                        <SelectValue placeholder="All Epics" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All Epics</SelectItem>
+                        {epics.map((epic: any) => (
+                          <SelectItem key={epic.id} value={epic.id}>
+                            <span className="flex items-center gap-1.5">
+                              <span>{TASK_TYPE_CONFIG.EPIC.icon}</span>
+                              <span className="truncate max-w-[145px]">{epic.title}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    {/* Epic filter banner */}
+                    {selectedEpicId !== 'ALL' && selectedEpic && (
+                      <div id="epic-filter-banner" className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md ${TASK_TYPE_CONFIG.EPIC.badgeColor} ${TASK_TYPE_CONFIG.EPIC.textColor}`}>
+                        <span>{TASK_TYPE_CONFIG.EPIC.icon} Filtering by Epic: <strong>{selectedEpic.title}</strong></span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEpicId('ALL')}
+                          className="ml-auto text-xs opacity-70 hover:opacity-100 transition-opacity"
+                          aria-label="Clear epic filter"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
 
                     {/* Tag filter bar */}
                     {selectedTag && (

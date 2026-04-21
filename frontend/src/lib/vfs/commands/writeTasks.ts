@@ -13,8 +13,11 @@ import { assertVFSRole, authDeniedLines } from '../vfsAuth'
 import type { CommandHandler, CommandResult } from '../commandTypes'
 import type { VirtualFileSystem } from '../VirtualFileSystem'
 import { STATUS_PATH_MAP } from '../mounts'
+import { TASK_TYPE_CONFIG, VALID_PARENT_TYPES } from '@/lib/taskTypes'
+import type { TaskType } from '@/lib/taskTypes'
 
 const WRITE_ROLES = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
+const VALID_TASK_TYPES: TaskType[] = ['EPIC', 'STORY', 'TASK']
 
 /**
  * Resolve a filename-encoded entity id from a .json file name.
@@ -32,7 +35,8 @@ export function createTaskWriteHandlers(
   return {
     // ── touch task ────────────────────────────────────────────────────────────
     // Usage: touch tasks/<status>/<title>.json --priority=HIGH [--project=<id>]
-    //        --assignee=<email> --deadline=2025-12-31T00:00:00.000Z [--description=<text>] [--sprint=<sprint-name>]
+    //        --type=epic|story|task --sprint=<sprint-name|none>
+    //        --assignee=<email> --deadline=2025-12-31T00:00:00.000Z [--description=<text>] [--parent=<task-id>]
     'touch-task': async (parsed, context): Promise<CommandResult> => {
       try { assertVFSRole(context.userRole, [...WRITE_ROLES], 'touch task') }
       catch (e: any) { return { lines: authDeniedLines(context.userRole, [...WRITE_ROLES], 'touch task') } }
@@ -103,9 +107,65 @@ export function createTaskWriteHandlers(
         return { lines: [{ type: 'stderr', content: `touch: invalid priority "${priority}". Use LOW, MEDIUM, HIGH, or URGENT.` }] }
       }
 
-      // ── REQUIRED: --assignee ────────────────────────────────────────────────
+      // ── REQUIRED: --type (epic|story|task|normal-task) ─────────────────────
+      const rawTypeInput = flags['type'] as string | undefined
+      if (!rawTypeInput) {
+        return {
+          lines: [
+            { type: 'stderr', content: 'Error: --type must be one of: epic, story, task' },
+          ],
+        }
+      }
+      const normalizedTypeInput = rawTypeInput.toLowerCase().replace(/[\s_-]+/g, '')
+      const mappedType: TaskType | null =
+        normalizedTypeInput === 'epic' ? 'EPIC' :
+        normalizedTypeInput === 'story' ? 'STORY' :
+        (normalizedTypeInput === 'task' || normalizedTypeInput === 'normaltask' || normalizedTypeInput === 'normal')
+          ? 'TASK'
+          : null
+      if (!mappedType || !VALID_TASK_TYPES.includes(mappedType)) {
+        return {
+          lines: [
+            { type: 'stderr', content: 'Error: --type must be one of: epic, story, task' },
+          ],
+        }
+      }
+      const rawType = mappedType
+
+      // ── OPTIONAL: --parent ──────────────────────────────────────────────────
+      let parentId: string | undefined
+      const rawParent = flags['parent'] as string | undefined
+      if (rawParent) {
+        const allowedParentTypes = VALID_PARENT_TYPES[rawType]
+        if (allowedParentTypes.length === 0) {
+          return {
+            lines: [
+              { type: 'stderr', content: `Error: A ${rawType} cannot be a child of a none.` },
+              { type: 'stderr', content: `Valid parents for ${rawType}: none` },
+            ],
+          }
+        }
+        try {
+          const { data: parentTask } = await api.get(`/tasks/${rawParent}`)
+          if (!allowedParentTypes.includes(parentTask.type as TaskType)) {
+            return {
+              lines: [
+                { type: 'stderr', content: `Error: A ${rawType} cannot be a child of a ${parentTask.type}.` },
+                { type: 'stderr', content: `Valid parents for ${rawType}: ${allowedParentTypes.join(', ') || 'none'}` },
+              ],
+            }
+          }
+          parentId = String(parentTask.id)
+        } catch {
+          return { lines: [{ type: 'stderr', content: `touch: parent task not found: "${rawParent}"` }] }
+        }
+      }
+
+      // ── REQUIRED (non-Epic): --assignee ─────────────────────────────────────
       const rawAssignee = flags['assignee'] as string | undefined
-      if (!rawAssignee) {
+      // Epics are not strictly assigned to an individual — treat as optional
+      const isEpic = rawType === 'EPIC'
+      if (!rawAssignee && !isEpic) {
         return {
           lines: [
             { type: 'stderr', content: 'touch: --assignee=<email|everyone> is required.' },
@@ -140,9 +200,9 @@ export function createTaskWriteHandlers(
         }
       }
 
-      // ── REQUIRED: --deadline ────────────────────────────────────────────────
+      // ── REQUIRED (non-Epic): --deadline ─────────────────────────────────────
       const rawDeadline = flags['deadline'] as string | undefined
-      if (!rawDeadline) {
+      if (!rawDeadline && !isEpic) {
         return {
           lines: [
             { type: 'stderr', content: 'touch: --deadline=<datetime> is required.' },
@@ -151,24 +211,27 @@ export function createTaskWriteHandlers(
           ],
         }
       }
-      const d = new Date(rawDeadline)
-      if (isNaN(d.getTime())) {
-        return {
-          lines: [
-            { type: 'stderr', content: `touch: invalid deadline format: "${rawDeadline}"` },
-            { type: 'system', content: '  Example: --deadline="2026-12-31T23:59"' },
-          ],
+      let deadlineIso: string | null = null
+      if (rawDeadline) {
+        const d = new Date(rawDeadline)
+        if (isNaN(d.getTime())) {
+          return {
+            lines: [
+              { type: 'stderr', content: `touch: invalid deadline format: "${rawDeadline}"` },
+              { type: 'system', content: '  Example: --deadline="2026-12-31T23:59"' },
+            ],
+          }
         }
-      }
-      if (d.getTime() <= Date.now()) {
-        return {
-          lines: [
-            { type: 'stderr', content: 'touch: deadline cannot be in the past.' },
-            { type: 'system', content: `  You provided: ${d.toLocaleString()}` },
-          ],
+        if (d.getTime() <= Date.now()) {
+          return {
+            lines: [
+              { type: 'stderr', content: 'touch: deadline cannot be in the past.' },
+              { type: 'system', content: `  You provided: ${d.toLocaleString()}` },
+            ],
+          }
         }
+        deadlineIso = d.toISOString()
       }
-      const deadlineIso = d.toISOString()
 
       const body: Record<string, unknown> = {
         title: rawTitle,
@@ -177,17 +240,32 @@ export function createTaskWriteHandlers(
         priority,
         assigneeId,
         deadline: deadlineIso,
-        description: (flags['description'] as string) || ''
+        description: (flags['description'] as string) || '',
+        type: rawType,
+        ...(parentId ? { parentId } : {}),
       }
 
-      if (flags['sprint']) {
+      // ── REQUIRED: --sprint=<name|none> ──────────────────────────────────────
+      const rawSprintInput = flags['sprint'] as string | undefined
+      if (rawSprintInput === undefined) {
+        return {
+          lines: [
+            { type: 'stderr', content: 'touch: --sprint is required. Use --sprint=<name> or --sprint=none' },
+          ],
+        }
+      }
+
+      const normalizedSprintInput = String(rawSprintInput).trim().toLowerCase()
+      if (normalizedSprintInput === 'none' || normalizedSprintInput === 'nosprint' || normalizedSprintInput === 'no-sprint') {
+        body.sprintId = null
+      } else {
         // Resolve sprint name → id via list
         const { data: sprints } = await api.get(`/projects/${targetProjectId}/sprints`)
         const sprint = (sprints as any[]).find(
-          (s: any) => s.name?.toLowerCase() === String(flags['sprint']).toLowerCase()
+          (s: any) => s.name?.toLowerCase() === String(rawSprintInput).toLowerCase()
         )
         if (!sprint) {
-          return { lines: [{ type: 'stderr', content: `touch: sprint "${flags['sprint']}" not found.` }] }
+          return { lines: [{ type: 'stderr', content: `touch: sprint "${rawSprintInput}" not found.` }] }
         }
         body.sprintId = sprint.id
       }
@@ -209,7 +287,8 @@ export function createTaskWriteHandlers(
 
         return {
           lines: [
-            { type: 'success', content: `✓ Task created: "${created.title}"` },
+            { type: 'success', content: `✓ Created [${TASK_TYPE_CONFIG[created.type as TaskType].icon} ${TASK_TYPE_CONFIG[created.type as TaskType].label}] "${created.title}" (id: ${created.id})` },
+            { type: 'system',  content: `  Scope: ${created.sprintId ? 'Sprint' : 'No sprint'}` },
             { type: 'json',    content: JSON.stringify({ id: created.id, status: created.status, priority: created.priority, projectId: targetProjectId, deadline: deadlineIso }) },
           ],
           invalidations: [['tasks', targetProjectId], ['sprints', targetProjectId]]

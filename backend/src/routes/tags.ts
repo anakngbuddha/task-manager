@@ -168,14 +168,14 @@ export async function tagRoutes(app: FastifyInstance) {
     const tasks = await prisma.task.findMany({
       where: {
         projectId,
-        parentId: null,
         ...(normalized
           ? { tags: { some: { tag: { name: normalized } } } }
           : {}),
       },
       include: {
         assignee: true,
-        subtasks: { include: { assignee: true } },
+        children: { select: { id: true, title: true, type: true, status: true } },
+        parent:   { select: { id: true, title: true, type: true } },
         blockingTasks: { include: { blockedTask: true } },
         blockedByTasks: { include: { blockingTask: true } },
         tags: { include: { tag: true } },

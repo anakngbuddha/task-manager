@@ -1,26 +1,33 @@
-import path from 'path';
-import fs from 'fs';
 import { authenticate } from '../middlewares/authenticate.js';
+import cloudinary from '../config/cloudinary.js';
+import streamifier from 'streamifier';
 export async function uploadRoutes(app) {
     app.post('/upload', { preHandler: authenticate }, async (req, reply) => {
         const data = await req.file();
         if (!data) {
             return reply.status(400).send({ error: 'No file uploaded' });
         }
-        const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
-        if (!fs.existsSync(UPLOADS_DIR)) {
-            fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+        try {
+            const buffer = await data.toBuffer();
+            const cloudinaryResponse = await new Promise((resolve, reject) => {
+                const uploadStream = cloudinary.uploader.upload_stream({
+                    folder: 'task-manager-uploads',
+                    // Keep original extension if possible or let Cloudinary detect
+                    resource_type: 'auto',
+                }, (error, result) => {
+                    if (result)
+                        resolve(result);
+                    else
+                        reject(error);
+                });
+                streamifier.createReadStream(buffer).pipe(uploadStream);
+            });
+            // We use secure_url as fileUrl
+            return reply.send({ fileUrl: cloudinaryResponse.secure_url, fileName: data.filename });
         }
-        const extension = path.extname(data.filename);
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}${extension}`;
-        const filePath = path.join(UPLOADS_DIR, fileName);
-        await new Promise((resolve, reject) => {
-            const writeStream = fs.createWriteStream(filePath);
-            data.file.pipe(writeStream);
-            data.file.on('end', resolve);
-            writeStream.on('error', reject);
-        });
-        const fileUrl = `/uploads/${fileName}`;
-        return reply.send({ fileUrl, fileName: data.filename });
+        catch (error) {
+            console.error('Cloudinary upload error:', error);
+            return reply.status(500).send({ error: 'File upload to Cloudinary failed' });
+        }
     });
 }

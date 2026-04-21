@@ -15,7 +15,7 @@ export function useProject(projectId: string) {
 export function useUpdateProject() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: { name?: string; status?: 'ACTIVE' | 'COMPLETED'; boardColumns?: string[]; githubStatusMap?: Record<string, string | null> } }) => {
+    mutationFn: async ({ id, data }: { id: string; data: { name?: string; status?: 'ACTIVE' | 'COMPLETED' | 'AXED'; boardColumns?: string[]; githubStatusMap?: Record<string, string | null> } }) => {
       const res = await api.patch(`/projects/${id}`, data)
       return res.data
     },
