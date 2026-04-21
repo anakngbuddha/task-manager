@@ -176,27 +176,29 @@ export function createTaskWriteHandlers(
       }
 
       let assigneeId: string | null = null
-      if (rawAssignee.toUpperCase() === 'EVERYONE' || rawAssignee === '@everyone') {
-        assigneeId = 'EVERYONE'
-      } else {
-        try {
-          const { data: members } = await api.get(`/projects/${targetProjectId}/members`)
-          const matched = (members as any[]).find(
-            (m: any) => (m.user?.email ?? m.email ?? '').toLowerCase() === rawAssignee.toLowerCase()
-          )
-          if (!matched) {
-            const validEmails = (members as any[]).map((m: any) => m.user?.email ?? m.email ?? '').filter(Boolean)
-            return {
-              lines: [
-                { type: 'stderr', content: `touch: assignee not found in project: "${rawAssignee}"` },
-                { type: 'system', content: `Valid members: ${validEmails.join(', ')}` },
-                { type: 'system', content: 'Or use --assignee=everyone to assign to all members.' },
-              ],
+      if (rawAssignee) {
+        if (rawAssignee.toUpperCase() === 'EVERYONE' || rawAssignee === '@everyone') {
+          assigneeId = 'EVERYONE'
+        } else {
+          try {
+            const { data: members } = await api.get(`/projects/${targetProjectId}/members`)
+            const matched = (members as any[]).find(
+              (m: any) => (m.user?.email ?? m.email ?? '').toLowerCase() === rawAssignee.toLowerCase()
+            )
+            if (!matched) {
+              const validEmails = (members as any[]).map((m: any) => m.user?.email ?? m.email ?? '').filter(Boolean)
+              return {
+                lines: [
+                  { type: 'stderr', content: `touch: assignee not found in project: "${rawAssignee}"` },
+                  { type: 'system', content: `Valid members: ${validEmails.join(', ')}` },
+                  { type: 'system', content: 'Or use --assignee=everyone to assign to all members.' },
+                ],
+              }
             }
+            assigneeId = matched.userId
+          } catch {
+            return { lines: [{ type: 'stderr', content: 'touch: failed to resolve assignee email.' }] }
           }
-          assigneeId = matched.userId
-        } catch {
-          return { lines: [{ type: 'stderr', content: 'touch: failed to resolve assignee email.' }] }
         }
       }
 

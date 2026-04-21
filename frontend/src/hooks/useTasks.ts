@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import type { TaskType } from '../lib/taskTypes'
 
 export function useTasks(projectId: string) {
   return useQuery({
@@ -25,6 +26,7 @@ export function useCreateTask() {
       parentId?: string | null
       priority?: string
       deadline?: string | null
+      type?: TaskType
     }) => {
       const { data } = await api.post('/tasks', payload)
       return data
@@ -48,6 +50,7 @@ export function useUpdateTask() {
       sprintId?: string | null
       deadline?: string | null
       githubPrUrl?: string | null
+      type?: TaskType
     }) => {
       const { data } = await api.patch(`/tasks/${id}`, payload)
       return data
