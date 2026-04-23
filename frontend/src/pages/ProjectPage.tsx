@@ -39,13 +39,6 @@ import {
 import { TASK_TYPE_CONFIG } from '@/lib/taskTypes'
 
 const COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']
-const STATUS_LABELS: Record<string, string> = {
-  TODO: 'To Do',
-  IN_PROGRESS: 'In Progress',
-  IN_REVIEW: 'In Review',
-  DONE: 'Done',
-  READY: 'Ready',
-}
 const PROJECT_STATUS_STYLE: Record<string, string> = {
   ACTIVE: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
   COMPLETED: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
