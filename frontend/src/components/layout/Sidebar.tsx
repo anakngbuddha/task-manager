@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
+  Activity as ActivityIcon,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -234,7 +235,7 @@ export default function Sidebar() {
           title={!expanded ? 'Activity' : undefined}
           className={navItemCls(location.pathname === '/activity', expanded)}
         >
-          <LayoutGrid className="size-4 shrink-0" />
+          <ActivityIcon className="size-4 shrink-0" />
           {expanded && <span className="font-medium">Activity</span>}
         </Link>
 
@@ -269,6 +270,9 @@ export default function Sidebar() {
 
           {expanded && openSections.projects && (
             <div className="mt-1 ml-2 space-y-0.5 border-l border-sidebar-border/50 pl-3">
+              <p className="px-2 pt-1 pb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-sidebar-foreground/45">
+                Archive
+              </p>
               <Link
                 to="/projects/archive"
                 className={cn(
@@ -283,6 +287,10 @@ export default function Sidebar() {
                   Archived
                 </span>
               </Link>
+              <div className="my-1.5 h-px bg-sidebar-border/50" />
+              <p className="px-2 pt-0.5 pb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-sidebar-foreground/45">
+                Projects
+              </p>
               {projects.length === 0 ? (
                 <p className="py-1.5 text-xs text-sidebar-foreground/50">No projects yet</p>
               ) : (

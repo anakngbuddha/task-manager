@@ -22,8 +22,8 @@ export default function InviteMembersDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button
-          variant="outline"
-          className="h-9 gap-2"
+          variant="secondary"
+          className="h-9 gap-2 border-0 bg-muted text-foreground hover:bg-muted/80"
           onClick={async () => {
             const url = await onGenerateInvite()
             setGeneratedInviteUrl(url)

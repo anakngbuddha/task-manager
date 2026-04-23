@@ -43,7 +43,7 @@ export default function CreateSprintDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="h-9 gap-2" disabled={!canManageRoles}>
+        <Button variant="secondary" className="h-9 gap-2 border-0 bg-muted text-foreground hover:bg-muted/80" disabled={!canManageRoles}>
           <CalendarPlus className="size-4" />
           Create Sprint
         </Button>

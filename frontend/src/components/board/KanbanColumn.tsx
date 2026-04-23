@@ -1,5 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { PlusCircle } from 'lucide-react'
 import TaskCard from './TaskCard'
 import type { Tag } from '@/hooks/useTaskTags'
 
@@ -61,9 +62,22 @@ export default function KanbanColumn({ status, tasks, onTaskClick, onAddTask, ca
             }`}
           >
             {tasks.length === 0 ? (
-              <div className="rounded-lg border-2 border-dashed border-border/70 bg-background/20 px-3 py-6 text-center text-xs text-muted-foreground">
-                <div className="mx-auto leading-relaxed">
-                  Drop tasks here
+              <div className="rounded-lg border border-dashed border-border/70 bg-background/40 px-3 py-5 text-center">
+                <div className="mx-auto max-w-[13rem]">
+                  <p className="text-sm font-medium text-foreground">No tasks in {columnLabels[status] ?? status}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Drag tasks to this column, or add a new task directly.
+                  </p>
+                  {canAddTask && (
+                    <button
+                      type="button"
+                      className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted/80 transition-colors"
+                      onClick={() => onAddTask?.(status)}
+                    >
+                      <PlusCircle className="size-3.5" />
+                      Add task
+                    </button>
+                  )}
                 </div>
               </div>
             ) : (
@@ -72,17 +86,19 @@ export default function KanbanColumn({ status, tasks, onTaskClick, onAddTask, ca
               ))
             )}
 
-            <button
-              type="button"
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 bg-card py-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground shadow-sm transition-colors"
-              onClick={() => {
-                if (!canAddTask) return
-                onAddTask?.(status)
-              }}
-              disabled={!canAddTask}
-            >
-              + Quick Add
-            </button>
+            {tasks.length > 0 && (
+              <button
+                type="button"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 bg-card py-2.5 text-[13px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground shadow-sm transition-colors"
+                onClick={() => {
+                  if (!canAddTask) return
+                  onAddTask?.(status)
+                }}
+                disabled={!canAddTask}
+              >
+                + Quick Add
+              </button>
+            )}
           </div>
         </SortableContext>
       </div>

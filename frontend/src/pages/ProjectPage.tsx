@@ -25,7 +25,7 @@ import { useSession } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MessageCircle, MoreHorizontal, Play, CheckCircle2, Tag as TagIcon, X as XIcon } from 'lucide-react'
+import { MessageCircle, MoreHorizontal, Play, CheckCircle2, Tag as TagIcon, X as XIcon, AlertCircle } from 'lucide-react'
 import { useCreateInvite } from '@/hooks/useInvites'
 import { TagPill } from '@/components/board/TagInput'
 import type { Tag } from '@/hooks/useTaskTags'
@@ -47,9 +47,9 @@ const STATUS_LABELS: Record<string, string> = {
   READY: 'Ready',
 }
 const PROJECT_STATUS_STYLE: Record<string, string> = {
-  ACTIVE: 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/30',
-  COMPLETED: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30',
-  AXED: 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30',
+  ACTIVE: 'bg-blue-500/15 text-blue-700 dark:text-blue-400',
+  COMPLETED: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+  AXED: 'bg-rose-500/15 text-rose-700 dark:text-rose-400',
 }
 
 export default function ProjectPage() {
@@ -292,152 +292,164 @@ export default function ProjectPage() {
   return (
     <div className="flex h-dvh">
       <Sidebar />
-      <main className="flex-1 overflow-hidden bg-background">
+      <main className="flex-1 overflow-hidden bg-muted/30">
         <PageHeader
           breadcrumb={<span className="text-muted-foreground">Projects / {project?.name ?? 'Project'} / Board</span>}
           title="Tasks"
-          subtitle="Drag tasks between columns to update status."
-          actions={(
-            <>
-              <CreateTaskDialog
-                open={createOpen}
-                onOpenChange={setCreateOpen}
-                onTriggerClick={() => {
-                  setCreateOpen(true)
-                }}
-                canCreateTask={canCreateTask}
-                projectColumns={projectColumns}
-                members={project?.members ?? []}
-                sprints={sprints as any[]}
-                isPending={createTask.isPending}
-                onSubmit={async (data, subtasks) => {
-                  const created = await createTask.mutateAsync({
-                    ...data,
-                    projectId: projectId!,
-                  })
-                  if (subtasks && subtasks.length > 0 && created?.id) {
-                    for (const st of subtasks) {
-                      await createTask.mutateAsync({
-                        title: st,
-                        description: 'Subtask belonging to ' + data.title,
-                        priority: data.priority,
-                        status: firstProjectColumn,
-                        projectId: projectId!,
-                        parentId: created.id,
-                        type: 'TASK',
-                        sprintId: data.sprintId ?? null,
-                      })
-                    }
-                  }
-                }}
-                defaultStatus={firstProjectColumn}
-                allTasks={localTasks}
-              />
-
-              <CreateSprintDialog
-                open={createSprintOpen}
-                onOpenChange={setCreateSprintOpen}
-                canManageRoles={canManageRoles}
-                isPending={createSprint.isPending}
-                onSubmit={async (data) => {
-                  await createSprint.mutateAsync(data)
-                }}
-              />
-
-              <InviteMembersDialog
-                open={inviteModalOpen}
-                onOpenChange={setInviteModalOpen}
-                onGenerateInvite={async () => {
-                  const base = import.meta.env.VITE_FRONTEND_URL || window.location.origin
-                  const res = await createInvite.mutateAsync()
-                  return `${base}/invite/${res.code}`
-                }}
-              />
-
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" className="h-9">
-                    <MoreHorizontal className="size-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" sideOffset={8} className="w-44">
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/backlog`}>Backlog & Sprints</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/activity`}>Project Logs</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/files`}>Project Files</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/github`}>GitHub Activity</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/dependencies`}>Dependency Diagram</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/roadmap`}>Roadmap</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/sprint-report`}>Sprint report</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/members`}>View members</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to={`/projects/${projectId}/settings`}>Settings</Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {canManageRoles && project?.status === 'ACTIVE' && (
-                <>
-                  <Button
-                    title={isBoardReady ? '' : `All tasks must be marked as ${STATUS_LABELS[projectColumns[projectColumns.length - 1]] || projectColumns[projectColumns.length - 1]} to complete the project.`}
-                    variant="outline"
-                    className="h-9 gap-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
-                    onClick={async () => {
-                      if (window.confirm('Are you sure you want to mark this project as completed?')) {
-                        await updateProject.mutateAsync({ id: projectId!, data: { status: 'COMPLETED' } })
-                      }
-                    }}
-                    disabled={updateProject.isPending || !isBoardReady}
-                  >
-                    Project Complete
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="h-9 gap-2 border-rose-500/30 text-rose-600 hover:bg-rose-50 disabled:opacity-50"
-                    onClick={async () => {
-                      if (window.confirm('Are you sure you want to discontinue (axe) this project?')) {
-                        await updateProject.mutateAsync({ id: projectId!, data: { status: 'AXED' } })
-                      }
-                    }}
-                    disabled={updateProject.isPending}
-                  >
-                    Discontinue
-                  </Button>
-                </>
-              )}
-              {canManageRoles && (project?.status === 'COMPLETED' || project?.status === 'AXED') && (
-                <Button
-                  variant="outline"
-                  className="h-9"
-                  onClick={async () => {
-                    await updateProject.mutateAsync({ id: projectId!, data: { status: 'ACTIVE' } })
-                  }}
-                  disabled={updateProject.isPending}
-                >
-                  Re-open Project
-                </Button>
-              )}
+          subtitle={(
+            <span className="flex flex-wrap items-center gap-2">
+              <span>Drag tasks between columns to update status.</span>
               {project?.status && (
-                <Badge variant="secondary" className={`h-9 px-3 ${PROJECT_STATUS_STYLE[project.status] ?? ''}`}>
+                <Badge variant="secondary" className={`h-6 px-2 text-[0.68rem] ${PROJECT_STATUS_STYLE[project.status] ?? ''}`}>
                   {project.status}
                 </Badge>
               )}
+            </span>
+          )}
+          actions={(
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <CreateTaskDialog
+                  open={createOpen}
+                  onOpenChange={setCreateOpen}
+                  onTriggerClick={() => {
+                    setCreateOpen(true)
+                  }}
+                  canCreateTask={canCreateTask}
+                  projectColumns={projectColumns}
+                  members={project?.members ?? []}
+                  sprints={sprints as any[]}
+                  isPending={createTask.isPending}
+                  onSubmit={async (data, subtasks) => {
+                    const created = await createTask.mutateAsync({
+                      ...data,
+                      projectId: projectId!,
+                    })
+                    if (subtasks && subtasks.length > 0 && created?.id) {
+                      for (const st of subtasks) {
+                        await createTask.mutateAsync({
+                          title: st,
+                          description: 'Subtask belonging to ' + data.title,
+                          priority: data.priority,
+                          status: firstProjectColumn,
+                          projectId: projectId!,
+                          parentId: created.id,
+                          type: 'TASK',
+                          sprintId: data.sprintId ?? null,
+                        })
+                      }
+                    }
+                  }}
+                  defaultStatus={firstProjectColumn}
+                  allTasks={localTasks}
+                />
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="secondary" className="h-9 gap-2 border-0 bg-muted text-foreground hover:bg-muted/80">
+                      <MoreHorizontal className="size-4" />
+                      Actions
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" sideOffset={8} className="w-52">
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/backlog`}>Backlog & Sprints</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/activity`}>Project Logs</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/files`}>Project Files</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/github`}>GitHub Activity</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/dependencies`}>Dependency Diagram</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/roadmap`}>Roadmap</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/sprint-report`}>Sprint report</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/members`}>View members</Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to={`/projects/${projectId}/settings`}>Settings</Link>
+                    </DropdownMenuItem>
+                    {canManageRoles && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => setCreateSprintOpen(true)}>
+                          Create sprint
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => setInviteModalOpen(true)}>
+                          Invite members
+                        </DropdownMenuItem>
+                        {project?.status === 'ACTIVE' && (
+                          <>
+                            <DropdownMenuItem
+                              disabled={updateProject.isPending || !isBoardReady}
+                              onSelect={async () => {
+                                if (window.confirm('Are you sure you want to mark this project as completed?')) {
+                                  await updateProject.mutateAsync({ id: projectId!, data: { status: 'COMPLETED' } })
+                                }
+                              }}
+                            >
+                              Mark project complete
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-rose-700 focus:text-rose-700 dark:text-rose-400"
+                              disabled={updateProject.isPending}
+                              onSelect={async () => {
+                                if (window.confirm('Are you sure you want to discontinue (axe) this project?')) {
+                                  await updateProject.mutateAsync({ id: projectId!, data: { status: 'AXED' } })
+                                }
+                              }}
+                            >
+                              Discontinue project
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                        {(project?.status === 'COMPLETED' || project?.status === 'AXED') && (
+                          <DropdownMenuItem
+                            disabled={updateProject.isPending}
+                            onSelect={async () => {
+                              await updateProject.mutateAsync({ id: projectId!, data: { status: 'ACTIVE' } })
+                            }}
+                          >
+                            Re-open project
+                          </DropdownMenuItem>
+                        )}
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <div className="hidden">
+                  <CreateSprintDialog
+                    open={createSprintOpen}
+                    onOpenChange={setCreateSprintOpen}
+                    canManageRoles={canManageRoles}
+                    isPending={createSprint.isPending}
+                    onSubmit={async (data) => {
+                      await createSprint.mutateAsync(data)
+                    }}
+                  />
+                  <InviteMembersDialog
+                    open={inviteModalOpen}
+                    onOpenChange={setInviteModalOpen}
+                    onGenerateInvite={async () => {
+                      const base = import.meta.env.VITE_FRONTEND_URL || window.location.origin
+                      const res = await createInvite.mutateAsync()
+                      return `${base}/invite/${res.code}`
+                    }}
+                  />
+                </div>
+              </div>
             </>
           )}
         />
@@ -459,29 +471,91 @@ export default function ProjectPage() {
                 onDragEnd={handleDragEnd}
               >
                 <section className="px-4 py-4 sm:px-6 sm:py-6">
-                  <div className="flex flex-col gap-4 mb-4">
-                    <div className="flex bg-muted/50 p-1 rounded-lg w-fit border border-border/50">
-                      <button onClick={() => setBoardView('SPRINT')} className={boardView === 'SPRINT' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Sprint Tasks</button>
-                      <button onClick={() => setBoardView('BACKLOG')} className={boardView === 'BACKLOG' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Non-Sprint Tasks</button>
+                  <div className="mb-4 space-y-3">
+                    <div className="rounded-xl bg-muted/35 p-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex bg-background/80 p-1 rounded-lg">
+                          <button onClick={() => setBoardView('SPRINT')} className={boardView === 'SPRINT' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Sprint Tasks</button>
+                          <button onClick={() => setBoardView('BACKLOG')} className={boardView === 'BACKLOG' ? 'bg-background shadow-sm rounded-md px-4 py-1.5 text-sm font-medium' : 'px-4 py-1.5 text-sm text-muted-foreground hover:text-foreground'}>Non-Sprint Tasks</button>
+                        </div>
+
+                        <Select value={selectedEpicId} onValueChange={setSelectedEpicId}>
+                          <SelectTrigger id="epic-filter-dropdown" className="h-9 w-[220px] border-0 bg-background/80">
+                            <SelectValue placeholder="All Epics" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ALL">All Epics</SelectItem>
+                            {epics.map((epic: any) => (
+                              <SelectItem key={epic.id} value={epic.id}>
+                                <span className="flex items-center gap-1.5">
+                                  <span>{TASK_TYPE_CONFIG.EPIC.icon}</span>
+                                  <span className="truncate max-w-[145px]">{epic.title}</span>
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        {boardView === 'SPRINT' && (
+                          <div className="flex flex-wrap items-center gap-2 rounded-lg bg-background/80 px-2 py-1">
+                            <p className="text-xs font-medium text-muted-foreground">Sprint</p>
+                            <Select value={selectedSprintId} onValueChange={setSelectedSprintId}>
+                              <SelectTrigger className="h-8 w-[13.5rem] border-0 bg-transparent px-1 shadow-none focus:ring-0">
+                                <SelectValue placeholder="Select sprint" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(sprints as Sprint[]).map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.name}
+                                    {s.status === 'ACTIVE' && ' (active)'}
+                                    {s.status === 'PLANNING' && ' (planning)'}
+                                    {s.status === 'COMPLETED' && ' (completed)'}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            {canManageRoles && sprintForStart && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="h-8 gap-1.5 border-0 bg-blue-500/15 text-blue-700 hover:bg-blue-500/20 dark:text-blue-400"
+                                onClick={() => setStartSprintOpen(true)}
+                              >
+                                <Play className="size-3.5" />
+                                Start Sprint
+                              </Button>
+                            )}
+                            {canManageRoles && currentSprint?.status === 'ACTIVE' && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                className="h-8 gap-1.5 border-0 bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-400"
+                                onClick={() => setCompleteSprintOpen(true)}
+                              >
+                                <CheckCircle2 className="size-3.5" />
+                                Complete Sprint
+                              </Button>
+                            )}
+                          </div>
+                        )}
+
+                        {boardView === 'SPRINT' && currentSprint && (
+                          <p className="text-xs text-muted-foreground ml-auto">
+                            Showing {displayedTasks.length} task{displayedTasks.length === 1 ? '' : 's'}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Epic filter dropdown */}
-                    <Select value={selectedEpicId} onValueChange={setSelectedEpicId}>
-                      <SelectTrigger id="epic-filter-dropdown" className="h-9 w-[220px] bg-background border-border">
-                        <SelectValue placeholder="All Epics" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ALL">All Epics</SelectItem>
-                        {epics.map((epic: any) => (
-                          <SelectItem key={epic.id} value={epic.id}>
-                            <span className="flex items-center gap-1.5">
-                              <span>{TASK_TYPE_CONFIG.EPIC.icon}</span>
-                              <span className="truncate max-w-[145px]">{epic.title}</span>
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {boardView === 'SPRINT' && !currentSprint && !activeSprint && (
+                      <div className="flex items-start gap-2 rounded-lg bg-amber-500/12 px-3 py-2.5 text-amber-800 dark:text-amber-300">
+                        <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                        <div className="text-sm">
+                          <p className="font-medium">No active sprint yet.</p>
+                          <p className="text-xs opacity-90">Create and start a sprint to begin organizing sprint tasks.</p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Epic filter banner */}
                     {selectedEpicId !== 'ALL' && selectedEpic && (
@@ -516,72 +590,18 @@ export default function ProjectPage() {
                         </button>
                       </div>
                     )}
-                    
-                    <div className="flex items-center justify-between">
-                      {boardView === 'SPRINT' ? (
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-medium text-muted-foreground">Sprint</p>
-                          <Select value={selectedSprintId} onValueChange={setSelectedSprintId}>
-                            <SelectTrigger className="h-9 w-[16rem] rounded-none">
-                              <SelectValue placeholder="Select sprint" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {(sprints as Sprint[]).map((s) => (
-                                <SelectItem key={s.id} value={s.id}>
-                                  {s.name}
-                                  {s.status === 'ACTIVE' && ' (active)'}
-                                  {s.status === 'PLANNING' && ' (planning)'}
-                                  {s.status === 'COMPLETED' && ' (completed)'}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {sprintRangeText && (
-                            <span className="inline-flex items-center gap-2 text-xs text-muted-foreground ml-2">
-                              <span className={['h-2 w-2 rounded-full', sprintStatusDotClass ?? 'bg-muted-foreground/50'].join(' ')} />
-                              <span>{sprintRangeText}</span>
-                            </span>
-                          )}
 
-                          {canManageRoles && sprintForStart && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 gap-1.5 ml-2 border-blue-500/30 text-blue-600 hover:bg-blue-50"
-                              onClick={() => setStartSprintOpen(true)}
-                            >
-                              <Play className="size-3.5" />
-                              Start Sprint
-                            </Button>
-                          )}
-
-                          {canManageRoles && currentSprint?.status === 'ACTIVE' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 gap-1.5 ml-2 border-emerald-500/30 text-emerald-600 hover:bg-emerald-50"
-                              onClick={() => setCompleteSprintOpen(true)}
-                            >
-                              <CheckCircle2 className="size-3.5" />
-                              Complete Sprint
-                            </Button>
-                          )}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {boardView === 'SPRINT' && sprintRangeText && (
+                        <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+                          <span className={['h-2 w-2 rounded-full', sprintStatusDotClass ?? 'bg-muted-foreground/50'].join(' ')} />
+                          <span>{sprintRangeText}</span>
+                        </span>
+                      )}
+                      {boardView === 'BACKLOG' && (
+                        <div className="text-sm text-muted-foreground flex items-center h-9">
+                          Showing tasks not assigned to any sprint.
                         </div>
-                      ) : (
-                         <div className="text-sm text-muted-foreground flex items-center h-9">
-                           Showing tasks not assigned to any sprint.
-                         </div>
-                      )}
-                      
-                      {boardView === 'SPRINT' && currentSprint && (
-                        <p className="text-xs text-muted-foreground">
-                          Showing {displayedTasks.length} task{displayedTasks.length === 1 ? '' : 's'}
-                        </p>
-                      )}
-                      {boardView === 'SPRINT' && !currentSprint && !activeSprint && (
-                        <p className="text-xs text-muted-foreground">
-                          No active sprint. Create and start a sprint to begin.
-                        </p>
                       )}
                     </div>
                   </div>
