@@ -16,8 +16,13 @@ export function useGithubInstallation(_projectId?: string) {
   return useQuery({
     queryKey: ['github-installation'],
     queryFn: async () => {
-      const { data } = await api.get('/github/installation')
-      return data
+      const res = await api.get('/github/installation', {
+        // Backend returns 404 when no installation is linked.
+        // Treat that as a valid "not connected" state instead of a query error.
+        validateStatus: (status) => status === 200 || status === 404,
+      })
+      if (res.status === 404) return null
+      return res.data
     },
     retry: false,
   })

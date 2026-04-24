@@ -130,14 +130,14 @@ export async function githubRoutes(app: FastifyInstance) {
         orderBy: { createdAt: 'desc' },
       })
       if (!installation) {
-        return reply.status(404).send({ error: 'No GitHub installation linked' })
+        return reply.status(200).send(null)
       }
 
       try {
         await getInstallationToken(installation.installationId)
       } catch {
         await prisma.githubInstallation.delete({ where: { id: installation.id } }).catch(() => {})
-        return reply.status(404).send({ error: 'No GitHub installation linked' })
+        return reply.status(200).send(null)
       }
 
       return installation
