@@ -1,8 +1,10 @@
+# Use `prisma migrate deploy` on Render (not `db push`). Migrations dedupe TaskAttachment
+# rows before adding @@unique([taskId, fileNodeId]); `db push` cannot run that SQL and will fail or require --accept-data-loss.
 services:
   - type: web
     name: taskmanager-api
     runtime: node
-    buildCommand: npm install && npx prisma generate && npm run build
+    buildCommand: npm install && node node_modules/prisma/build/index.js generate && node node_modules/prisma/build/index.js migrate deploy && npm run build
     startCommand: node dist/index.js
     envVars:
       - key: DATABASE_URL
