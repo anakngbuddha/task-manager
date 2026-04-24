@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../middlewares/authenticate.js'
+import { idempotencyPreHandler } from '../middlewares/idempotency.js'
 import { projectMessageService } from '../services/projectMessage.service.js'
 import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
@@ -25,7 +26,7 @@ export async function projectMessageRoutes(app: FastifyInstance) {
     return projectMessageService.listForProject(projectId)
   })
 
-  app.post('/projects/:projectId/messages', { preHandler: authenticate }, async (req, reply) => {
+  app.post('/projects/:projectId/messages', { preHandler: [authenticate, idempotencyPreHandler('projects.messages.create')] }, async (req, reply) => {
     const { projectId } = req.params as { projectId: string }
     try {
       await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])

@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { taskService } from '../services/task.service.js'
 import { authenticate } from '../middlewares/authenticate.js'
+import { idempotencyPreHandler } from '../middlewares/idempotency.js'
 import { z } from 'zod'
 import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
@@ -170,7 +171,7 @@ export async function taskRoutes(app: FastifyInstance) {
   })
 
   app.post('/tasks', {
-    preHandler: authenticate,
+    preHandler: [authenticate, idempotencyPreHandler('tasks.create')],
   }, async (req, reply) => {
     const body = createTaskSchema.parse(req.body)
     const normalizedStatus = normalizeStatus(body.status)

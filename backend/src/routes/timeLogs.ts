@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../middlewares/authenticate.js'
+import { idempotencyPreHandler } from '../middlewares/idempotency.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { prisma } from '../lib/prisma.js'
 import { timeLogService } from '../services/timeLog.service.js'
@@ -34,7 +35,7 @@ export async function timeLogRoutes(app: FastifyInstance) {
   // POST /api/tasks/:taskId/time-logs
   app.post(
     '/tasks/:taskId/time-logs',
-    { preHandler: authenticate },
+    { preHandler: [authenticate, idempotencyPreHandler('tasks.time_logs.create')] },
     async (req, reply) => {
       const { taskId } = req.params as { taskId: string }
 

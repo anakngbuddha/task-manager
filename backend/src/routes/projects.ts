@@ -1,6 +1,8 @@
 import { FastifyInstance } from 'fastify'
+import { Prisma } from '@prisma/client'
 import { projectService } from '../services/project.service.js'
 import { authenticate } from '../middlewares/authenticate.js'
+import { idempotencyPreHandler } from '../middlewares/idempotency.js'
 import { z } from 'zod'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { dashboardLayoutService, WIDGET_TYPES } from '../services/dashboardLayout.service.js'
@@ -107,25 +109,54 @@ export async function projectRoutes(app: FastifyInstance) {
   })
 
   app.post('/projects', {
-    preHandler: authenticate,
+    preHandler: [authenticate, idempotencyPreHandler('projects.create')],
   }, async (req, reply) => {
     const { name } = createProjectSchema.parse(req.body)
 
-    // Enforce unique active project names per user
-    const existingProjects = await prisma.project.findMany({
-      where: {
-        name,
-        status: 'ACTIVE',
-        members: { some: { userId: req.authUser.id } }
+    try {
+      const project = await prisma.$transaction(
+        async (tx) => {
+          const existingProjects = await tx.project.findMany({
+            where: {
+              name,
+              status: 'ACTIVE',
+              members: { some: { userId: req.authUser.id } },
+            },
+          })
+
+          if (existingProjects.length > 0) {
+            return null
+          }
+
+          return tx.project.create({
+            data: {
+              name,
+              members: { create: { userId: req.authUser.id, role: 'MASTER_ADMIN' } },
+            },
+            include: { members: true },
+          })
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5000,
+          timeout: 10000,
+        },
+      )
+
+      if (!project) {
+        return reply.status(400).send({
+          error:
+            'You already have an active project with this name. A project with the same name can only be created if the existing one is completed.',
+        })
       }
-    })
 
-    if (existingProjects.length > 0) {
-      return reply.status(400).send({ error: 'You already have an active project with this name. A project with the same name can only be created if the existing one is completed.' })
+      return reply.status(201).send(project)
+    } catch (e: unknown) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2034') {
+        return reply.status(409).send({ error: 'Could not create project due to a conflict. Please try again.' })
+      }
+      throw e
     }
-
-    const project = await projectService.create(name, req.authUser.id)
-    return reply.status(201).send(project)
   })
 
 const updateProjectSchema = z.object({

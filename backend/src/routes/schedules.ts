@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { ScheduleAttendeeResponse, ScheduleType } from '@prisma/client'
 import { authenticate } from '../middlewares/authenticate.js'
+import { idempotencyPreHandler } from '../middlewares/idempotency.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { prisma } from '../lib/prisma.js'
 import { activityService } from '../services/activity.service.js'
@@ -52,7 +53,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
 
   app.post(
     '/schedules',
-    { preHandler: authenticate },
+    { preHandler: [authenticate, idempotencyPreHandler('schedules.create')] },
     async (req, reply) => {
       let body;
       try {

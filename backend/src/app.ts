@@ -26,6 +26,7 @@ import { analyticsRoutes } from './routes/analytics.routes.js'
 import { fileRoutes } from './routes/files.routes.js'
 import multipart from '@fastify/multipart'
 import 'dotenv/config'
+import { completeIdempotencyFromPayload } from './services/idempotency.service.js'
 
 if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required')
@@ -73,7 +74,8 @@ await app.register(cors, {
   origin: ALLOWED_ORIGINS,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'cookie'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'cookie', 'Idempotency-Key', 'idempotency-key'],
+  exposedHeaders: ['Idempotent-Replay', 'Retry-After'],
 })
 
 await app.register(jwt, {
@@ -90,7 +92,7 @@ function injectCORSHeaders(req: any, res: any) {
   }
   res.setHeader('Access-Control-Allow-Credentials', 'true')
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,cookie,set-cookie')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,cookie,set-cookie,Idempotency-Key,idempotency-key')
   res.setHeader('Access-Control-Expose-Headers', 'set-cookie')
 }
 
@@ -138,6 +140,10 @@ app.register(tagRoutes, { prefix: '/api' })
 app.register(adminRoutes, { prefix: '/api' })
 app.register(analyticsRoutes, { prefix: '/api' })
 app.register(fileRoutes, { prefix: '/api' })
+
+app.addHook('onSend', async (request, reply, payload) => {
+  return completeIdempotencyFromPayload(request, reply, payload)
+})
 
 app.get('/health', async () => {
   return { status: 'ok' }

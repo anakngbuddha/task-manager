@@ -1,5 +1,6 @@
 import cron from 'node-cron'
 import { prisma } from '../lib/prisma.js'
+import { purgeExpiredIdempotencyKeys } from '../services/idempotency.service.js'
 import { notificationService } from '../services/notification.service.js'
 import {
   sendScheduleReminderEmail,
@@ -13,6 +14,7 @@ export function startNotificationCron() {
   cron.schedule('*/5 * * * *', async () => {
     console.log('[cron] Running notification checks...')
     try {
+      await purgeExpiredIdempotencyKeys()
       await checkScheduleReminders()
       await checkTaskDeadlineReminders()
     } catch (err) {

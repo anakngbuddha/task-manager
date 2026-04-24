@@ -1,8 +1,20 @@
-import axios from 'axios'
+import axios, { AxiosHeaders } from 'axios'
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api',
   withCredentials: true,
+})
+
+api.interceptors.request.use((config) => {
+  const method = (config.method || 'get').toLowerCase()
+  if (method === 'post') {
+    const headers = AxiosHeaders.from(config.headers ?? {})
+    if (!headers.get('Idempotency-Key') && typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      headers.set('Idempotency-Key', crypto.randomUUID())
+    }
+    config.headers = headers
+  }
+  return config
 })
 
 function getBackendOrigin(): string {

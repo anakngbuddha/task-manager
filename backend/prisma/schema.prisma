@@ -21,6 +21,7 @@ model User {
   tasks                    Task[]
   timeLogs                 TimeLog[]
   projects                 ProjectMember[]
+  idempotencyKeys          IdempotencyKey[]
   accounts                 Account[]
   sessions                 Session[]
   createdInvites           ProjectInvite[]           @relation("ProjectInviteCreatedBy")
@@ -119,6 +120,38 @@ model ProjectDependencyDiagramLayout {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([updatedAt])
+}
+
+enum IdempotencyStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model IdempotencyKey {
+  id           String            @id @default(cuid())
+  key          String
+  userId       String
+  routeKey     String
+  requestHash  String
+  status       IdempotencyStatus @default(IN_PROGRESS)
+  responseCode Int?
+  responseBody Json?
+  createdAt    DateTime          @default(now())
+  expiresAt    DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, routeKey, key])
+  @@index([expiresAt])
+}
+
+model WebhookDelivery {
+  id         String   @id @default(cuid())
+  source     String
+  deliveryId String
+  receivedAt DateTime @default(now())
+
+  @@unique([source, deliveryId])
 }
 
 model Task {
@@ -638,6 +671,7 @@ model TaskAttachment {
   task     Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   fileNode FileNode @relation(fields: [fileNodeId], references: [id], onDelete: Cascade)
 
+  @@unique([taskId, fileNodeId])
   @@index([taskId])
   @@index([fileNodeId])
 }

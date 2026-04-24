@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../middlewares/authenticate.js'
+import { idempotencyPreHandler } from '../middlewares/idempotency.js'
 import { taskCommentService } from '../services/taskComment.service.js'
 import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
@@ -31,7 +32,7 @@ export async function taskCommentRoutes(app: FastifyInstance) {
     return taskCommentService.listForTask(taskId)
   })
 
-  app.post('/tasks/:taskId/comments', { preHandler: authenticate }, async (req, reply) => {
+  app.post('/tasks/:taskId/comments', { preHandler: [authenticate, idempotencyPreHandler('tasks.comments.create')] }, async (req, reply) => {
     const { taskId } = req.params as { taskId: string }
     const taskCheck = await requireTaskMembership(taskId, req.authUser.id, reply)
     if (!taskCheck) return
