@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 
 interface InviteMembersDialogProps {
@@ -18,32 +18,39 @@ export default function InviteMembersDialog({
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState('')
+  const onGenerateInviteRef = useRef(onGenerateInvite)
+
+  useEffect(() => {
+    onGenerateInviteRef.current = onGenerateInvite
+  }, [onGenerateInvite])
+
+  const generateInvite = async () => {
+    setIsGenerating(true)
+    setGenerateError('')
+    try {
+      const url = await onGenerateInviteRef.current()
+      setGeneratedInviteUrl(url)
+    } catch {
+      setGeneratedInviteUrl('')
+      setGenerateError('Failed to generate invite link. Please try again.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
 
   useEffect(() => {
     if (!open) return
-
-    const generate = async () => {
-      setIsGenerating(true)
-      setGenerateError('')
-      try {
-        const url = await onGenerateInvite()
-        setGeneratedInviteUrl(url)
-      } catch {
-        setGeneratedInviteUrl('')
-        setGenerateError('Failed to generate invite link. Please try again.')
-      } finally {
-        setIsGenerating(false)
-      }
-    }
-
-    void generate()
-  }, [open, onGenerateInvite])
+    void generateInvite()
+  }, [open])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Invite members to this project</DialogTitle>
+          <DialogDescription>
+            Generate and share a join link for this project.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 pt-2">
           <p className="text-sm text-muted-foreground">
@@ -69,17 +76,7 @@ export default function InviteMembersDialog({
               size="sm"
               disabled={isGenerating}
               onClick={async () => {
-                setIsGenerating(true)
-                setGenerateError('')
-                try {
-                  const url = await onGenerateInvite()
-                  setGeneratedInviteUrl(url)
-                } catch {
-                  setGeneratedInviteUrl('')
-                  setGenerateError('Failed to generate invite link. Please try again.')
-                } finally {
-                  setIsGenerating(false)
-                }
+                await generateInvite()
               }}
             >
               Regenerate link
