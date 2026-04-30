@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { UserPlus } from 'lucide-react'
 
 interface InviteMembersDialogProps {
   open: boolean
@@ -17,23 +16,31 @@ export default function InviteMembersDialog({
   onGenerateInvite,
 }: InviteMembersDialogProps) {
   const [generatedInviteUrl, setGeneratedInviteUrl] = useState('')
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+
+    const generate = async () => {
+      setIsGenerating(true)
+      setGenerateError('')
+      try {
+        const url = await onGenerateInvite()
+        setGeneratedInviteUrl(url)
+      } catch {
+        setGeneratedInviteUrl('')
+        setGenerateError('Failed to generate invite link. Please try again.')
+      } finally {
+        setIsGenerating(false)
+      }
+    }
+
+    void generate()
+  }, [open, onGenerateInvite])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          variant="secondary"
-          className="h-9 gap-2 border-0 bg-muted text-foreground hover:bg-muted/80"
-          onClick={async () => {
-            const url = await onGenerateInvite()
-            setGeneratedInviteUrl(url)
-            onOpenChange(true)
-          }}
-        >
-          <UserPlus className="size-4" />
-          Invite members
-        </Button>
-      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Invite members to this project</DialogTitle>
@@ -48,10 +55,35 @@ export default function InviteMembersDialog({
             <Label>Invite link</Label>
             <Input
               readOnly
-              value={generatedInviteUrl}
+              value={isGenerating ? 'Generating invite link...' : generatedInviteUrl}
               className="h-10"
               onFocus={(e) => e.target.select()}
             />
+            {generateError && (
+              <p className="text-xs text-destructive">{generateError}</p>
+            )}
+          </div>
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isGenerating}
+              onClick={async () => {
+                setIsGenerating(true)
+                setGenerateError('')
+                try {
+                  const url = await onGenerateInvite()
+                  setGeneratedInviteUrl(url)
+                } catch {
+                  setGeneratedInviteUrl('')
+                  setGenerateError('Failed to generate invite link. Please try again.')
+                } finally {
+                  setIsGenerating(false)
+                }
+              }}
+            >
+              Regenerate link
+            </Button>
           </div>
         </div>
       </DialogContent>
