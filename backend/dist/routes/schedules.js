@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ScheduleAttendeeResponse, ScheduleType } from '@prisma/client';
 import { authenticate } from '../middlewares/authenticate.js';
+import { idempotencyPreHandler } from '../middlewares/idempotency.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
 import { prisma } from '../lib/prisma.js';
 import { activityService } from '../services/activity.service.js';
@@ -38,7 +39,7 @@ const respondScheduleSchema = z.object({
 const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '') || 'https://task-manager-mauve-eta.vercel.app';
 export async function scheduleRoutes(app) {
     // ─── POST /schedules ──────────────────────────────────────
-    app.post('/schedules', { preHandler: authenticate }, async (req, reply) => {
+    app.post('/schedules', { preHandler: [authenticate, idempotencyPreHandler('schedules.create')] }, async (req, reply) => {
         let body;
         try {
             body = createScheduleSchema.parse(req.body);

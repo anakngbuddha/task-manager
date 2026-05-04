@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { authenticate } from '../middlewares/authenticate.js';
+import { idempotencyPreHandler } from '../middlewares/idempotency.js';
 import { projectDirectMessageService } from '../services/projectDirectMessage.service.js';
 import { activityService } from '../services/activity.service.js';
 import { notificationService } from '../services/notification.service.js';
@@ -32,7 +33,7 @@ export async function projectDirectMessageRoutes(app) {
         }
         return projectDirectMessageService.listConversation(projectId, req.authUser.id, otherUserId);
     });
-    app.post('/projects/:projectId/direct-messages/:otherUserId', { preHandler: authenticate }, async (req, reply) => {
+    app.post('/projects/:projectId/direct-messages/:otherUserId', { preHandler: [authenticate, idempotencyPreHandler('projects.direct_messages.create')] }, async (req, reply) => {
         const { projectId, otherUserId } = req.params;
         try {
             await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);

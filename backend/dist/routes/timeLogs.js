@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { authenticate } from '../middlewares/authenticate.js';
+import { idempotencyPreHandler } from '../middlewares/idempotency.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
 import { prisma } from '../lib/prisma.js';
 import { timeLogService } from '../services/timeLog.service.js';
@@ -24,7 +25,7 @@ export async function timeLogRoutes(app) {
         return reply.status(200).send(logs);
     });
     // POST /api/tasks/:taskId/time-logs
-    app.post('/tasks/:taskId/time-logs', { preHandler: authenticate }, async (req, reply) => {
+    app.post('/tasks/:taskId/time-logs', { preHandler: [authenticate, idempotencyPreHandler('tasks.time_logs.create')] }, async (req, reply) => {
         const { taskId } = req.params;
         const createSchema = z.object({
             durationMinutes: z.number().int().positive().max(14400),

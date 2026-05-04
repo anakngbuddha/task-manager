@@ -1,4 +1,5 @@
 import { authenticate } from '../middlewares/authenticate.js';
+import { idempotencyPreHandler } from '../middlewares/idempotency.js';
 import { prisma } from '../lib/prisma.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
 import { getInstallationToken } from '../lib/githubApp.js';
@@ -72,7 +73,7 @@ function resolveAutoStatus(project, key) {
 }
 export async function taskGithubLinkRoutes(app) {
     // ── Add a GitHub link to a task ─────────────────────────────────────
-    app.post('/tasks/:taskId/github-links', { preHandler: authenticate }, async (req, reply) => {
+    app.post('/tasks/:taskId/github-links', { preHandler: [authenticate, idempotencyPreHandler('tasks.github_links.create')] }, async (req, reply) => {
         const { taskId } = req.params;
         const { url } = req.body;
         if (!url?.trim()) {

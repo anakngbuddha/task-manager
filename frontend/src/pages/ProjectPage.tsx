@@ -195,7 +195,7 @@ export default function ProjectPage() {
   }
 
   const handleDragOver = (e: DragOverEvent) => {
-    if (!canMoveTasks) return
+    if (!isProjectActive) return
     const { active, over } = e
     if (!over) return
 
@@ -205,11 +205,21 @@ export default function ProjectPage() {
     const activeTask = tasksById.get(activeId)
     if (!activeTask) return
 
+    // Members can only drag tasks assigned to them or unassigned (everyone)
+    if (!canManageRoles) {
+      const isAssignedToMe = activeTask.assigneeId === myId
+      const isAssignedToEveryone = !activeTask.assigneeId
+      if (!isAssignedToMe && !isAssignedToEveryone) return
+    }
+
     const newStatus = projectColumns.includes(overId)
       ? overId
       : tasksById.get(overId)?.status
 
     if (!newStatus || newStatus === activeTask.status) return
+
+    // Members cannot move to READY
+    if (!canManageRoles && newStatus === 'READY') return
 
     setLocalTasks((prev) =>
       prev.map((t) => (String(t.id) === activeId ? { ...t, status: newStatus } : t))
@@ -217,7 +227,7 @@ export default function ProjectPage() {
   }
 
   const handleDragEnd = async (e: DragEndEvent) => {
-    if (!canMoveTasks) {
+    if (!isProjectActive) {
       setActiveTask(null)
       return
     }
@@ -234,6 +244,15 @@ export default function ProjectPage() {
     dragStartRef.current = null
 
     if (!task || !newStatus) return
+
+    // Members can only drag tasks assigned to them or unassigned (everyone)
+    if (!canManageRoles) {
+      const isAssignedToMe = task.assigneeId === myId
+      const isAssignedToEveryone = !task.assigneeId
+      if (!isAssignedToMe && !isAssignedToEveryone) return
+      // Members cannot move to READY
+      if (newStatus === 'READY') return
+    }
 
     const previousStatus = started?.id === String(task.id) ? started.status : task.status
     if (newStatus === previousStatus) return
@@ -256,7 +275,6 @@ export default function ProjectPage() {
   const canManageRoles = effectiveMyRole === 'MASTER_ADMIN' || effectiveMyRole === 'PROJECT_MANAGER'
   const isProjectActive = project?.status === 'ACTIVE'
   const canCreateTask = canManageRoles && isProjectActive
-  const canMoveTasks = canManageRoles && isProjectActive
 
   const sprintRangeText = useMemo(() => {
     if (!currentSprint) return null

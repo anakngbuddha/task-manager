@@ -274,23 +274,13 @@ export function createTaskWriteHandlers(
 
       try {
         const { data: created } = await api.post('/tasks', body)
-        const bulkCount: number | undefined = (created as any).bulkCount
 
-        if (bulkCount && bulkCount > 1) {
-          return {
-            lines: [
-              { type: 'success', content: `✓ Task "${created.title}" created for ${bulkCount} members (one task each).` },
-              { type: 'system',  content: `  All ${bulkCount} project members have been assigned their own task copy.` },
-              { type: 'json',    content: JSON.stringify({ id: created.id, status: created.status, priority: created.priority, assignedTo: `${bulkCount} members`, deadline: deadlineIso }) },
-            ],
-            invalidations: [['tasks', targetProjectId], ['sprints', targetProjectId]]
-          }
-        }
+        const assignedText = created.assigneeId ? created.assigneeId : 'Everyone (Shared)'
 
         return {
           lines: [
             { type: 'success', content: `✓ Created [${TASK_TYPE_CONFIG[created.type as TaskType].icon} ${TASK_TYPE_CONFIG[created.type as TaskType].label}] "${created.title}" (id: ${created.id})` },
-            { type: 'system',  content: `  Scope: ${created.sprintId ? 'Sprint' : 'No sprint'}` },
+            { type: 'system',  content: `  Scope: ${created.sprintId ? 'Sprint' : 'No sprint'} | Assigned: ${assignedText}` },
             { type: 'json',    content: JSON.stringify({ id: created.id, status: created.status, priority: created.priority, projectId: targetProjectId, deadline: deadlineIso }) },
           ],
           invalidations: [['tasks', targetProjectId], ['sprints', targetProjectId]]

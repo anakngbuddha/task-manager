@@ -384,7 +384,7 @@ export default function CreateTaskDialog({
                 <Select value={newAssigneeId} onValueChange={setNewAssigneeId}>
                   <SelectTrigger className="h-9 bg-background shadow-sm"><SelectValue placeholder="Select assignee" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="EVERYONE">Everyone (All members)</SelectItem>
+                    <SelectItem value="EVERYONE">Everyone (Shared task)</SelectItem>
                     {members
                       .map((m: any) => m?.user)
                       .filter(Boolean)

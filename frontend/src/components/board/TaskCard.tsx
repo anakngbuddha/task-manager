@@ -163,10 +163,16 @@ export default function TaskCard({ task, onClick, onTagClick }: {
                 {task.timeTotalHours.toFixed(1)}h
               </span>
             )}
-            {task.assignee && (
-              <Avatar className="h-6 w-6 border border-border">
+            {task.assignee ? (
+              <Avatar className="h-6 w-6 border border-border" title={task.assignee.name ?? task.assignee.email}>
                 <AvatarFallback className="text-[10px] font-medium">
                   {(task.assignee.name ?? task.assignee.email ?? 'U').charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            ) : (
+              <Avatar className="h-6 w-6 border border-border" title="Assigned to Everyone">
+                <AvatarFallback className="text-[9px] font-medium bg-primary/10 text-primary">
+                  All
                 </AvatarFallback>
               </Avatar>
             )}

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { verifyWebhookSignature } from '../../lib/githubApp.js';
 import { prisma } from '../../lib/prisma.js';
 import { activityService } from '../../services/activity.service.js';
@@ -26,6 +27,19 @@ export async function githubWebhookRoutes(app) {
         const event = req.headers['x-github-event'];
         const deliveryId = req.headers['x-github-delivery'];
         const payload = req.body;
+        if (deliveryId) {
+            try {
+                await prisma.webhookDelivery.create({
+                    data: { source: 'github', deliveryId },
+                });
+            }
+            catch (e) {
+                if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+                    return reply.status(200).send({ ok: true, replay: true });
+                }
+                throw e;
+            }
+        }
         app.log.info({ event, action: payload.action, deliveryId }, 'GitHub webhook received');
         try {
             switch (event) {

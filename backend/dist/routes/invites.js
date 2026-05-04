@@ -1,4 +1,5 @@
 import { authenticate } from '../middlewares/authenticate.js';
+import { idempotencyPreHandler } from '../middlewares/idempotency.js';
 import { projectService } from '../services/project.service.js';
 import { prisma } from '../lib/prisma.js';
 import { randomBytes } from 'crypto';
@@ -8,7 +9,7 @@ function generateCode() {
 }
 export async function inviteRoutes(app) {
     app.post('/projects/:projectId/invites', {
-        preHandler: authenticate,
+        preHandler: [authenticate, idempotencyPreHandler('projects.invites.create')],
     }, async (req, reply) => {
         const { projectId } = req.params;
         const userId = req.authUser.id;

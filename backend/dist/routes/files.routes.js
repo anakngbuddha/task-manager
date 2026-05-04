@@ -1,5 +1,9 @@
+import { createHash } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { authenticate } from '../middlewares/authenticate.js';
+import { idempotencyPreHandler } from '../middlewares/idempotency.js';
+import { acquireIdempotency, attachIdempotencyContext, } from '../services/idempotency.service.js';
 import cloudinary from '../config/cloudinary.js';
 import streamifier from 'streamifier';
 const ALLOWED_MIME_TYPES = new Set([
@@ -37,7 +41,7 @@ export async function fileRoutes(app) {
         return reply.send(nodes);
     });
     // ─── POST /api/files/folder ─────────────────────────────────────────
-    app.post('/files/folder', { preHandler: authenticate }, async (req, reply) => {
+    app.post('/files/folder', { preHandler: [authenticate, idempotencyPreHandler('files.folder.create')] }, async (req, reply) => {
         const user = req.authUser;
         const body = req.body;
         if (!body.name || body.name.trim() === '') {
@@ -75,13 +79,29 @@ export async function fileRoutes(app) {
         const projectId = data.fields.projectId?.value || null;
         if (projectId) {
             const member = await prisma.projectMember.findUnique({
-                where: { userId_projectId: { userId: user.id, projectId } }
+                where: { userId_projectId: { userId: user.id, projectId } },
             });
             if (!member)
                 return reply.status(403).send({ error: 'Access denied' });
         }
         try {
             const buffer = await data.toBuffer();
+            const uploadHash = createHash('sha256')
+                .update(buffer)
+                .update('\n')
+                .update(String(projectId || ''))
+                .update('\n')
+                .update(String(parentId || ''))
+                .update('\n')
+                .update(data.filename)
+                .digest('hex');
+            const idem = await acquireIdempotency(req, reply, 'files.upload', uploadHash);
+            if (idem.kind === 'replay' || idem.kind === 'blocked') {
+                return;
+            }
+            if (idem.kind === 'proceed' && idem.recordId) {
+                attachIdempotencyContext(req, idem.recordId);
+            }
             let baseName = data.filename;
             let extension = '';
             const lastDotIndex = baseName.lastIndexOf('.');
@@ -178,23 +198,43 @@ export async function fileRoutes(app) {
         return reply.send(attachments);
     });
     // ─── POST /api/files/tasks/attachments ──────────────────────────────────
-    app.post('/files/tasks/attachments', { preHandler: authenticate }, async (req, reply) => {
-        const user = req.authUser;
+    app.post('/files/tasks/attachments', {
+        preHandler: [authenticate, idempotencyPreHandler('files.task_attachments.create')],
+    }, async (req, reply) => {
         const body = req.body;
         if (!body.taskId || !body.fileNodeId)
             return reply.status(400).send({ error: 'Bad Request' });
         const fileNode = await prisma.fileNode.findUnique({ where: { id: body.fileNodeId } });
         if (!fileNode)
             return reply.status(404).send({ error: 'File not found' });
-        const attachment = await prisma.taskAttachment.create({
-            data: { taskId: body.taskId, fileNodeId: body.fileNodeId },
-            include: {
-                fileNode: {
-                    include: { user: { select: { id: true, name: true, email: true, image: true, avatar: true } } }
+        try {
+            const attachment = await prisma.taskAttachment.create({
+                data: { taskId: body.taskId, fileNodeId: body.fileNodeId },
+                include: {
+                    fileNode: {
+                        include: { user: { select: { id: true, name: true, email: true, image: true, avatar: true } } },
+                    },
+                },
+            });
+            return reply.status(201).send(attachment);
+        }
+        catch (e) {
+            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+                const existing = await prisma.taskAttachment.findFirst({
+                    where: { taskId: body.taskId, fileNodeId: body.fileNodeId },
+                    include: {
+                        fileNode: {
+                            include: { user: { select: { id: true, name: true, email: true, image: true, avatar: true } } },
+                        },
+                    },
+                });
+                if (existing) {
+                    reply.header('Idempotent-Replay', 'true');
+                    return reply.status(200).send(existing);
                 }
             }
-        });
-        return reply.status(201).send(attachment);
+            throw e;
+        }
     });
     // ─── DELETE /api/files/tasks/attachments/:id ──────────────────────────
     app.delete('/files/tasks/attachments/:attachmentId', { preHandler: authenticate }, async (req, reply) => {

@@ -176,6 +176,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
     return member?.role ?? null
   }, [projectMembers, session?.user?.id])
   const canManageTasks = myProjectRole === 'MASTER_ADMIN' || myProjectRole === 'PROJECT_MANAGER'
+  const isAssigneeOrEveryone = task?.assignee?.id === session?.user?.id || task?.assigneeId === session?.user?.id || !task?.assigneeId
+  const canChangeStatus = canManageTasks || (myProjectRole === 'MEMBER' && isAssigneeOrEveryone)
 
   const renderWithMentions = (text: string) => {
     if (!text) return null
@@ -345,12 +347,37 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                       <h2 className="text-base font-semibold">{task?.title}</h2>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={`rounded-none border-border/60 px-2 py-0.5 text-xs ${statusBadge[status] ?? ''}`}
-                    >
-                      {statusLabel[status] ?? status}
-                    </Badge>
+                    {canChangeStatus ? (
+                      <Select
+                        value={status}
+                        onValueChange={async (newStatus) => {
+                          if (newStatus === 'READY' && !canManageTasks) return;
+                          setStatus(newStatus);
+                          await updateTask.mutateAsync({
+                            id: task.id,
+                            projectId,
+                            status: newStatus,
+                          });
+                        }}
+                      >
+                        <SelectTrigger className={`h-6 rounded-none border border-border/60 px-2 py-0.5 text-xs w-auto focus:ring-0 ${statusBadge[status] ?? 'bg-background text-foreground'}`}>
+                          <SelectValue>{statusLabel[status] ?? status}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(project?.boardColumns || ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY']).map((s: string) => {
+                            if (s === 'READY' && !canManageTasks) return null;
+                            return <SelectItem key={s} value={s}>{statusLabel[s] ?? s.replace(/_/g, ' ')}</SelectItem>
+                          })}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className={`rounded-none border-border/60 px-2 py-0.5 text-xs ${statusBadge[status] ?? ''}`}
+                      >
+                        {statusLabel[status] ?? status}
+                      </Badge>
+                    )}
                     <Badge
                       variant="outline"
                       className={`rounded-none border-border/60 px-2 py-0.5 text-xs ${priorityBadge[priority] ?? ''}`}
