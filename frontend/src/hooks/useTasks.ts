@@ -1,8 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import type { TaskType } from '../lib/taskTypes'
+import { useTaskSync } from './useTaskSync'
 
 export function useTasks(projectId: string) {
+  // Real-time sync: listens for task:created / task:updated / task:deleted
+  // from other users via Socket.IO and patches the React Query cache.
+  useTaskSync(projectId)
+
   return useQuery({
     queryKey: ['tasks', projectId],
     queryFn: async () => {

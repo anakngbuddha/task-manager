@@ -7,6 +7,7 @@ import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
 import { prisma } from '../lib/prisma.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
+import { getIO } from '../lib/socketManager.js'
 
 const DEFAULT_BOARD_COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY'] as const
 
@@ -265,6 +266,11 @@ export async function taskRoutes(app: FastifyInstance) {
         data: { taskId: t.id },
       })))
 
+      // Emit real-time event for each bulk-created task
+      for (const t of tasks) {
+        getIO().to(body.projectId).emit('task:created', { task: t, actorId: req.authUser.id })
+      }
+
       return reply.status(201).send({ ...tasks[0], bulkCount: tasks.length })
     }
 
@@ -314,6 +320,10 @@ export async function taskRoutes(app: FastifyInstance) {
         data: { taskId: task.id },
       })))
     }
+
+    // Emit real-time event for the created task
+    getIO().to(task.projectId).emit('task:created', { task, actorId: req.authUser.id })
+
     return reply.status(201).send(task)
   })
 
@@ -503,6 +513,9 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
+    // Emit real-time event for the updated task
+    getIO().to(updated.projectId).emit('task:updated', { task: updated, actorId: req.authUser.id })
+
     return updated
   })
 
@@ -519,6 +532,10 @@ export async function taskRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
     await taskService.delete(id)
+
+    // Emit real-time event for the deleted task
+    getIO().to(existing.projectId).emit('task:deleted', { id, projectId: existing.projectId, actorId: req.authUser.id })
+
     return reply.status(204).send()
   })
 
