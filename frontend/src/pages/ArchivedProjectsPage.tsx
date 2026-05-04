@@ -7,8 +7,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { useUpdateProject } from '@/hooks/useProject'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Archive, ArchiveRestore, CheckCircle2, RotateCcw, XCircle, LayoutGrid, List } from 'lucide-react'
+import { motion, AnimatePresence, type Variants } from 'framer-motion'
+import { Archive, ArchiveRestore, CheckCircle2, RotateCcw, XCircle } from 'lucide-react'
 
 type ArchiveTab = 'COMPLETED' | 'AXED'
 
@@ -23,7 +23,7 @@ type ProjectWithTaskSummary = {
   pendingTasks: number
 }
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
@@ -33,7 +33,7 @@ const containerVariants = {
   }
 }
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } },
   exit: { opacity: 0, scale: 0.95, transition: { duration: 0.2 } }

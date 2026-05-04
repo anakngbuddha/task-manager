@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { ChevronLeft, ChevronRight, Plus, Clock, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import { Avatar, AvatarGroup, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useSchedules, useCreateSchedule, useRespondScheduleInvite, type ScheduleType, type Schedule } from '@/hooks/useSchedules'
 import { usePendingDeadlines, type PendingDeadlineItem } from '@/hooks/usePendingDeadlines'
