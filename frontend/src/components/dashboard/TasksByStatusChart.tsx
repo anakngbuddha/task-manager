@@ -26,6 +26,42 @@ const STATUS_COLORS = {
   DONE: '#639922',
 } as const
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border bg-background px-4 py-3 shadow-lg min-w-[150px]">
+        <p className="mb-2 text-sm font-semibold text-foreground border-b pb-2">{label}</p>
+        <div className="space-y-1.5">
+          {payload.map((entry: any, index: number) => {
+            const formatKey = (key: string) => {
+              if (key === 'TODO') return 'To Do'
+              if (key === 'IN_PROGRESS') return 'In Progress'
+              if (key === 'IN_REVIEW') return 'In Review'
+              if (key === 'DONE') return 'Done'
+              return key
+            }
+
+            return (
+              <div key={index} className="flex items-center justify-between gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: entry.color }}
+                  />
+                  <span className="text-muted-foreground">{formatKey(entry.dataKey)}</span>
+                </div>
+                <span className="font-medium text-foreground">{entry.value}</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  return null
+}
+
 export default function TasksByStatusChart({ projects }: TasksByStatusChartProps) {
   return (
     <Card className="border-border/60 bg-background/60 backdrop-blur">
@@ -58,14 +94,7 @@ export default function TasksByStatusChart({ projects }: TasksByStatusChartProps
               <CartesianGrid stroke="#94a3b8" opacity={0.12} />
               <XAxis dataKey="project" tick={{ fill: '#94a3b8', fontSize: 12 }} interval={0} />
               <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'var(--card)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--foreground)',
-                }}
-                itemStyle={{ color: 'var(--foreground)' }}
-              />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--muted)', opacity: 0.2 }} />
               <Bar dataKey="TODO" stackId="status" fill={STATUS_COLORS.TODO} radius={[4, 4, 0, 0]} />
               <Bar dataKey="IN_PROGRESS" stackId="status" fill={STATUS_COLORS.IN_PROGRESS} radius={[4, 4, 0, 0]} />
               <Bar dataKey="IN_REVIEW" stackId="status" fill={STATUS_COLORS.IN_REVIEW} radius={[4, 4, 0, 0]} />

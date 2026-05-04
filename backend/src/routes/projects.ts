@@ -33,10 +33,12 @@ export async function projectRoutes(app: FastifyInstance) {
   app.get('/projects/pending-deadlines', {
     preHandler: authenticate,
   }, async (req) => {
-    const query = req.query as { daysAhead?: string; limit?: string }
-    const daysAhead = Math.min(Math.max(Number(query.daysAhead) || 14, 1), 90)
-    const limit = Math.min(Math.max(Number(query.limit) || 10, 1), 200)
-    return projectService.getPendingDeadlines(req.authUser.id, daysAhead, limit)
+    const query = req.query as { daysAhead?: string; daysBehind?: string; limit?: string; includeCompleted?: string }
+    const daysAhead = Math.min(Math.max(Number(query.daysAhead) || 14, 1), 3650)
+    const daysBehind = Math.min(Math.max(Number(query.daysBehind) || 0, 0), 3650)
+    const limit = Math.min(Math.max(Number(query.limit) || 10, 1), 5000)
+    const includeCompleted = query.includeCompleted === 'true'
+    return projectService.getPendingDeadlines(req.authUser.id, daysAhead, daysBehind, limit, includeCompleted)
   })
 
   // GET /api/projects/:projectId/dashboard-layout

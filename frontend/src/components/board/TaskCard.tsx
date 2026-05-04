@@ -39,8 +39,32 @@ export default function TaskCard({ task, onClick, onTagClick }: {
   const typeKey: TaskType = task.type ?? 'TASK'
   const typeConfig = TASK_TYPE_CONFIG[typeKey]
 
-  const columnBorderColor = columnBorderColors[task.status] || 'border-border'
+  const isCompleted = task.status === 'DONE' || task.status === 'READY'
+  
+  let isPastDue = false
+  let isDueToday = false
+  let hoursRemaining = 0
+
+  if (task.deadline && !isCompleted) {
+    const deadlineDate = new Date(task.deadline)
+    const diffMs = deadlineDate.getTime() - Date.now()
+    if (diffMs < 0) {
+      isPastDue = true
+    } else {
+      const now = new Date()
+      isDueToday = deadlineDate.getFullYear() === now.getFullYear() &&
+                   deadlineDate.getMonth() === now.getMonth() &&
+                   deadlineDate.getDate() === now.getDate()
+      
+      if (isDueToday || diffMs < 24 * 60 * 60 * 1000) {
+        hoursRemaining = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60)))
+      }
+    }
+  }
+
+  const columnBorderColor = isPastDue ? 'border-red-500' : (columnBorderColors[task.status] || 'border-border')
   const progressBgColor = columnBgColors[task.status] || 'bg-primary'
+  const cardBgColor = isPastDue ? 'bg-red-50/50 dark:bg-red-950/20' : 'bg-card'
 
   const totalSubtasks = task.children?.length || 0
   const completedSubtasks = task.children?.filter((t: any) => t.status === 'DONE' || t.status === 'READY').length || 0
@@ -51,11 +75,11 @@ export default function TaskCard({ task, onClick, onTagClick }: {
       ref={setNodeRef}
       style={style}
       className={[
-        'group cursor-pointer rounded-lg bg-card shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md',
+        'group cursor-pointer rounded-lg shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md',
+        cardBgColor,
         isDragging ? 'shadow-none z-50' : '',
         'border-t border-r border-b border-l-2',
-        columnBorderColor,
-        typeConfig.borderColor,
+        isPastDue ? 'border-red-500' : `${columnBorderColor} ${typeConfig.borderColor}`,
       ].join(' ')}
       onClick={() => {
         if (!isDragging) onClick(task)
@@ -120,8 +144,17 @@ export default function TaskCard({ task, onClick, onTagClick }: {
 
         {/* Bottom row: Due Date & Avatar */}
         <div className="flex items-center justify-between pt-1">
-          <div className="text-[11px] font-medium text-muted-foreground/80">
-            {task.deadline ? `Due ${new Date(task.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {task.deadline && (
+              <div className={`text-[11px] font-medium ${isPastDue ? 'text-red-600 dark:text-red-400 font-bold' : 'text-muted-foreground/80'}`}>
+                {isPastDue ? 'Past Due' : `Due ${new Date(task.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}`}
+              </div>
+            )}
+            {isDueToday && !isPastDue && (
+              <div className="text-[10px] font-bold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse" title={`${hoursRemaining} hours remaining`}>
+                ⏳ {hoursRemaining > 0 ? `${hoursRemaining}h left` : '<1h left'}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-1">

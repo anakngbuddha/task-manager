@@ -21,6 +21,7 @@ import { usePendingDeadlines, type PendingDeadlineItem } from '@/hooks/usePendin
 import { useProjects } from '@/hooks/useProjects'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '@/lib/auth-client'
+import { TASK_TYPE_CONFIG, type TaskType } from '@/lib/taskTypes'
 
 function toLocalDateInputValue(d: Date) {
   const offset = d.getTimezoneOffset()
@@ -84,7 +85,7 @@ type CalendarItem = {
   id: string
   title: string
   kind: 'SCHEDULE' | 'DEADLINE'
-  type?: ScheduleType
+  type?: ScheduleType | string
   date: Date
   status?: string
   response?: 'PENDING' | 'ACCEPTED' | 'DECLINED'
@@ -123,7 +124,7 @@ export default function CalendarPage() {
     to: monthEnd.toISOString(),
   })
 
-  const { data: deadlines = [] } = usePendingDeadlines({ daysAhead: 60, limit: 100 })
+  const { data: deadlines = [] } = usePendingDeadlines({ daysAhead: 3650, daysBehind: 3650, limit: 5000, includeCompleted: true })
   const { data: projects = [] } = useProjects()
 
   const myUserId = session?.user?.id
@@ -169,6 +170,7 @@ export default function CalendarPage() {
           kind: 'DEADLINE',
           date,
           status: d.status,
+          type: d.type,
         })
       }
     }
@@ -446,7 +448,14 @@ export default function CalendarPage() {
                             </span>
                           </div>
                         )}
-                        {cell.items.map(it => (
+                        {cell.items.map(it => {
+                          const isPastDue = it.kind === 'SCHEDULE' 
+                            ? it.date.getTime() < today.getTime()
+                            : it.status !== 'DONE' && it.status !== 'READY' && it.date.getTime() < today.getTime()
+                          
+                          const isCompleted = it.kind === 'DEADLINE' && (it.status === 'DONE' || it.status === 'READY')
+
+                          return (
                           <div
                             key={`${it.kind}:${it.id}`}
                             onClick={(e) => {
@@ -455,6 +464,8 @@ export default function CalendarPage() {
                             }}
                             className={cn(
                               'text-[0.65rem] leading-tight px-1.5 py-0.5 rounded border truncate font-medium cursor-pointer transition-opacity hover:opacity-80',
+                              isCompleted ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 opacity-60 line-through' :
+                              isPastDue ? 'bg-muted/50 border-muted-foreground/20 text-muted-foreground opacity-60' :
                               it.kind === 'SCHEDULE'
                                 ? SCHEDULE_RESPONSE_COLOR[(it.response ?? 'ACCEPTED') as NonNullable<CalendarItem['response']>]
                                 : it.status === 'IN_PROGRESS'
@@ -463,11 +474,11 @@ export default function CalendarPage() {
                             )}
                             title={
                               it.kind === 'SCHEDULE'
-                                ? `${SCHEDULE_TYPE_LABEL[it.type!]}: ${it.title} (${SCHEDULE_RESPONSE_LABEL[(it.response ?? 'ACCEPTED') as NonNullable<CalendarItem['response']>]})`
-                                : `Deadline: ${it.title}`
+                                ? `${SCHEDULE_TYPE_LABEL[it.type as ScheduleType]}: ${it.title} (${SCHEDULE_RESPONSE_LABEL[(it.response ?? 'ACCEPTED') as NonNullable<CalendarItem['response']>]})${isPastDue ? ' (Past Event)' : ''}`
+                                : `${TASK_TYPE_CONFIG[it.type as TaskType]?.label} Deadline: ${it.title}${isCompleted ? ' (Completed)' : isPastDue ? ' (Past Due)' : ''}`
                             }
                           >
-                            {it.kind === 'DEADLINE' && '⏰ '}
+                            {it.kind === 'DEADLINE' && <span className="mr-0.5">{TASK_TYPE_CONFIG[it.type as TaskType]?.icon}</span>}
                             {it.title}
                             {it.kind === 'SCHEDULE' && (
                               <span className="ml-1 text-[0.55rem] font-semibold opacity-80">
@@ -475,7 +486,7 @@ export default function CalendarPage() {
                               </span>
                             )}
                           </div>
-                        ))}
+                        )})}
                       </div>
                     )
                   })}
@@ -562,10 +573,10 @@ export default function CalendarPage() {
                                 {SCHEDULE_TYPE_LABEL[it.type as ScheduleType]}
                               </Badge>
                             ) : (
-                              <Badge variant="secondary" className="rounded-none px-2 py-0.5 text-[0.7rem] gap-1">
-                                <Clock className="size-3" />
-                                Deadline
-                              </Badge>
+                              <span className={cn('inline-flex items-center gap-1 text-[0.7rem] font-medium px-2 py-0.5 rounded border', TASK_TYPE_CONFIG[it.type as TaskType]?.textColor, TASK_TYPE_CONFIG[it.type as TaskType]?.badgeColor)}>
+                                <span>{TASK_TYPE_CONFIG[it.type as TaskType]?.icon}</span>
+                                <span>{TASK_TYPE_CONFIG[it.type as TaskType]?.label}</span>
+                              </span>
                             )}
                           </div>
                           <p className="text-sm font-medium truncate">{it.title}</p>

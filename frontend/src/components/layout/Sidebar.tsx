@@ -178,7 +178,7 @@ export default function Sidebar() {
             <div className="flex min-w-0 flex-1 items-center gap-2.5 px-1">
               <img src="/logo.png" alt="Logo" className="size-8 shrink-0 object-contain drop-shadow" />
               <div className="min-w-0">
-                <h1 className="truncate text-sm font-semibold leading-tight">Task Manager</h1>
+                <h1 className="truncate text-sm font-semibold leading-tight">We Work IT</h1>
                 <p className="truncate text-[0.7rem] text-sidebar-foreground/60">Workspace</p>
               </div>
             </div>

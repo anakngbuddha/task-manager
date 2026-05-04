@@ -9,6 +9,31 @@ interface ProjectCompletionChartProps {
   finishedPercentage: number
 }
 
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="rounded-lg border bg-background px-4 py-3 shadow-lg min-w-[150px]">
+        <div className="space-y-1.5">
+          {payload.map((entry: any, index: number) => (
+            <div key={index} className="flex items-center justify-between gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <div
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ backgroundColor: entry.color || entry.payload?.fill }}
+                />
+                <span className="text-muted-foreground font-medium">{entry.name}</span>
+              </div>
+              <span className="font-medium text-foreground">{entry.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return null
+}
+
 export default function ProjectCompletionChart({
   totalProjects,
   finishedProjects,
@@ -50,14 +75,7 @@ export default function ProjectCompletionChart({
             </div>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--foreground)',
-                  }}
-                  itemStyle={{ color: 'var(--foreground)' }}
-                />
+                <Tooltip content={<CustomTooltip />} />
                 <Pie
                   data={[
                     { name: 'Finished', value: finishedProjects },

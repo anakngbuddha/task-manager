@@ -7,7 +7,9 @@ import { cn } from '@/lib/utils'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useSession } from '@/lib/auth-client'
 import { useRespondScheduleInvite, useScheduleById, useSchedules, type Schedule, type ScheduleType } from '@/hooks/useSchedules'
+import { usePendingDeadlines } from '@/hooks/usePendingDeadlines'
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
+import { TASK_TYPE_CONFIG, type TaskType } from '@/lib/taskTypes'
 
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
@@ -79,7 +81,9 @@ const SCHEDULE_RESPONSE_COLOR: Record<keyof typeof SCHEDULE_RESPONSE_LABEL, stri
   DECLINED: 'bg-red-500/15 border-red-500/30 text-red-700',
 }
 
-type DayViewScheduleCard = Schedule & { myResponse?: keyof typeof SCHEDULE_RESPONSE_LABEL }
+type DayViewItem = 
+  | (Schedule & { kind: 'SCHEDULE'; sortDate: Date; myResponse?: keyof typeof SCHEDULE_RESPONSE_LABEL })
+  | { kind: 'DEADLINE'; sortDate: Date; id: string; title: string; deadline: string; status: string; type: string; project: { id: string; name: string } }
 
 function getInitials(name?: string | null, email?: string | null) {
   if (name) return name.split(' ').filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase()
@@ -144,7 +148,7 @@ export default function DayViewPage() {
     return cells
   }, [miniDaysInMonth, miniFirstDayOfMonth, miniYear, overviewMonth])
 
-  const { data: schedules = [], isLoading } = useSchedules(
+  const { data: schedules = [], isLoading: isLoadingSchedules } = useSchedules(
     dayRange
       ? {
           from: dayRange.startISO,
@@ -152,39 +156,50 @@ export default function DayViewPage() {
         }
       : undefined,
   )
+  
+  const { data: deadlines = [], isLoading: isLoadingDeadlines } = usePendingDeadlines({ daysAhead: 3650, daysBehind: 3650, limit: 5000, includeCompleted: true })
+  
+  const isLoading = isLoadingSchedules || isLoadingDeadlines
 
-  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null)
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
 
-  const daySchedules = useMemo(() => {
+  const dayItems = useMemo(() => {
     if (!effectiveDayDate) return []
-    const withMyResponse: DayViewScheduleCard[] = schedules
+    const scheds = schedules
       .filter((s) => isSameDay(new Date(s.scheduledAt), effectiveDayDate))
       .map((s) => {
         const myAtt = s.attendees?.find((a) => a.userId === myUserId)
         const myResponse =
           (myAtt?.response as keyof typeof SCHEDULE_RESPONSE_LABEL | undefined) ??
           (s.creatorId === myUserId ? 'ACCEPTED' : undefined)
-        return { ...s, myResponse }
+        return { ...s, kind: 'SCHEDULE' as const, sortDate: new Date(s.scheduledAt), myResponse }
       })
-      .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+      
+    const deads = deadlines
+      .filter((d) => isSameDay(new Date(d.deadline), effectiveDayDate))
+      .map((d) => {
+        return { ...d, kind: 'DEADLINE' as const, sortDate: new Date(d.deadline) }
+      })
 
-    return withMyResponse
-  }, [schedules, effectiveDayDate, myUserId])
+    const combined: DayViewItem[] = [...scheds, ...deads]
+    combined.sort((a, b) => a.sortDate.getTime() - b.sortDate.getTime())
+    return combined
+  }, [schedules, deadlines, effectiveDayDate, myUserId])
 
-  const selectedSchedule = useMemo(() => {
-    if (!selectedScheduleId) return null
-    return daySchedules.find((s) => s.id === selectedScheduleId) ?? null
-  }, [selectedScheduleId, daySchedules])
+  const selectedItem = useMemo(() => {
+    if (!selectedItemId) return null
+    return dayItems.find((s) => s.id === selectedItemId) ?? null
+  }, [selectedItemId, dayItems])
 
   // If nothing selected yet, select the first event (nice UX on first load).
   useEffect(() => {
-    if (!isLoading && !selectedScheduleId && daySchedules.length > 0) {
-      setSelectedScheduleId(daySchedules[0].id)
+    if (!isLoading && !selectedItemId && dayItems.length > 0) {
+      setSelectedItemId(dayItems[0].id)
     }
-  }, [isLoading, selectedScheduleId, daySchedules])
+  }, [isLoading, selectedItemId, dayItems])
 
   useEffect(() => {
-    if (scheduleIdFromQuery) setSelectedScheduleId(scheduleIdFromQuery)
+    if (scheduleIdFromQuery) setSelectedItemId(scheduleIdFromQuery)
   }, [scheduleIdFromQuery])
 
   const prevDay = effectiveDayDate
@@ -195,28 +210,27 @@ export default function DayViewPage() {
     : null
 
   const timelineEventsByHour = useMemo(() => {
-    const byHour: Record<number, DayViewScheduleCard[]> = {}
+    const byHour: Record<number, DayViewItem[]> = {}
     for (let h = 0; h < 24; h += 1) byHour[h] = []
-    for (const s of daySchedules) {
-      const d = new Date(s.scheduledAt)
-      const hour = d.getHours()
-      byHour[hour].push(s)
+    for (const it of dayItems) {
+      const hour = it.sortDate.getHours()
+      byHour[hour].push(it)
     }
     for (let h = 0; h < 24; h += 1) {
-      byHour[h].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+      byHour[h].sort((a, b) => a.sortDate.getTime() - b.sortDate.getTime())
     }
     return byHour
-  }, [daySchedules])
+  }, [dayItems])
 
   const myResponseForSelected = useMemo(() => {
-    if (!selectedSchedule || !myUserId) return undefined
-    const myAtt = selectedSchedule.attendees?.find((a) => a.userId === myUserId)
-    return (myAtt?.response ?? (selectedSchedule.creatorId === myUserId ? 'ACCEPTED' : undefined)) as
+    if (!selectedItem || selectedItem.kind === 'DEADLINE' || !myUserId) return undefined
+    const myAtt = selectedItem.attendees?.find((a) => a.userId === myUserId)
+    return (myAtt?.response ?? (selectedItem.creatorId === myUserId ? 'ACCEPTED' : undefined)) as
       | keyof typeof SCHEDULE_RESPONSE_LABEL
       | undefined
-  }, [selectedSchedule, myUserId])
+  }, [selectedItem, myUserId])
 
-  const selectedAttendees = selectedSchedule?.attendees ?? []
+  const selectedAttendees = selectedItem?.kind === 'SCHEDULE' ? (selectedItem.attendees ?? []) : []
 
   return (
     <div className="flex h-dvh">
@@ -267,7 +281,7 @@ export default function DayViewPage() {
                   <div className="flex flex-col">
                     <p className="text-sm font-semibold">Timeline</p>
                     <p className="text-xs text-muted-foreground">
-                      {isLoading ? 'Loading...' : `${daySchedules.length} schedule${daySchedules.length === 1 ? '' : 's'}`}
+                      {isLoading ? 'Loading...' : `${dayItems.length} item${dayItems.length === 1 ? '' : 's'} (${dayItems.filter(i => i.kind === 'SCHEDULE').length} meetings, ${dayItems.filter(i => i.kind === 'DEADLINE').length} tasks)`}
                     </p>
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
                       <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.65rem] border', SCHEDULE_RESPONSE_COLOR.PENDING)}>
@@ -284,7 +298,7 @@ export default function DayViewPage() {
                 </div>
 
                 <div className="max-h-[72vh] overflow-auto">
-                  <div className="grid grid-cols-[90px_1fr]">
+                  <div className="flex flex-col">
                     {Array.from({ length: 24 }).map((_, hour) => {
                       const events = timelineEventsByHour[hour] ?? []
                       const timeLabel = `${String(hour).padStart(2, '0')}:00`
@@ -299,40 +313,89 @@ export default function DayViewPage() {
                               <div className="text-xs text-muted-foreground">&nbsp;</div>
                             ) : (
                               <div className="flex flex-col gap-2">
-                                {events.map((s) => {
-                                  const myResp = s.myResponse
+                                {events.map((it) => {
+                                  const isSelected = selectedItemId === it.id
+                                  
+                                  if (it.kind === 'DEADLINE') {
+                                    const isCompleted = it.status === 'DONE' || it.status === 'READY'
+                                    const isPastDue = !isCompleted && it.sortDate.getTime() < Date.now()
+                                    return (
+                                      <button
+                                        key={`dl:${it.id}`}
+                                        type="button"
+                                        onClick={() => setSelectedItemId(it.id)}
+                                        className={cn(
+                                          'text-left rounded-lg border px-3 py-2 cursor-pointer transition-colors',
+                                          'hover:opacity-90',
+                                          isSelected ? 'ring-2 ring-primary/30' : '',
+                                          isCompleted ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 opacity-60' :
+                                          isPastDue ? 'bg-muted/50 border-muted-foreground/20 text-muted-foreground opacity-60' :
+                                          it.status === 'IN_PROGRESS' ? 'bg-blue-500/10 border-blue-500/20 text-blue-700' :
+                                          'bg-card border-border/60 text-foreground'
+                                        )}
+                                      >
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="min-w-0">
+                                            <div className="text-[0.78rem] font-semibold truncate">
+                                              {it.sortDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })} · {it.title}
+                                            </div>
+                                            <div className="mt-1 flex items-center gap-2 flex-wrap">
+                                              <span className={cn('inline-flex items-center gap-1 text-[0.65rem] font-medium px-1.5 py-0.5 rounded border bg-card/50', TASK_TYPE_CONFIG[it.type as TaskType]?.textColor)}>
+                                                <span>{TASK_TYPE_CONFIG[it.type as TaskType]?.icon}</span>
+                                                <span>{TASK_TYPE_CONFIG[it.type as TaskType]?.label} Deadline</span>
+                                              </span>
+                                              <Badge variant="secondary" className="rounded-none px-2 py-0.5 text-[0.65rem] border bg-card/50">
+                                                {it.project.name}
+                                              </Badge>
+                                              {isCompleted && (
+                                                <Badge variant="secondary" className="rounded-none px-2 py-0.5 text-[0.65rem] border bg-emerald-500/20 text-emerald-700">
+                                                  Completed
+                                                </Badge>
+                                              )}
+                                              {isPastDue && (
+                                                <Badge variant="secondary" className="rounded-none px-2 py-0.5 text-[0.65rem] border bg-destructive/20 text-destructive">
+                                                  Past Due
+                                                </Badge>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </button>
+                                    )
+                                  }
+
+                                  const myResp = it.myResponse
                                   const hasStatus = !!myResp
                                   const resp = (myResp ?? 'PENDING') as keyof typeof SCHEDULE_RESPONSE_LABEL
-                                  const isSelected = selectedScheduleId === s.id
 
                                   return (
                                     <button
-                                      key={s.id}
+                                      key={`sch:${it.id}`}
                                       type="button"
-                                      onClick={() => setSelectedScheduleId(s.id)}
+                                      onClick={() => setSelectedItemId(it.id)}
                                       className={cn(
                                         'text-left rounded-lg border px-3 py-2 cursor-pointer transition-colors',
                                         'hover:opacity-90',
                                         isSelected ? 'ring-2 ring-primary/30' : '',
                                         hasStatus ? SCHEDULE_RESPONSE_COLOR[resp] : 'bg-muted/10 border-border/60 text-muted-foreground',
                                       )}
-                                      title={`${scheduleTypeLabel(s.type)} — ${myResp ? SCHEDULE_RESPONSE_LABEL[myResp] : 'No status'}`}
+                                      title={`${scheduleTypeLabel(it.type)} — ${myResp ? SCHEDULE_RESPONSE_LABEL[myResp] : 'No status'}`}
                                     >
                                       <div className="flex items-start justify-between gap-2">
                                         <div className="min-w-0">
                                           <div className="text-[0.78rem] font-semibold truncate">
                                             {(() => {
-                                              const start = new Date(s.scheduledAt)
-                                              const end = s.endAt ? new Date(s.endAt) : null
+                                              const start = new Date(it.scheduledAt)
+                                              const end = it.endAt ? new Date(it.endAt) : null
                                               const startLabel = start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-                                              if (!end) return `${startLabel} · ${s.title}`
+                                              if (!end) return `${startLabel} · ${it.title}`
                                               const endLabel = end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-                                              return `${startLabel}–${endLabel} · ${s.title}`
+                                              return `${startLabel}–${endLabel} · ${it.title}`
                                             })()}
                                           </div>
                                           <div className="mt-1 flex items-center gap-2 flex-wrap">
-                                            <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.65rem] border', scheduleTypeBadgeClass(s.type))}>
-                                              {scheduleTypeLabel(s.type)}
+                                            <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.65rem] border', scheduleTypeBadgeClass(it.type))}>
+                                              {scheduleTypeLabel(it.type)}
                                             </Badge>
                                             {myResp && (
                                               <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.65rem] border', SCHEDULE_RESPONSE_COLOR[myResp])}>
@@ -419,44 +482,48 @@ export default function DayViewPage() {
 
                     <div className="mt-3">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-xs text-muted-foreground">Total meetings</p>
+                        <p className="text-xs text-muted-foreground">Total items today</p>
                         <p className="text-xs text-muted-foreground tabular-nums">
-                          {daySchedules.length}
+                          {dayItems.length}
                         </p>
                       </div>
                       <div className="mt-2 flex flex-col gap-1">
-                        {daySchedules.slice(0, 3).map((s) => {
-                          const myResp = (s.myResponse ?? (s.creatorId === myUserId ? 'ACCEPTED' : undefined)) as
-                            | keyof typeof SCHEDULE_RESPONSE_LABEL
-                            | undefined
+                        {dayItems.slice(0, 3).map((it) => {
+                          const isSelected = selectedItemId === it.id
                           return (
                             <button
-                              key={s.id}
+                              key={`${it.kind}:${it.id}`}
                               type="button"
-                              onClick={() => setSelectedScheduleId(s.id)}
+                              onClick={() => setSelectedItemId(it.id)}
                               className={cn(
                                 'text-left rounded-md border px-2 py-1.5 transition-colors',
                                 'hover:bg-accent/40',
-                                selectedScheduleId === s.id ? 'border-primary/60 bg-primary/10' : 'border-border/40 bg-background/30',
+                                isSelected ? 'border-primary/60 bg-primary/10' : 'border-border/40 bg-background/30',
                               )}
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <span className="text-[0.72rem] font-semibold truncate">
-                                  {new Date(s.scheduledAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                                  {it.sortDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
                                 </span>
-                                {myResp && (
-                                  <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.62rem] border', SCHEDULE_RESPONSE_COLOR[myResp])}>
-                                    {SCHEDULE_RESPONSE_SHORT[myResp]}
+                                {it.kind === 'SCHEDULE' && it.myResponse && (
+                                  <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.62rem] border', SCHEDULE_RESPONSE_COLOR[it.myResponse])}>
+                                    {SCHEDULE_RESPONSE_SHORT[it.myResponse]}
                                   </Badge>
                                 )}
+                                {it.kind === 'DEADLINE' && (
+                                  <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[0.62rem] font-medium bg-background', TASK_TYPE_CONFIG[it.type as TaskType]?.textColor)}>
+                                    <span>{TASK_TYPE_CONFIG[it.type as TaskType]?.icon}</span>
+                                    <span>{TASK_TYPE_CONFIG[it.type as TaskType]?.label}</span>
+                                  </span>
+                                )}
                               </div>
-                              <p className="mt-0.5 text-[0.72rem] truncate">{s.title}</p>
+                              <p className="mt-0.5 text-[0.72rem] truncate">{it.title}</p>
                             </button>
                           )
                         })}
-                        {daySchedules.length > 3 && (
+                        {dayItems.length > 3 && (
                           <p className="text-[0.7rem] text-muted-foreground mt-1">
-                            +{daySchedules.length - 3} more
+                            +{dayItems.length - 3} more
                           </p>
                         )}
                       </div>
@@ -472,22 +539,39 @@ export default function DayViewPage() {
                   </div>
 
                   <div className="p-4 space-y-4">
-                    {!selectedSchedule ? (
-                      <div className="text-sm text-muted-foreground">Select a schedule from the timeline.</div>
+                    {!selectedItem ? (
+                      <div className="text-sm text-muted-foreground">Select an item from the timeline.</div>
                     ) : (
                       <>
                         <div className="space-y-2">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <p className="text-lg font-semibold truncate">{selectedSchedule.title}</p>
+                              <p className="text-lg font-semibold truncate">{selectedItem.title}</p>
                               <div className="mt-2 flex flex-wrap items-center gap-2">
-                                <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.7rem] border', scheduleTypeBadgeClass(selectedSchedule.type))}>
-                                  {scheduleTypeLabel(selectedSchedule.type)}
-                                </Badge>
-                                {myResponseForSelected && (
-                                  <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.7rem] border', SCHEDULE_RESPONSE_COLOR[myResponseForSelected])}>
-                                    {SCHEDULE_RESPONSE_LABEL[myResponseForSelected]}
-                                  </Badge>
+                                {selectedItem.kind === 'SCHEDULE' ? (
+                                  <>
+                                    <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.7rem] border', scheduleTypeBadgeClass(selectedItem.type))}>
+                                      {scheduleTypeLabel(selectedItem.type)}
+                                    </Badge>
+                                    {myResponseForSelected && (
+                                      <Badge variant="secondary" className={cn('rounded-none px-2 py-0.5 text-[0.7rem] border', SCHEDULE_RESPONSE_COLOR[myResponseForSelected])}>
+                                        {SCHEDULE_RESPONSE_LABEL[myResponseForSelected]}
+                                      </Badge>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className={cn('inline-flex items-center gap-1 text-[0.7rem] font-medium px-2 py-0.5 rounded border bg-card/50', TASK_TYPE_CONFIG[selectedItem.type as TaskType]?.textColor)}>
+                                      <span>{TASK_TYPE_CONFIG[selectedItem.type as TaskType]?.icon}</span>
+                                      <span>{TASK_TYPE_CONFIG[selectedItem.type as TaskType]?.label} Deadline</span>
+                                    </span>
+                                    <Badge variant="secondary" className="rounded-none px-2 py-0.5 text-[0.7rem] border">
+                                      Project: {selectedItem.project.name}
+                                    </Badge>
+                                    <Badge variant="secondary" className="rounded-none px-2 py-0.5 text-[0.7rem] border">
+                                      Status: {selectedItem.status}
+                                    </Badge>
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -495,92 +579,97 @@ export default function DayViewPage() {
                             <div className="shrink-0 text-right">
                               <div className="text-xs text-muted-foreground tabular-nums">
                                 {(() => {
-                                  const start = new Date(selectedSchedule.scheduledAt)
-                                  const end = selectedSchedule.endAt ? new Date(selectedSchedule.endAt) : null
+                                  if (selectedItem.kind === 'DEADLINE') {
+                                    return selectedItem.sortDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                                  }
+                                  const start = new Date(selectedItem.scheduledAt)
+                                  const end = selectedItem.endAt ? new Date(selectedItem.endAt) : null
                                   const startLabel = start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
                                   if (!end) return startLabel
                                   const endLabel = end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
                                   return `${startLabel}–${endLabel}`
                                 })()}
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                {selectedSchedule.location ? selectedSchedule.location : 'No location'}
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                {selectedItem.kind === 'SCHEDULE' && selectedItem.location ? selectedItem.location : (selectedItem.kind === 'SCHEDULE' ? 'No location' : '')}
                               </div>
                             </div>
                           </div>
 
-                          {selectedSchedule.details && (
-                            <div className="rounded-lg border bg-background px-3 py-2">
+                          {selectedItem.kind === 'SCHEDULE' && selectedItem.details && (
+                            <div className="rounded-lg border bg-background px-3 py-2 mt-4">
                               <p className="text-xs text-muted-foreground mb-1">Notes</p>
-                              <p className="text-sm whitespace-pre-wrap">{selectedSchedule.details}</p>
+                              <p className="text-sm whitespace-pre-wrap">{selectedItem.details}</p>
                             </div>
                           )}
 
-                          <div className="rounded-lg border bg-background/60 overflow-hidden">
-                            <div className="flex items-center justify-between gap-3 px-3 py-2 border-b">
-                              <p className="text-sm font-semibold">Attendees</p>
-                              <span className="text-xs text-muted-foreground tabular-nums">
-                                {selectedAttendees.length}
-                              </span>
-                            </div>
-
-                            {selectedAttendees.length === 0 ? (
-                              <div className="p-3 text-sm text-muted-foreground">No attendees.</div>
-                            ) : (
-                              <div className="divide-y max-h-[320px] overflow-auto">
-                                {selectedAttendees.map((a) => {
-                                  const resp = (a.response ?? 'PENDING') as keyof typeof SCHEDULE_RESPONSE_LABEL
-                                  const initials = getInitials(a.name ?? null, a.email)
-                                  return (
-                                    <div
-                                      key={`${a.scheduleId ?? selectedSchedule.id}:${a.email}`}
-                                      className="flex items-center justify-between gap-3 px-3 py-2"
-                                    >
-                                      <div className="flex items-center gap-3 min-w-0">
-                                        <div className="h-8 w-8 rounded-full bg-muted/70 text-muted-foreground flex items-center justify-center text-xs font-semibold shrink-0">
-                                          {initials}
-                                        </div>
-                                        <div className="min-w-0">
-                                          <p className="text-sm font-medium truncate">
-                                            {a.name ? `${a.name} (${a.email})` : a.email}
-                                          </p>
-                                          <p className="text-xs text-muted-foreground truncate">
-                                            {a.userId === myUserId ? 'You' : ''}
-                                          </p>
-                                        </div>
-                                      </div>
-
-                                      <Badge
-                                        variant="secondary"
-                                        className={cn('rounded-none px-2 py-0.5 text-[0.7rem] border', SCHEDULE_RESPONSE_COLOR[resp])}
-                                      >
-                                        {SCHEDULE_RESPONSE_SHORT[resp]}
-                                      </Badge>
-                                    </div>
-                                  )
-                                })}
+                          {selectedItem.kind === 'SCHEDULE' && (
+                            <div className="rounded-lg border bg-background/60 overflow-hidden mt-4">
+                              <div className="flex items-center justify-between gap-3 px-3 py-2 border-b">
+                                <p className="text-sm font-semibold">Attendees</p>
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                  {selectedAttendees.length}
+                                </span>
                               </div>
-                            )}
-                          </div>
+
+                              {selectedAttendees.length === 0 ? (
+                                <div className="p-3 text-sm text-muted-foreground">No attendees.</div>
+                              ) : (
+                                <div className="divide-y max-h-[320px] overflow-auto">
+                                  {selectedAttendees.map((a) => {
+                                    const resp = (a.response ?? 'PENDING') as keyof typeof SCHEDULE_RESPONSE_LABEL
+                                    const initials = getInitials(a.name ?? null, a.email)
+                                    return (
+                                      <div
+                                        key={`${a.scheduleId ?? selectedItem.id}:${a.email}`}
+                                        className="flex items-center justify-between gap-3 px-3 py-2"
+                                      >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                          <div className="h-8 w-8 rounded-full bg-muted/70 text-muted-foreground flex items-center justify-center text-xs font-semibold shrink-0">
+                                            {initials}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <p className="text-sm font-medium truncate">
+                                              {a.name ? `${a.name} (${a.email})` : a.email}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground truncate">
+                                              {a.userId === myUserId ? 'You' : ''}
+                                            </p>
+                                          </div>
+                                        </div>
+
+                                        <Badge
+                                          variant="secondary"
+                                          className={cn('rounded-none px-2 py-0.5 text-[0.7rem] border', SCHEDULE_RESPONSE_COLOR[resp])}
+                                        >
+                                          {SCHEDULE_RESPONSE_SHORT[resp]}
+                                        </Badge>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         {/* Accept/Decline controls for the current user */}
-                        {myUserId && myResponseForSelected === 'PENDING' && (
-                          <div className="pt-2 border-t">
+                        {myUserId && selectedItem.kind === 'SCHEDULE' && myResponseForSelected === 'PENDING' && (
+                          <div className="pt-2 border-t mt-4">
                             <p className="text-xs text-muted-foreground mb-2">Your response</p>
                             <div className="flex items-center gap-2">
                               <Button
                                 className="rounded-none"
                                 variant="outline"
                                 disabled={respondInvite.isPending}
-                                onClick={() => respondInvite.mutate({ scheduleId: selectedSchedule.id, response: 'DECLINED' })}
+                                onClick={() => respondInvite.mutate({ scheduleId: selectedItem.id, response: 'DECLINED' })}
                               >
                                 Decline
                               </Button>
                               <Button
                                 className="rounded-none"
                                 disabled={respondInvite.isPending}
-                                onClick={() => respondInvite.mutate({ scheduleId: selectedSchedule.id, response: 'ACCEPTED' })}
+                                onClick={() => respondInvite.mutate({ scheduleId: selectedItem.id, response: 'ACCEPTED' })}
                               >
                                 Accept
                               </Button>

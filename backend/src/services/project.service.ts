@@ -224,8 +224,9 @@ export const projectService = {
     })
   },
 
-  async getPendingDeadlines(userId: string, daysAhead: number, limit: number) {
+  async getPendingDeadlines(userId: string, daysAhead: number, daysBehind: number = 0, limit: number = 100, includeCompleted: boolean = false) {
     const now = new Date()
+    const start = new Date(now.getTime() - daysBehind * 24 * 60 * 60 * 1000)
     const end = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000)
 
     const memberships = await prisma.projectMember.findMany({
@@ -240,10 +241,10 @@ export const projectService = {
     const tasks = await prisma.task.findMany({
       where: {
         projectId: { in: projectIds },
-        deadline: { gt: now, lte: end },
-        status: { notIn: ['DONE', 'READY'] },
+        deadline: { gte: start, lte: end },
+        ...(includeCompleted ? {} : { status: { notIn: ['DONE', 'READY'] } }),
       },
-      select: { id: true, title: true, deadline: true, status: true, projectId: true },
+      select: { id: true, title: true, deadline: true, status: true, projectId: true, type: true },
       orderBy: { deadline: 'asc' },
       take: limit,
     })
@@ -254,6 +255,7 @@ export const projectService = {
       title: t.title,
       deadline: t.deadline!.toISOString(),
       status: t.status,
+      type: t.type,
       project: projectMap.get(t.projectId) ?? { id: t.projectId, name: '' },
     }))
   },
