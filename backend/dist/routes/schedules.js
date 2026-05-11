@@ -6,6 +6,7 @@ import { requireProjectRole } from '../services/projectAuth.service.js';
 import { prisma } from '../lib/prisma.js';
 import { activityService } from '../services/activity.service.js';
 import { notificationService } from '../services/notification.service.js';
+import { auditLogService, computeChanges } from '../services/auditLog.service.js';
 import { sendScheduleInviteEmail, sendScheduleCancellationEmail, } from '../services/email.service.js';
 import { scheduleCalendarUrl } from '../lib/publicUrls.js';
 const attendeeSchema = z.object({
@@ -105,6 +106,18 @@ export async function scheduleRoutes(app) {
         catch (err) {
             return reply.status(400).send({ error: 'Database Error: ' + err.message });
         }
+        auditLogService.record({
+            userId: user.id,
+            userEmail: user.email,
+            userName: user.name ?? null,
+            action: 'CREATE',
+            entityType: 'SCHEDULE',
+            entityId: schedule.id,
+            entityName: schedule.title,
+            projectId: schedule.projectId,
+            metadata: { type: schedule.type, scheduledAt: schedule.scheduledAt.toISOString() },
+            req,
+        });
         if (body.projectId) {
             try {
                 await activityService.record({
@@ -319,6 +332,19 @@ export async function scheduleRoutes(app) {
                 creator: { select: { id: true, name: true, email: true } },
             },
         });
+        auditLogService.record({
+            userId: user.id,
+            userEmail: user.email,
+            userName: user.name ?? null,
+            action: 'UPDATE',
+            entityType: 'SCHEDULE',
+            entityId: schedule.id,
+            entityName: schedule.title,
+            projectId: schedule.projectId,
+            changes: computeChanges(existing, schedule, Object.keys(body)),
+            metadata: { fields: Object.keys(body) },
+            req,
+        });
         if (newAttendeeEmails.length > 0) {
             try {
                 const viewInAppUrl = scheduleCalendarUrl(FRONTEND_URL, schedule.id, schedule.scheduledAt);
@@ -454,6 +480,18 @@ export async function scheduleRoutes(app) {
             console.error('Failed to send cancellation emails:', err);
         }
         await prisma.schedule.delete({ where: { id } });
+        auditLogService.record({
+            userId: user.id,
+            userEmail: user.email,
+            userName: user.name ?? null,
+            action: 'DELETE',
+            entityType: 'SCHEDULE',
+            entityId: schedule.id,
+            entityName: schedule.title,
+            projectId: schedule.projectId,
+            metadata: { type: schedule.type, scheduledAt: schedule.scheduledAt.toISOString() },
+            req,
+        });
         return reply.status(204).send();
     });
     // ─── GET /projects/:projectId/schedules ───────────────────

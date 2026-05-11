@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { authenticate } from '../middlewares/authenticate.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { prisma } from '../lib/prisma.js'
+import { auditLogService, computeChanges } from '../services/auditLog.service.js'
 
 // ─── Validation schemas ───────────────────────────────────────────────────────
 
@@ -121,6 +122,19 @@ export async function automationRoutes(app: FastifyInstance) {
         },
       })
 
+      auditLogService.record({
+        userId: req.authUser.id,
+        userEmail: req.authUser.email,
+        userName: req.authUser.name ?? null,
+        action: 'CREATE',
+        entityType: 'AUTOMATION',
+        entityId: rule.id,
+        entityName: rule.name,
+        projectId,
+        metadata: { trigger: rule.trigger, isEnabled: (rule as any).isEnabled },
+        req,
+      })
+
       return reply.status(201).send(rule)
     },
   )
@@ -161,6 +175,20 @@ export async function automationRoutes(app: FastifyInstance) {
         },
       })
 
+      auditLogService.record({
+        userId: req.authUser.id,
+        userEmail: req.authUser.email,
+        userName: req.authUser.name ?? null,
+        action: 'UPDATE',
+        entityType: 'AUTOMATION',
+        entityId: updated.id,
+        entityName: updated.name,
+        projectId,
+        changes: computeChanges(existing as any, updated as any, Object.keys(body)),
+        metadata: { fields: Object.keys(body) },
+        req,
+      })
+
       return updated
     },
   )
@@ -187,6 +215,20 @@ export async function automationRoutes(app: FastifyInstance) {
         data: { isEnabled: !existing.isEnabled },
       })
 
+      auditLogService.record({
+        userId: req.authUser.id,
+        userEmail: req.authUser.email,
+        userName: req.authUser.name ?? null,
+        action: 'UPDATE',
+        entityType: 'AUTOMATION',
+        entityId: updated.id,
+        entityName: existing.name,
+        projectId,
+        changes: { isEnabled: { from: existing.isEnabled, to: updated.isEnabled } },
+        metadata: { toggle: true },
+        req,
+      })
+
       return { id: updated.id, isEnabled: updated.isEnabled }
     },
   )
@@ -209,6 +251,20 @@ export async function automationRoutes(app: FastifyInstance) {
       }
 
       await prisma.automationRule.delete({ where: { id: ruleId } })
+
+      auditLogService.record({
+        userId: req.authUser.id,
+        userEmail: req.authUser.email,
+        userName: req.authUser.name ?? null,
+        action: 'DELETE',
+        entityType: 'AUTOMATION',
+        entityId: existing.id,
+        entityName: existing.name,
+        projectId,
+        metadata: { trigger: existing.trigger },
+        req,
+      })
+
       return reply.status(204).send()
     },
   )

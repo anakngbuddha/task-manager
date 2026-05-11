@@ -7,6 +7,7 @@ import { requireProjectRole } from '../services/projectAuth.service.js'
 import { prisma } from '../lib/prisma.js'
 import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
+import { auditLogService, computeChanges } from '../services/auditLog.service.js'
 import {
   sendScheduleInviteEmail,
   sendScheduleCancellationEmail,
@@ -123,6 +124,19 @@ export async function scheduleRoutes(app: FastifyInstance) {
       } catch (err: any) {
         return reply.status(400).send({ error: 'Database Error: ' + err.message })
       }
+
+      auditLogService.record({
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name ?? null,
+        action: 'CREATE',
+        entityType: 'SCHEDULE',
+        entityId: schedule.id,
+        entityName: schedule.title,
+        projectId: schedule.projectId,
+        metadata: { type: schedule.type, scheduledAt: schedule.scheduledAt.toISOString() },
+        req,
+      })
 
       if (body.projectId) {
         try {
@@ -376,6 +390,20 @@ export async function scheduleRoutes(app: FastifyInstance) {
         },
       })
 
+      auditLogService.record({
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name ?? null,
+        action: 'UPDATE',
+        entityType: 'SCHEDULE',
+        entityId: schedule.id,
+        entityName: schedule.title,
+        projectId: schedule.projectId,
+        changes: computeChanges(existing as any, schedule as any, Object.keys(body)),
+        metadata: { fields: Object.keys(body) },
+        req,
+      })
+
       if (newAttendeeEmails.length > 0) {
         try {
           const viewInAppUrl = scheduleCalendarUrl(FRONTEND_URL, schedule.id, schedule.scheduledAt)
@@ -538,6 +566,20 @@ export async function scheduleRoutes(app: FastifyInstance) {
       }
 
       await prisma.schedule.delete({ where: { id } })
+
+      auditLogService.record({
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name ?? null,
+        action: 'DELETE',
+        entityType: 'SCHEDULE',
+        entityId: schedule.id,
+        entityName: schedule.title,
+        projectId: schedule.projectId,
+        metadata: { type: schedule.type, scheduledAt: schedule.scheduledAt.toISOString() },
+        req,
+      })
+
       return reply.status(204).send()
     },
   )

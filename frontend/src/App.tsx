@@ -31,7 +31,10 @@ import DocumentationPage from './pages/DocumentationPage'
 import LandingPage from './pages/LandingPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
+import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage'
 import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
+import { OfflineBanner } from './components/ui/OfflineBanner'
+import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -46,6 +49,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   return (
     <TerminalProvider>
+      <OfflineBanner />
       {children}
       <GlobalTerminal />
     </TerminalProvider>
@@ -81,6 +85,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AnalyticsWrapper />
+      <PWAUpdatePrompt />
       <Routes>
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />
@@ -207,6 +212,11 @@ export default function App() {
         <Route path="/admin/analytics" element={
           <AdminRoute>
             <AdminAnalyticsPage />
+          </AdminRoute>
+        } />
+        <Route path="/admin/audit-logs" element={
+          <AdminRoute>
+            <AdminAuditLogsPage />
           </AdminRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />

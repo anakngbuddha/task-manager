@@ -22,8 +22,10 @@ import { scheduleRoutes } from './routes/schedules.js';
 import { uploadRoutes } from './routes/upload.js';
 import { tagRoutes } from './routes/tags.js';
 import { adminRoutes } from './routes/admin.routes.js';
+import { auditLogRoutes } from './routes/auditLogs.routes.js';
 import { analyticsRoutes } from './routes/analytics.routes.js';
 import { fileRoutes } from './routes/files.routes.js';
+import { automationRoutes } from './routes/automations.js';
 import multipart from '@fastify/multipart';
 import 'dotenv/config';
 import { completeIdempotencyFromPayload } from './services/idempotency.service.js';
@@ -53,8 +55,10 @@ app.addHook('onResponse', async (req, reply) => {
     }
 });
 const ALLOWED_ORIGINS = [
+    'http://localhost:4173',
     'http://localhost:5173',
     'http://localhost:5174',
+    'http://127.0.0.1:4173',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'https://task-manager-mauve-eta.vercel.app',
@@ -125,8 +129,10 @@ app.register(scheduleRoutes, { prefix: '/api' });
 app.register(uploadRoutes, { prefix: '/api' });
 app.register(tagRoutes, { prefix: '/api' });
 app.register(adminRoutes, { prefix: '/api' });
+app.register(auditLogRoutes, { prefix: '/api' });
 app.register(analyticsRoutes, { prefix: '/api' });
 app.register(fileRoutes, { prefix: '/api' });
+app.register(automationRoutes, { prefix: '/api' });
 app.addHook('onSend', async (request, reply, payload) => {
     return completeIdempotencyFromPayload(request, reply, payload);
 });

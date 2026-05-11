@@ -9,6 +9,7 @@ import { prisma } from '../lib/prisma.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { getIO } from '../lib/socketManager.js'
 import { runAutomations } from '../services/automation.engine.js'
+import { auditLogService, computeChanges } from '../services/auditLog.service.js'
 
 const DEFAULT_BOARD_COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY'] as const
 
@@ -250,6 +251,19 @@ export async function taskRoutes(app: FastifyInstance) {
       metadata: { title: task.title },
     })
 
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'CREATE',
+      entityType: 'TASK',
+      entityId: task.id,
+      entityName: task.title,
+      projectId: task.projectId,
+      metadata: { title: task.title },
+      req,
+    })
+
     if (task.assigneeId) {
       await notificationService.create({
         userId: task.assigneeId,
@@ -439,6 +453,24 @@ export async function taskRoutes(app: FastifyInstance) {
       metadata: { fields: Object.keys(body) },
     })
 
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'UPDATE',
+      entityType: 'TASK',
+      entityId: updated.id,
+      entityName: updated.title,
+      projectId: updated.projectId,
+      changes: computeChanges(
+        existing as any,
+        updated as any,
+        Array.from(new Set([...Object.keys(updateData), ...(normalizedStatus ? ['status'] : [])])),
+      ),
+      metadata: { fields: Object.keys(body) },
+      req,
+    })
+
     if (body.assigneeId) {
       await notificationService.create({
         userId: body.assigneeId,
@@ -579,6 +611,19 @@ export async function taskRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
     await taskService.delete(id)
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'DELETE',
+      entityType: 'TASK',
+      entityId: existing.id,
+      entityName: existing.title,
+      projectId: existing.projectId,
+      metadata: { title: existing.title },
+      req,
+    })
 
     // Emit real-time event for the deleted task
     getIO().to(existing.projectId).emit('task:deleted', { id, projectId: existing.projectId, actorId: req.authUser.id })

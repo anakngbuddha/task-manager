@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { auth } from '../lib/auth.js';
+import { UAParser } from 'ua-parser-js';
 export async function adminRoutes(app) {
     // ─── Admin auth guard ────────────────────────────────────────────
     app.addHook('preValidation', async (req, reply) => {
@@ -127,7 +128,20 @@ export async function adminRoutes(app) {
             orderBy: { _count: { elementId: 'desc' } },
             take: 10
         });
-        const topClicks = topClicksRAW.map(c => ({ element: c.elementId, count: c._count.elementId }));
+        // Enrich top clicks with recent metadata
+        const topClicks = await Promise.all(topClicksRAW.map(async (c) => {
+            const recent = await prisma.analyticsEvent.findFirst({
+                where: { eventType: 'CLICK', elementId: c.elementId },
+                orderBy: { createdAt: 'desc' }
+            });
+            const meta = recent?.metadata;
+            return {
+                element: c.elementId,
+                count: c._count.elementId,
+                text: meta?.originalText || c.elementId,
+                path: meta?.domPath || ''
+            };
+        }));
         const topErrorsRAW = await prisma.analyticsEvent.groupBy({
             by: ['elementId'],
             where: { eventType: 'ERROR' },
@@ -135,8 +149,30 @@ export async function adminRoutes(app) {
             orderBy: { _count: { id: 'desc' } },
             take: 10
         });
-        const topErrors = topErrorsRAW.map(e => ({ problem: e.elementId, count: e._count.id }));
-        return reply.send({ topPages, topClicks, topErrors });
+        // Enrich top errors with recent metadata
+        const topErrors = await Promise.all(topErrorsRAW.map(async (e) => {
+            const recent = await prisma.analyticsEvent.findFirst({
+                where: { eventType: 'ERROR', elementId: e.elementId },
+                orderBy: { createdAt: 'desc' }
+            });
+            const meta = recent?.metadata;
+            return {
+                problem: e.elementId,
+                count: e._count.id,
+                source: meta?.source || 'Unknown',
+                stack: meta?.stack || ''
+            };
+        }));
+        const perfEvents = await prisma.analyticsEvent.findMany({
+            where: { eventType: 'PERFORMANCE', elementId: 'PAGE_LOAD' },
+            select: { metadata: true }
+        });
+        let avgLoadTime = 0;
+        if (perfEvents.length > 0) {
+            const totalLoad = perfEvents.reduce((acc, ev) => acc + (ev.metadata?.loadTimeMs || 0), 0);
+            avgLoadTime = Math.round(totalLoad / perfEvents.length);
+        }
+        return reply.send({ topPages, topClicks, topErrors, performance: { avgLoadTime } });
     });
     // ─── GET /api/admin/analytics/extended ──────────────────────────
     app.get('/admin/analytics/extended', async (req, reply) => {
@@ -268,25 +304,62 @@ export async function adminRoutes(app) {
             prisma.projectMessage.count(),
         ]);
         const chatRatio = { directMessages, groupMessages };
-        // 12. Device / browser breakdown (parse Session.userAgent)
-        const sessions = await prisma.session.findMany({
-            where: { createdAt: { gte: thirtyDaysAgo }, userAgent: { not: null } },
-            select: { userAgent: true },
+        // 12. Device / OS breakdown & Location (parse AnalyticsEvent SESSION_START)
+        const sessionEvents = await prisma.analyticsEvent.findMany({
+            where: { eventType: 'SESSION_START', createdAt: { gte: thirtyDaysAgo } },
+            select: { metadata: true },
             take: 2000, // cap for performance
         });
-        const deviceBreakdown = { mobile: 0, desktop: 0, other: 0 };
-        const mobileRx = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
-        const desktopRx = /windows|macintosh|linux|x11/i;
-        sessions.forEach(s => {
-            if (!s.userAgent)
+        const deviceBreakdownMap = {};
+        const locationBreakdownMap = {};
+        sessionEvents.forEach(e => {
+            const meta = e.metadata;
+            const uaString = meta?.userAgent || '';
+            // Location logic
+            const timeZone = meta?.timeZone || 'Unknown';
+            locationBreakdownMap[timeZone] = (locationBreakdownMap[timeZone] || 0) + 1;
+            if (!uaString) {
+                deviceBreakdownMap['Unknown'] = (deviceBreakdownMap['Unknown'] || 0) + 1;
                 return;
-            if (mobileRx.test(s.userAgent))
-                deviceBreakdown.mobile++;
-            else if (desktopRx.test(s.userAgent))
-                deviceBreakdown.desktop++;
-            else
-                deviceBreakdown.other++;
+            }
+            const parser = new UAParser(uaString);
+            const os = parser.getOS();
+            const osName = os.name || 'Unknown OS';
+            let versionStr = '';
+            if (os.version) {
+                // Only take the major version if possible, to avoid too many fragments
+                versionStr = ` ${os.version.split('.')[0]}`;
+            }
+            const label = `${osName}${versionStr}`;
+            deviceBreakdownMap[label] = (deviceBreakdownMap[label] || 0) + 1;
         });
+        const deviceBreakdown = Object.entries(deviceBreakdownMap)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10); // Top 10 combinations
+        const topLocations = Object.entries(locationBreakdownMap)
+            .map(([name, value]) => {
+            const formattedName = name === 'Unknown' ? name : name.replace(/_/g, ' ').replace(/\//g, ' / ');
+            return { name: formattedName, value };
+        })
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
+        // 13. Top Email Domains
+        const allUsers = await prisma.user.findMany({
+            select: { email: true }
+        });
+        const emailDomainMap = {};
+        allUsers.forEach(u => {
+            const parts = u.email.split('@');
+            if (parts.length === 2) {
+                const domain = parts[1].toLowerCase();
+                emailDomainMap[domain] = (emailDomainMap[domain] || 0) + 1;
+            }
+        });
+        const topEmailDomains = Object.entries(emailDomainMap)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10);
         return reply.send({
             // High priority (existing)
             completionTrend,
@@ -302,6 +375,8 @@ export async function adminRoutes(app) {
             subtaskUsageRate,
             chatRatio,
             deviceBreakdown,
+            topLocations,
+            topEmailDomains,
         });
     });
     // ─── GET /api/admin/users ────────────────────────────────────────

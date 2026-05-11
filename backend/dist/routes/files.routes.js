@@ -6,6 +6,7 @@ import { idempotencyPreHandler } from '../middlewares/idempotency.js';
 import { acquireIdempotency, attachIdempotencyContext, } from '../services/idempotency.service.js';
 import cloudinary from '../config/cloudinary.js';
 import streamifier from 'streamifier';
+import { auditLogService } from '../services/auditLog.service.js';
 const ALLOWED_MIME_TYPES = new Set([
     'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif',
     'application/pdf',
@@ -62,6 +63,18 @@ export async function fileRoutes(app) {
                 type: 'FOLDER',
                 parentId: body.parentId || null
             }
+        });
+        auditLogService.record({
+            userId: user.id,
+            userEmail: user.email,
+            userName: user.name ?? null,
+            action: 'CREATE',
+            entityType: 'FILE',
+            entityId: folder.id,
+            entityName: folder.name,
+            projectId: folder.projectId,
+            metadata: { type: folder.type, parentId: folder.parentId },
+            req,
         });
         return reply.status(201).send(folder);
     });
@@ -156,6 +169,18 @@ export async function fileRoutes(app) {
                     parentId: parentId
                 }
             });
+            auditLogService.record({
+                userId: user.id,
+                userEmail: user.email,
+                userName: user.name ?? null,
+                action: 'CREATE',
+                entityType: 'FILE',
+                entityId: fileNode.id,
+                entityName: fileNode.name,
+                projectId: fileNode.projectId,
+                metadata: { type: fileNode.type, mimeType: fileNode.mimeType, size: fileNode.size },
+                req,
+            });
             return reply.status(201).send(fileNode);
         }
         catch (error) {
@@ -181,6 +206,18 @@ export async function fileRoutes(app) {
             return reply.status(403).send({ error: 'Forbidden' });
         }
         await prisma.fileNode.delete({ where: { id } });
+        auditLogService.record({
+            userId: user.id,
+            userEmail: user.email,
+            userName: user.name ?? null,
+            action: 'DELETE',
+            entityType: 'FILE',
+            entityId: fileNode.id,
+            entityName: fileNode.name,
+            projectId: fileNode.projectId,
+            metadata: { type: fileNode.type },
+            req,
+        });
         return reply.send({ success: true });
     });
     // ─── GET /api/files/tasks/:taskId/attachments ───────────────────────────
@@ -216,6 +253,18 @@ export async function fileRoutes(app) {
                     },
                 },
             });
+            auditLogService.record({
+                userId: req.authUser.id,
+                userEmail: req.authUser.email,
+                userName: req.authUser.name ?? null,
+                action: 'CREATE',
+                entityType: 'FILE',
+                entityId: attachment.id,
+                entityName: `taskAttachment:${body.taskId}`,
+                projectId: fileNode.projectId,
+                metadata: { taskId: body.taskId, fileNodeId: body.fileNodeId },
+                req,
+            });
             return reply.status(201).send(attachment);
         }
         catch (e) {
@@ -243,6 +292,18 @@ export async function fileRoutes(app) {
         if (!attachment)
             return reply.status(404).send({ error: 'Not found' });
         await prisma.taskAttachment.delete({ where: { id: attachmentId } });
+        auditLogService.record({
+            userId: req.authUser.id,
+            userEmail: req.authUser.email,
+            userName: req.authUser.name ?? null,
+            action: 'DELETE',
+            entityType: 'FILE',
+            entityId: attachmentId,
+            entityName: `taskAttachment:${attachment.taskId}`,
+            projectId: attachment.fileNode.projectId,
+            metadata: { taskId: attachment.taskId, fileNodeId: attachment.fileNodeId },
+            req,
+        });
         return reply.send({ success: true });
     });
 }

@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { dashboardLayoutService, WIDGET_TYPES } from '../services/dashboardLayout.service.js'
 import { prisma } from '../lib/prisma.js'
+import { auditLogService, computeChanges } from '../services/auditLog.service.js'
 
 const createProjectSchema = z.object({
   name: z.string().min(1).max(100),
@@ -152,6 +153,19 @@ export async function projectRoutes(app: FastifyInstance) {
         })
       }
 
+      auditLogService.record({
+        userId: req.authUser.id,
+        userEmail: req.authUser.email,
+        userName: req.authUser.name ?? null,
+        action: 'CREATE',
+        entityType: 'PROJECT',
+        entityId: project.id,
+        entityName: project.name,
+        projectId: project.id,
+        metadata: { name: project.name },
+        req,
+      })
+
       return reply.status(201).send(project)
     } catch (e: unknown) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2034') {
@@ -178,7 +192,26 @@ const updateProjectSchema = z.object({
       return reply.status(403).send({ error: 'Forbidden' })
     }
     const data = updateProjectSchema.parse(req.body)
-    return projectService.update(id, data)
+    const before = await prisma.project.findUnique({ where: { id } })
+    if (!before) return reply.status(404).send({ error: 'Project not found' })
+
+    const updated = await projectService.update(id, data)
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'UPDATE',
+      entityType: 'PROJECT',
+      entityId: updated.id,
+      entityName: updated.name,
+      projectId: updated.id,
+      changes: computeChanges(before as any, updated as any, Object.keys(data)),
+      metadata: { fields: Object.keys(data) },
+      req,
+    })
+
+    return updated
   })
 
   // ── Dependency diagram layout (persisted per project) ─────────────────
@@ -244,7 +277,23 @@ const updateProjectSchema = z.object({
     } catch {
       return reply.status(403).send({ error: 'Forbidden' })
     }
+    const existing = await prisma.project.findUnique({ where: { id } })
+    if (!existing) return reply.status(404).send({ error: 'Project not found' })
     await projectService.delete(id)
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'DELETE',
+      entityType: 'PROJECT',
+      entityId: existing.id,
+      entityName: existing.name,
+      projectId: existing.id,
+      metadata: { name: existing.name },
+      req,
+    })
+
     return reply.status(204).send()
   })
 
@@ -293,6 +342,21 @@ const updateProjectSchema = z.object({
     }
 
     await projectService.updateMemberRole(projectId, userId, role)
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'UPDATE',
+      entityType: 'MEMBER',
+      entityId: userId,
+      entityName: `member:${userId}`,
+      projectId,
+      changes: { role: { from: (target as any).role, to: role } },
+      metadata: { projectId, targetUserId: userId },
+      req,
+    })
+
     return { ok: true }
   })
 
@@ -323,6 +387,20 @@ const updateProjectSchema = z.object({
     await prisma.projectMember.delete({
       where: { userId_projectId: { userId, projectId } },
     })
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'DELETE',
+      entityType: 'MEMBER',
+      entityId: userId,
+      entityName: `member:${userId}`,
+      projectId,
+      metadata: { projectId, targetUserId: userId, role: (target as any).role },
+      req,
+    })
+
     return reply.status(204).send()
   })
 }

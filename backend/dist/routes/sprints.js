@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { authenticate } from '../middlewares/authenticate.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
 import { sprintService } from '../services/sprint.service.js';
+import { runAutomations } from '../services/automation.engine.js';
+import { auditLogService, computeChanges } from '../services/auditLog.service.js';
 const createSprintSchema = z.object({
     name: z.string().min(1).max(100),
     goal: z.string().max(1000).optional(),
@@ -64,6 +66,18 @@ export async function sprintRoutes(app) {
             startDate: body.startDate ? new Date(body.startDate) : undefined,
             endDate: body.endDate ? new Date(body.endDate) : undefined,
         });
+        auditLogService.record({
+            userId: req.authUser.id,
+            userEmail: req.authUser.email,
+            userName: req.authUser.name ?? null,
+            action: 'CREATE',
+            entityType: 'SPRINT',
+            entityId: sprint.id,
+            entityName: sprint.name,
+            projectId,
+            metadata: { name: sprint.name },
+            req,
+        });
         return reply.status(201).send(sprint);
     });
     app.patch('/projects/:projectId/sprints/:sprintId', { preHandler: authenticate }, async (req, reply) => {
@@ -85,6 +99,19 @@ export async function sprintRoutes(app) {
                 goal: body.goal,
                 startDate: body.startDate ? new Date(body.startDate) : undefined,
                 endDate: body.endDate ? new Date(body.endDate) : undefined,
+            });
+            auditLogService.record({
+                userId: req.authUser.id,
+                userEmail: req.authUser.email,
+                userName: req.authUser.name ?? null,
+                action: 'UPDATE',
+                entityType: 'SPRINT',
+                entityId: updated.id,
+                entityName: updated.name,
+                projectId,
+                changes: computeChanges(existing, updated, Object.keys(body)),
+                metadata: { fields: Object.keys(body) },
+                req,
             });
             return updated;
         }
@@ -109,6 +136,25 @@ export async function sprintRoutes(app) {
         const endDate = new Date(body.endDate);
         try {
             const sprint = await sprintService.startSprint(sprintId, { startDate, endDate });
+            auditLogService.record({
+                userId: req.authUser.id,
+                userEmail: req.authUser.email,
+                userName: req.authUser.name ?? null,
+                action: 'UPDATE',
+                entityType: 'SPRINT',
+                entityId: sprint.id,
+                entityName: sprint.name,
+                projectId,
+                changes: { status: { from: existing.status, to: sprint.status } },
+                metadata: { startDate: body.startDate, endDate: body.endDate },
+                req,
+            });
+            runAutomations({
+                projectId,
+                actorId: req.authUser.id,
+                triggerType: 'SPRINT_STARTED',
+                sprint: { id: sprint.id, name: sprint.name, projectId, status: sprint.status },
+            }).catch((err) => console.error('[automation] SPRINT_STARTED hook error:', err));
             return sprint;
         }
         catch (e) {
@@ -130,6 +176,25 @@ export async function sprintRoutes(app) {
         const body = completeSprintSchema.parse(req.body);
         try {
             const result = await sprintService.completeSprint(sprintId, body.moveIncompleteTasksTo);
+            auditLogService.record({
+                userId: req.authUser.id,
+                userEmail: req.authUser.email,
+                userName: req.authUser.name ?? null,
+                action: 'UPDATE',
+                entityType: 'SPRINT',
+                entityId: sprintId,
+                entityName: existing.name,
+                projectId,
+                changes: { status: { from: existing.status, to: 'COMPLETED' } },
+                metadata: { moveIncompleteTasksTo: body.moveIncompleteTasksTo },
+                req,
+            });
+            runAutomations({
+                projectId,
+                actorId: req.authUser.id,
+                triggerType: 'SPRINT_COMPLETED',
+                sprint: { id: sprintId, name: existing.name, projectId, status: 'COMPLETED' },
+            }).catch((err) => console.error('[automation] SPRINT_COMPLETED hook error:', err));
             return result;
         }
         catch (e) {
@@ -150,6 +215,18 @@ export async function sprintRoutes(app) {
         }
         try {
             await sprintService.delete(sprintId);
+            auditLogService.record({
+                userId: req.authUser.id,
+                userEmail: req.authUser.email,
+                userName: req.authUser.name ?? null,
+                action: 'DELETE',
+                entityType: 'SPRINT',
+                entityId: existing.id,
+                entityName: existing.name,
+                projectId,
+                metadata: { name: existing.name },
+                req,
+            });
             return reply.status(204).send();
         }
         catch (e) {

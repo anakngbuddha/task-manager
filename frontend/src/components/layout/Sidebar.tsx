@@ -343,7 +343,7 @@ export default function Sidebar() {
 
         {/* Admin System */}
         {(session?.user as any)?.role === 'admin' && (
-          <div className="pt-1">
+          <div className="pt-1 space-y-1">
             <Link
               to="/admin/dashboard"
               title={!expanded ? 'Admin Dashboard' : undefined}
@@ -351,6 +351,15 @@ export default function Sidebar() {
             >
               <ShieldAlert className="size-4 shrink-0" />
               {expanded && <span className="font-medium">Admin System</span>}
+            </Link>
+
+            <Link
+              to="/admin/audit-logs"
+              title={!expanded ? 'Audit Logs' : undefined}
+              className={navItemCls(location.pathname === '/admin/audit-logs', expanded)}
+            >
+              <ShieldAlert className="size-4 shrink-0" />
+              {expanded && <span className="font-medium">Audit Logs</span>}
             </Link>
           </div>
         )}

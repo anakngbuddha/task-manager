@@ -4,6 +4,7 @@ import { authenticate } from '../middlewares/authenticate.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { sprintService } from '../services/sprint.service.js'
 import { runAutomations } from '../services/automation.engine.js'
+import { auditLogService, computeChanges } from '../services/auditLog.service.js'
 
 const createSprintSchema = z.object({
   name: z.string().min(1).max(100),
@@ -84,6 +85,19 @@ export async function sprintRoutes(app: FastifyInstance) {
         endDate: body.endDate ? new Date(body.endDate) : undefined,
       })
 
+      auditLogService.record({
+        userId: req.authUser.id,
+        userEmail: req.authUser.email,
+        userName: req.authUser.name ?? null,
+        action: 'CREATE',
+        entityType: 'SPRINT',
+        entityId: sprint.id,
+        entityName: sprint.name,
+        projectId,
+        metadata: { name: sprint.name },
+        req,
+      })
+
       return reply.status(201).send(sprint)
     }
   )
@@ -113,6 +127,21 @@ export async function sprintRoutes(app: FastifyInstance) {
           startDate: body.startDate ? new Date(body.startDate) : undefined,
           endDate: body.endDate ? new Date(body.endDate) : undefined,
         })
+
+        auditLogService.record({
+          userId: req.authUser.id,
+          userEmail: req.authUser.email,
+          userName: req.authUser.name ?? null,
+          action: 'UPDATE',
+          entityType: 'SPRINT',
+          entityId: updated.id,
+          entityName: updated.name,
+          projectId,
+          changes: computeChanges(existing as any, updated as any, Object.keys(body)),
+          metadata: { fields: Object.keys(body) },
+          req,
+        })
+
         return updated
       } catch (e: any) {
         return reply.status(400).send({ error: e.message })
@@ -142,6 +171,20 @@ export async function sprintRoutes(app: FastifyInstance) {
 
       try {
         const sprint = await sprintService.startSprint(sprintId, { startDate, endDate })
+
+        auditLogService.record({
+          userId: req.authUser.id,
+          userEmail: req.authUser.email,
+          userName: req.authUser.name ?? null,
+          action: 'UPDATE',
+          entityType: 'SPRINT',
+          entityId: sprint.id,
+          entityName: sprint.name,
+          projectId,
+          changes: { status: { from: (existing as any).status, to: sprint.status } },
+          metadata: { startDate: body.startDate, endDate: body.endDate },
+          req,
+        })
 
         runAutomations({
           projectId,
@@ -178,6 +221,20 @@ export async function sprintRoutes(app: FastifyInstance) {
       try {
         const result = await sprintService.completeSprint(sprintId, body.moveIncompleteTasksTo)
 
+        auditLogService.record({
+          userId: req.authUser.id,
+          userEmail: req.authUser.email,
+          userName: req.authUser.name ?? null,
+          action: 'UPDATE',
+          entityType: 'SPRINT',
+          entityId: sprintId,
+          entityName: existing.name,
+          projectId,
+          changes: { status: { from: (existing as any).status, to: 'COMPLETED' } },
+          metadata: { moveIncompleteTasksTo: body.moveIncompleteTasksTo },
+          req,
+        })
+
         runAutomations({
           projectId,
           actorId: req.authUser.id,
@@ -210,6 +267,20 @@ export async function sprintRoutes(app: FastifyInstance) {
 
       try {
         await sprintService.delete(sprintId)
+
+        auditLogService.record({
+          userId: req.authUser.id,
+          userEmail: req.authUser.email,
+          userName: req.authUser.name ?? null,
+          action: 'DELETE',
+          entityType: 'SPRINT',
+          entityId: existing.id,
+          entityName: existing.name,
+          projectId,
+          metadata: { name: existing.name },
+          req,
+        })
+
         return reply.status(204).send()
       } catch (e: any) {
         return reply.status(400).send({ error: e.message })

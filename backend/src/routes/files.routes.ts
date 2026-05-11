@@ -10,6 +10,7 @@ import {
 } from '../services/idempotency.service.js'
 import cloudinary from '../config/cloudinary.js'
 import streamifier from 'streamifier'
+import { auditLogService } from '../services/auditLog.service.js'
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif',
@@ -74,6 +75,19 @@ export async function fileRoutes(app: FastifyInstance) {
         type: 'FOLDER',
         parentId: body.parentId || null
       }
+    })
+
+    auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      userName: user.name ?? null,
+      action: 'CREATE',
+      entityType: 'FILE',
+      entityId: folder.id,
+      entityName: folder.name,
+      projectId: folder.projectId,
+      metadata: { type: folder.type, parentId: folder.parentId },
+      req,
     })
 
     return reply.status(201).send(folder)
@@ -183,6 +197,19 @@ export async function fileRoutes(app: FastifyInstance) {
         }
       })
 
+      auditLogService.record({
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name ?? null,
+        action: 'CREATE',
+        entityType: 'FILE',
+        entityId: fileNode.id,
+        entityName: fileNode.name,
+        projectId: fileNode.projectId,
+        metadata: { type: fileNode.type, mimeType: fileNode.mimeType, size: fileNode.size },
+        req,
+      })
+
       return reply.status(201).send(fileNode)
     } catch (error) {
       console.error('File upload error:', error)
@@ -208,6 +235,20 @@ export async function fileRoutes(app: FastifyInstance) {
     }
 
     await prisma.fileNode.delete({ where: { id } })
+
+    auditLogService.record({
+      userId: user.id,
+      userEmail: user.email,
+      userName: user.name ?? null,
+      action: 'DELETE',
+      entityType: 'FILE',
+      entityId: fileNode.id,
+      entityName: fileNode.name,
+      projectId: fileNode.projectId,
+      metadata: { type: fileNode.type },
+      req,
+    })
+
     return reply.send({ success: true })
   })
 
@@ -246,6 +287,20 @@ export async function fileRoutes(app: FastifyInstance) {
           },
         },
       })
+
+      auditLogService.record({
+        userId: req.authUser.id,
+        userEmail: req.authUser.email,
+        userName: req.authUser.name ?? null,
+        action: 'CREATE',
+        entityType: 'FILE',
+        entityId: attachment.id,
+        entityName: `taskAttachment:${body.taskId}`,
+        projectId: fileNode.projectId,
+        metadata: { taskId: body.taskId, fileNodeId: body.fileNodeId },
+        req,
+      })
+
       return reply.status(201).send(attachment)
     } catch (e) {
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
@@ -273,6 +328,20 @@ export async function fileRoutes(app: FastifyInstance) {
     if (!attachment) return reply.status(404).send({ error: 'Not found' })
 
     await prisma.taskAttachment.delete({ where: { id: attachmentId } })
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'DELETE',
+      entityType: 'FILE',
+      entityId: attachmentId,
+      entityName: `taskAttachment:${attachment.taskId}`,
+      projectId: attachment.fileNode.projectId,
+      metadata: { taskId: attachment.taskId, fileNodeId: attachment.fileNodeId },
+      req,
+    })
+
     return reply.send({ success: true })
   })
 }

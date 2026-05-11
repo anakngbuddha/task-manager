@@ -5,6 +5,7 @@ import { projectService } from '../services/project.service.js'
 import { prisma } from '../lib/prisma.js'
 import { randomBytes } from 'crypto'
 import { requireProjectRole } from '../services/projectAuth.service.js'
+import { auditLogService } from '../services/auditLog.service.js'
 
 function generateCode() {
   return randomBytes(24).toString('base64url')
@@ -38,6 +39,19 @@ export async function inviteRoutes(app: FastifyInstance) {
         createdById: userId,
         expiresAt,
       },
+    })
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'CREATE',
+      entityType: 'SETTINGS',
+      entityId: invite.id,
+      entityName: `invite:${projectId}`,
+      projectId,
+      metadata: { code: invite.code, expiresAt: invite.expiresAt },
+      req,
     })
 
     return {
@@ -102,6 +116,19 @@ export async function inviteRoutes(app: FastifyInstance) {
     })
 
     const project = await projectService.getById(invite.projectId)
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'UPDATE',
+      entityType: 'MEMBER',
+      entityId: userId,
+      entityName: `member:${userId}`,
+      projectId: invite.projectId,
+      metadata: { inviteCode: invite.code },
+      req,
+    })
 
     return reply.send({
       projectId: invite.projectId,

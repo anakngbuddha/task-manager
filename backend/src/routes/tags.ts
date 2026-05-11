@@ -3,6 +3,7 @@ import { authenticate } from '../middlewares/authenticate.js'
 import { prisma } from '../lib/prisma.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { z } from 'zod'
+import { auditLogService } from '../services/auditLog.service.js'
 
 const MAX_TAG_LENGTH = 30
 
@@ -44,6 +45,19 @@ export async function tagRoutes(app: FastifyInstance) {
       where: { name: normalized },
       update: {},
       create: { name: normalized, color: color ?? '#6366f1' },
+    })
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'CREATE',
+      entityType: 'SETTINGS',
+      entityId: tag.id,
+      entityName: tag.name,
+      changes: { name: { from: null, to: tag.name }, color: { from: null, to: tag.color } },
+      metadata: { upsert: true },
+      req,
     })
 
     return reply.status(201).send(tag)
@@ -124,6 +138,19 @@ export async function tagRoutes(app: FastifyInstance) {
       create: { taskId, tagId: resolvedTagId },
     })
 
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'UPDATE',
+      entityType: 'TASK',
+      entityId: taskId,
+      entityName: `task:${taskId}`,
+      projectId: task.projectId,
+      metadata: { tagId: resolvedTagId, tagName: tag.name, op: 'ADD_TAG' },
+      req,
+    })
+
     return reply.status(201).send(tag)
   })
 
@@ -146,6 +173,19 @@ export async function tagRoutes(app: FastifyInstance) {
     }
 
     await prisma.taskTag.deleteMany({ where: { taskId, tagId } })
+
+    auditLogService.record({
+      userId: req.authUser.id,
+      userEmail: req.authUser.email,
+      userName: req.authUser.name ?? null,
+      action: 'UPDATE',
+      entityType: 'TASK',
+      entityId: taskId,
+      entityName: `task:${taskId}`,
+      projectId: task.projectId,
+      metadata: { tagId, op: 'REMOVE_TAG' },
+      req,
+    })
 
     return reply.status(204).send()
   })

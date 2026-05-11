@@ -10,8 +10,10 @@ import { assertEmailProviderConfigured } from './services/email.service.js';
 import { seedAdmin } from './scripts/seed-admin.js';
 const PORT = Number(process.env.PORT) || 3000;
 const ALLOWED_ORIGINS = [
+    'http://localhost:4173',
     'http://localhost:5173',
     'http://localhost:5174',
+    'http://127.0.0.1:4173',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'https://task-manager-mauve-eta.vercel.app',
