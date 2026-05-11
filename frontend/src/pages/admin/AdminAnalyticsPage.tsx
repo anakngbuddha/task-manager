@@ -301,7 +301,7 @@ export default function AdminAnalyticsPage() {
                       outerRadius={90}
                       label={(props: any) => `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`}
                     >
-                      {ext.deviceBreakdown.map((entry, index) => (
+                      {ext.deviceBreakdown.map((_entry, index) => (
                         <Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
                       ))}
                     </Pie>
