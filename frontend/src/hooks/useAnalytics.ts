@@ -60,7 +60,7 @@ function getDomPath(el: HTMLElement | null): string {
       let sibCount = 0;
       let sibIndex = 0;
       for (let i = 0; i < (el.parentNode?.childNodes.length || 0); i++) {
-        const sib = el.parentNode!.childNodes[i];
+        const sib: ChildNode = el.parentNode!.childNodes[i];
         if (sib.nodeName === el.nodeName) {
           if (sib === el) {
             sibIndex = sibCount;
