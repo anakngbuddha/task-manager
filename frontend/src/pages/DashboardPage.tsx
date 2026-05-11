@@ -16,6 +16,7 @@ import { FolderPlus, Plus, FolderKanban, ListTodo, CheckCircle2, Users } from 'l
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useSession } from '@/lib/auth-client'
+import { useOfflineToast } from '@/components/ui/OfflineToast'
 import MetricCard from '@/components/dashboard/MetricCard'
 import TasksByStatusChart from '@/components/dashboard/TasksByStatusChart'
 import ProjectCompletionChart from '@/components/dashboard/ProjectCompletionChart'
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const { data: dashboard, isLoading: isLoadingDashboard } = useProjectsDashboard()
   const createProject = useCreateProject()
   const { data: session } = useSession()
+  const { showToast } = useOfflineToast()
   const [name, setName] = useState('')
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
@@ -92,9 +94,12 @@ export default function DashboardPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    await createProject.mutateAsync(name.trim())
+    const result = await createProject.mutateAsync(name.trim())
     setName('')
     setOpen(false)
+    if (result?._queued) {
+      showToast('Project created — will sync when you\'re online', 'offline')
+    }
   }
 
   return (

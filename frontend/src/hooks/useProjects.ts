@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { queueOrRunMutation } from '../lib/offlineQueue'
+
 export function useProjects() {
   return useQuery({
     queryKey: ['projects'],
@@ -14,11 +16,32 @@ export function useCreateProject() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (name: string) => {
-      const { data } = await api.post('/projects', { name })
-      return data
+      const result = await queueOrRunMutation<any>({
+        method: 'POST',
+        url: '/projects',
+        body: { name },
+        onQueued: () => {
+          // Optimistically add the project to the cache so UI updates immediately
+          queryClient.setQueryData(['projects'], (old: any[] | undefined) => {
+            const optimistic = {
+              id: `offline_${Date.now()}`,
+              name,
+              _offline: true,
+              createdAt: new Date().toISOString(),
+            }
+            return [...(old ?? []), optimistic]
+          })
+        },
+      })
+      return result.queued
+        ? { _queued: true, name }
+        : result.data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    onSuccess: (data: any) => {
+      if (!data?._queued) {
+        queryClient.invalidateQueries({ queryKey: ['projects'] })
+      }
+      queryClient.invalidateQueries({ queryKey: ['projects-dashboard'] })
     },
   })
 }

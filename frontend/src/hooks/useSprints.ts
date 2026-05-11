@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { queueOrRunMutation } from '../lib/offlineQueue'
 
 export type SprintStatus = 'PLANNING' | 'ACTIVE' | 'COMPLETED'
 
@@ -47,11 +48,34 @@ export function useCreateSprint(projectId: string) {
       startDate?: string
       endDate?: string
     }) => {
-      const { data } = await api.post(`/projects/${projectId}/sprints`, payload)
-      return data as Sprint
+      const result = await queueOrRunMutation<Sprint>({
+        method: 'POST',
+        url: `/projects/${projectId}/sprints`,
+        body: payload,
+        onQueued: () => {
+          qc.setQueryData(['sprints', projectId], (old: Sprint[] | undefined) => {
+            const optimistic: any = {
+              id: `offline_${Date.now()}`,
+              projectId,
+              ...payload,
+              status: 'PLANNING',
+              completedAt: null,
+              createdAt: new Date().toISOString(),
+              tasks: [],
+              _offline: true,
+            }
+            return [...(old ?? []), optimistic]
+          })
+        },
+      })
+      return result.queued
+        ? ({ _queued: true } as any)
+        : result.data
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sprints', projectId] })
+    onSuccess: (data: any) => {
+      if (!data?._queued) {
+        qc.invalidateQueries({ queryKey: ['sprints', projectId] })
+      }
     },
   })
 }
@@ -67,11 +91,27 @@ export function useUpdateSprint(projectId: string) {
       endDate?: string
     }) => {
       const { sprintId, ...body } = payload
-      const { data } = await api.patch(`/projects/${projectId}/sprints/${sprintId}`, body)
-      return data as Sprint
+      const result = await queueOrRunMutation<Sprint>({
+        method: 'PATCH',
+        url: `/projects/${projectId}/sprints/${sprintId}`,
+        body,
+        onQueued: () => {
+          qc.setQueryData(['sprints', projectId], (old: Sprint[] | undefined) => {
+            if (!old) return old
+            return old.map((s) =>
+              s.id === sprintId ? { ...s, ...body, _offline: true } as any : s
+            )
+          })
+        },
+      })
+      return result.queued
+        ? ({ _queued: true } as any)
+        : result.data
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sprints', projectId] })
+    onSuccess: (data: any) => {
+      if (!data?._queued) {
+        qc.invalidateQueries({ queryKey: ['sprints', projectId] })
+      }
     },
   })
 }
@@ -85,12 +125,28 @@ export function useStartSprint(projectId: string) {
       endDate: string
     }) => {
       const { sprintId, ...body } = payload
-      const { data } = await api.post(`/projects/${projectId}/sprints/${sprintId}/start`, body)
-      return data as Sprint
+      const result = await queueOrRunMutation<Sprint>({
+        method: 'POST',
+        url: `/projects/${projectId}/sprints/${sprintId}/start`,
+        body,
+        onQueued: () => {
+          qc.setQueryData(['sprints', projectId], (old: Sprint[] | undefined) => {
+            if (!old) return old
+            return old.map((s) =>
+              s.id === sprintId ? { ...s, ...body, status: 'ACTIVE' as SprintStatus, _offline: true } as any : s
+            )
+          })
+        },
+      })
+      return result.queued
+        ? ({ _queued: true } as any)
+        : result.data
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sprints', projectId] })
-      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+    onSuccess: (data: any) => {
+      if (!data?._queued) {
+        qc.invalidateQueries({ queryKey: ['sprints', projectId] })
+        qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+      }
     },
   })
 }
@@ -103,12 +159,28 @@ export function useCompleteSprint(projectId: string) {
       moveIncompleteTasksTo: string
     }) => {
       const { sprintId, ...body } = payload
-      const { data } = await api.post(`/projects/${projectId}/sprints/${sprintId}/complete`, body)
-      return data
+      const result = await queueOrRunMutation<any>({
+        method: 'POST',
+        url: `/projects/${projectId}/sprints/${sprintId}/complete`,
+        body,
+        onQueued: () => {
+          qc.setQueryData(['sprints', projectId], (old: Sprint[] | undefined) => {
+            if (!old) return old
+            return old.map((s) =>
+              s.id === sprintId ? { ...s, status: 'COMPLETED' as SprintStatus, completedAt: new Date().toISOString(), _offline: true } as any : s
+            )
+          })
+        },
+      })
+      return result.queued
+        ? { _queued: true }
+        : result.data
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['sprints', projectId] })
-      qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+    onSuccess: (data: any) => {
+      if (!data?._queued) {
+        qc.invalidateQueries({ queryKey: ['sprints', projectId] })
+        qc.invalidateQueries({ queryKey: ['tasks', projectId] })
+      }
     },
   })
 }

@@ -35,6 +35,7 @@ import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage'
 import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
 import { OfflineBanner } from './components/ui/OfflineBanner'
 import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
+import { OfflineToastProvider } from './components/ui/OfflineToast'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -83,6 +84,7 @@ function AnalyticsWrapper() {
 
 export default function App() {
   return (
+    <OfflineToastProvider>
     <BrowserRouter>
       <AnalyticsWrapper />
       <PWAUpdatePrompt />
@@ -222,5 +224,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </OfflineToastProvider>
   )
 }
