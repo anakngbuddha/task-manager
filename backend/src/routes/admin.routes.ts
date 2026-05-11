@@ -357,7 +357,7 @@ export async function adminRoutes(app: FastifyInstance) {
     ])
     const chatRatio = { directMessages, groupMessages }
 
-    // 12. Device / OS breakdown (parse AnalyticsEvent SESSION_START userAgent)
+    // 12. Device / OS breakdown & Location (parse AnalyticsEvent SESSION_START)
     const sessionEvents = await prisma.analyticsEvent.findMany({
       where: { eventType: 'SESSION_START', createdAt: { gte: thirtyDaysAgo } },
       select: { metadata: true },
@@ -365,10 +365,16 @@ export async function adminRoutes(app: FastifyInstance) {
     })
     
     const deviceBreakdownMap: Record<string, number> = {}
+    const locationBreakdownMap: Record<string, number> = {}
 
     sessionEvents.forEach(e => {
       const meta = e.metadata as any
       const uaString = meta?.userAgent || ''
+      
+      // Location logic
+      const timeZone = meta?.timeZone || 'Unknown'
+      locationBreakdownMap[timeZone] = (locationBreakdownMap[timeZone] || 0) + 1
+
       if (!uaString) {
         deviceBreakdownMap['Unknown'] = (deviceBreakdownMap['Unknown'] || 0) + 1
         return
@@ -393,6 +399,33 @@ export async function adminRoutes(app: FastifyInstance) {
       .sort((a, b) => b.value - a.value)
       .slice(0, 10) // Top 10 combinations
 
+    const topLocations = Object.entries(locationBreakdownMap)
+      .map(([name, value]) => {
+         const formattedName = name === 'Unknown' ? name : name.replace(/_/g, ' ').replace(/\//g, ' / ')
+         return { name: formattedName, value }
+      })
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+
+    // 13. Top Email Domains
+    const allUsers = await prisma.user.findMany({
+      select: { email: true }
+    })
+
+    const emailDomainMap: Record<string, number> = {}
+    allUsers.forEach(u => {
+      const parts = u.email.split('@')
+      if (parts.length === 2) {
+        const domain = parts[1].toLowerCase()
+        emailDomainMap[domain] = (emailDomainMap[domain] || 0) + 1
+      }
+    })
+
+    const topEmailDomains = Object.entries(emailDomainMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10)
+
     return reply.send({
       // High priority (existing)
       completionTrend,
@@ -408,6 +441,8 @@ export async function adminRoutes(app: FastifyInstance) {
       subtaskUsageRate,
       chatRatio,
       deviceBreakdown,
+      topLocations,
+      topEmailDomains,
     })
   })
 

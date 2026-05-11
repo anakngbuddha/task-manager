@@ -43,6 +43,25 @@ export function useAnalytics() {
     trackEvent('PAGE_VIEW', { pageUrl: location.pathname })
   }, [location.pathname])
 
+  // Track session start
+  useEffect(() => {
+    if (!sessionStorage.getItem('__analytics_session_started')) {
+      sessionStorage.setItem('__analytics_session_started', 'true')
+      
+      let timeZone = 'Unknown'
+      try {
+        timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      } catch (e) {}
+
+      trackEvent('SESSION_START', {
+        metadata: { 
+          userAgent: navigator.userAgent,
+          timeZone
+        }
+      })
+    }
+  }, [])
+
   // Optional: Global click tracking could be added here,
   // but to only track meaningful interactions, we export `trackEvent` 
   // and use it on specific buttons (like create project, complete task, etc)

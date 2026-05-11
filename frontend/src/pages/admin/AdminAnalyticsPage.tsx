@@ -44,6 +44,8 @@ interface ExtendedAnalytics {
   subtaskUsageRate?: number
   chatRatio?: { directMessages: number; groupMessages: number }
   deviceBreakdown?: { name: string; value: number }[]
+  topLocations?: { name: string; value: number }[]
+  topEmailDomains?: { name: string; value: number }[]
 }
 
 // ─── Colours ──────────────────────────────────────────────────────
@@ -73,6 +75,8 @@ export default function AdminAnalyticsPage() {
     subtaskUsageRate: undefined,
     chatRatio: undefined,
     deviceBreakdown: undefined,
+    topLocations: undefined,
+    topEmailDomains: undefined,
   })
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
@@ -364,8 +368,82 @@ export default function AdminAnalyticsPage() {
         </div>
       </div>
 
+      {/* ── Section: Audience Demographics (new) ───────────────────────── */}
+      <div className="mb-2">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Audience Demographics</p>
+        <div className="grid gap-6 md:grid-cols-2 mb-6">
+          {/* User Locations */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Top User Locations</CardTitle>
+              <CardDescription>Based on timezone from recent sessions</CardDescription>
+            </CardHeader>
+            <CardContent className="pl-2">
+              {loading ? (
+                <EmptyState label="Loading…" />
+              ) : !ext.topLocations || ext.topLocations.length === 0 ? (
+                <EmptyState label="No location data available" />
+              ) : (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={ext.topLocations} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#888888" opacity={0.15} />
+                    <XAxis type="number" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis
+                      width={120}
+                      dataKey="name"
+                      type="category"
+                      stroke="#888888"
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={v => v.length > 18 ? v.slice(0, 18) + '…' : v}
+                    />
+                    <Tooltip cursor={{ fill: '#888888', opacity: 0.08 }} />
+                    <Bar dataKey="value" name="Sessions" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Top Email Domains */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Top Email Domains</CardTitle>
+              <CardDescription>Most common domains used for registration</CardDescription>
+            </CardHeader>
+            <CardContent className="pl-2">
+              {loading ? (
+                <EmptyState label="Loading…" />
+              ) : !ext.topEmailDomains || ext.topEmailDomains.length === 0 ? (
+                <EmptyState label="No domain data available" />
+              ) : (
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={ext.topEmailDomains}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      label={(props: any) => `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`}
+                    >
+                      {ext.topEmailDomains.map((_entry, index) => (
+                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Legend />
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       {/* ── Row 1: High-priority charts – trends & priorities ──────── */}
-      {/* ── Row 1: New charts – trends & priorities ─────────────── */}
       <div className="grid gap-6 md:grid-cols-2 mb-6">
 
         {/* Task Completion Trend */}
