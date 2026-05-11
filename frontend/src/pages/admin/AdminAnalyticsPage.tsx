@@ -43,7 +43,7 @@ interface ExtendedAnalytics {
   tagUsage?: { tagId: string; name: string; color: string; count: number }[]
   subtaskUsageRate?: number
   chatRatio?: { directMessages: number; groupMessages: number }
-  deviceBreakdown?: { mobile: number; desktop: number; other: number }
+  deviceBreakdown?: { name: string; value: number }[]
 }
 
 // ─── Colours ──────────────────────────────────────────────────────
@@ -287,17 +287,13 @@ export default function AdminAnalyticsPage() {
             <CardContent>
               {loading ? (
                 <EmptyState label="Loading…" />
-              ) : !ext.deviceBreakdown || (ext.deviceBreakdown.mobile + ext.deviceBreakdown.desktop + ext.deviceBreakdown.other) === 0 ? (
+              ) : !ext.deviceBreakdown || ext.deviceBreakdown.length === 0 ? (
                 <EmptyState label="No session data available" />
               ) : (
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
                     <Pie
-                      data={[
-                        { name: 'Desktop', value: ext.deviceBreakdown.desktop },
-                        { name: 'Mobile', value: ext.deviceBreakdown.mobile },
-                        { name: 'Other', value: ext.deviceBreakdown.other },
-                      ].filter(d => d.value > 0)}
+                      data={ext.deviceBreakdown}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
@@ -305,9 +301,9 @@ export default function AdminAnalyticsPage() {
                       outerRadius={90}
                       label={(props: any) => `${props.name} ${((props.percent || 0) * 100).toFixed(0)}%`}
                     >
-                      <Cell fill="#6366f1" />
-                      <Cell fill="#22c55e" />
-                      <Cell fill="#94a3b8" />
+                      {ext.deviceBreakdown.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
+                      ))}
                     </Pie>
                     <Legend />
                     <Tooltip />

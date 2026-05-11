@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma.js'
 import { auth } from '../lib/auth.js'
+import { UAParser } from 'ua-parser-js'
 
 export async function adminRoutes(app: FastifyInstance) {
   // ─── Admin auth guard ────────────────────────────────────────────
@@ -356,21 +357,41 @@ export async function adminRoutes(app: FastifyInstance) {
     ])
     const chatRatio = { directMessages, groupMessages }
 
-    // 12. Device / browser breakdown (parse Session.userAgent)
-    const sessions = await prisma.session.findMany({
-      where: { createdAt: { gte: thirtyDaysAgo }, userAgent: { not: null } },
-      select: { userAgent: true },
+    // 12. Device / OS breakdown (parse AnalyticsEvent SESSION_START userAgent)
+    const sessionEvents = await prisma.analyticsEvent.findMany({
+      where: { eventType: 'SESSION_START', createdAt: { gte: thirtyDaysAgo } },
+      select: { metadata: true },
       take: 2000, // cap for performance
     })
-    const deviceBreakdown = { mobile: 0, desktop: 0, other: 0 }
-    const mobileRx = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
-    const desktopRx = /windows|macintosh|linux|x11/i
-    sessions.forEach(s => {
-      if (!s.userAgent) return
-      if (mobileRx.test(s.userAgent)) deviceBreakdown.mobile++
-      else if (desktopRx.test(s.userAgent)) deviceBreakdown.desktop++
-      else deviceBreakdown.other++
+    
+    const deviceBreakdownMap: Record<string, number> = {}
+
+    sessionEvents.forEach(e => {
+      const meta = e.metadata as any
+      const uaString = meta?.userAgent || ''
+      if (!uaString) {
+        deviceBreakdownMap['Unknown'] = (deviceBreakdownMap['Unknown'] || 0) + 1
+        return
+      }
+      
+      const parser = new UAParser(uaString)
+      const os = parser.getOS()
+      const osName = os.name || 'Unknown OS'
+      
+      let versionStr = ''
+      if (os.version) {
+         // Only take the major version if possible, to avoid too many fragments
+         versionStr = ` ${os.version.split('.')[0]}`
+      }
+      
+      const label = `${osName}${versionStr}`
+      deviceBreakdownMap[label] = (deviceBreakdownMap[label] || 0) + 1
     })
+
+    const deviceBreakdown = Object.entries(deviceBreakdownMap)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10) // Top 10 combinations
 
     return reply.send({
       // High priority (existing)
