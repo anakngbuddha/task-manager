@@ -159,7 +159,21 @@ export async function adminRoutes(app: FastifyInstance) {
       orderBy: { _count: { elementId: 'desc' } },
       take: 10
     })
-    const topClicks = topClicksRAW.map(c => ({ element: c.elementId, count: c._count.elementId }))
+    
+    // Enrich top clicks with recent metadata
+    const topClicks = await Promise.all(topClicksRAW.map(async c => {
+      const recent = await prisma.analyticsEvent.findFirst({
+        where: { eventType: 'CLICK', elementId: c.elementId },
+        orderBy: { createdAt: 'desc' }
+      })
+      const meta = recent?.metadata as any
+      return { 
+        element: c.elementId, 
+        count: c._count.elementId,
+        text: meta?.originalText || c.elementId,
+        path: meta?.domPath || ''
+      }
+    }))
 
     const topErrorsRAW = await prisma.analyticsEvent.groupBy({
       by: ['elementId'],
@@ -168,9 +182,33 @@ export async function adminRoutes(app: FastifyInstance) {
       orderBy: { _count: { id: 'desc' } },
       take: 10
     })
-    const topErrors = topErrorsRAW.map(e => ({ problem: e.elementId, count: e._count.id }))
+    
+    // Enrich top errors with recent metadata
+    const topErrors = await Promise.all(topErrorsRAW.map(async e => {
+      const recent = await prisma.analyticsEvent.findFirst({
+        where: { eventType: 'ERROR', elementId: e.elementId },
+        orderBy: { createdAt: 'desc' }
+      })
+      const meta = recent?.metadata as any
+      return { 
+        problem: e.elementId, 
+        count: e._count.id,
+        source: meta?.source || 'Unknown',
+        stack: meta?.stack || ''
+      }
+    }))
 
-    return reply.send({ topPages, topClicks, topErrors })
+    const perfEvents = await prisma.analyticsEvent.findMany({
+      where: { eventType: 'PERFORMANCE', elementId: 'PAGE_LOAD' },
+      select: { metadata: true }
+    });
+    let avgLoadTime = 0;
+    if (perfEvents.length > 0) {
+      const totalLoad = perfEvents.reduce((acc, ev) => acc + ((ev.metadata as any)?.loadTimeMs || 0), 0);
+      avgLoadTime = Math.round(totalLoad / perfEvents.length);
+    }
+
+    return reply.send({ topPages, topClicks, topErrors, performance: { avgLoadTime } })
   })
 
   // ─── GET /api/admin/analytics/extended ──────────────────────────

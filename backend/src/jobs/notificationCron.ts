@@ -7,6 +7,7 @@ import {
   sendTaskDeadlineEmail,
 } from '../services/email.service.js'
 import { scheduleCalendarUrl } from '../lib/publicUrls.js'
+import { runAutomations } from '../services/automation.engine.js'
 
 const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '') || 'https://task-manager-mauve-eta.vercel.app'
 
@@ -200,6 +201,24 @@ async function processTaskWindow(
         } catch (err) {
           console.error(`[cron] Error sending ${type} for task ${task.id} to ${recipient.email}:`, err)
         }
+      }
+
+      // Fire automation engine for TASK_DEADLINE_APPROACHING (only on 1DAY window to avoid duplicates)
+      if (type === 'TASK_DEADLINE_1DAY') {
+        runAutomations({
+          projectId: task.projectId,
+          actorId: 'system',
+          triggerType: 'TASK_DEADLINE_APPROACHING',
+          task: {
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            priority: task.priority,
+            assigneeId: task.assignee?.id ?? null,
+            sprintId: null,
+            projectId: task.projectId,
+          },
+        }).catch((err) => console.error(`[automation] TASK_DEADLINE_APPROACHING hook error for task ${task.id}:`, err))
       }
     } catch (err) {
       console.error(`[cron] Error processing task ${task.id} for ${type}:`, err)

@@ -25,7 +25,7 @@ import { useSession } from '@/lib/auth-client'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { MessageCircle, MoreHorizontal, Play, CheckCircle2, Tag as TagIcon, X as XIcon, AlertCircle } from 'lucide-react'
+import { MessageCircle, MoreHorizontal, Play, CheckCircle2, Tag as TagIcon, X as XIcon, AlertCircle, Zap } from 'lucide-react'
 import { useCreateInvite } from '@/hooks/useInvites'
 import { TagPill } from '@/components/board/TagInput'
 import type { Tag } from '@/hooks/useTaskTags'
@@ -394,6 +394,12 @@ export default function ProjectPage() {
                     {canManageRoles && (
                       <>
                         <DropdownMenuSeparator />
+                        <DropdownMenuItem asChild id="menu-automations">
+                          <Link to={`/projects/${projectId}/automations`} className="flex items-center gap-2">
+                            <Zap className="size-3.5 text-primary" />
+                            Automations
+                          </Link>
+                        </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => setCreateSprintOpen(true)}>
                           Create sprint
                         </DropdownMenuItem>

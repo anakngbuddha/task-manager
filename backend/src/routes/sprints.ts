@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { authenticate } from '../middlewares/authenticate.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { sprintService } from '../services/sprint.service.js'
+import { runAutomations } from '../services/automation.engine.js'
 
 const createSprintSchema = z.object({
   name: z.string().min(1).max(100),
@@ -141,6 +142,14 @@ export async function sprintRoutes(app: FastifyInstance) {
 
       try {
         const sprint = await sprintService.startSprint(sprintId, { startDate, endDate })
+
+        runAutomations({
+          projectId,
+          actorId: req.authUser.id,
+          triggerType: 'SPRINT_STARTED',
+          sprint: { id: sprint.id, name: sprint.name, projectId, status: sprint.status },
+        }).catch((err) => console.error('[automation] SPRINT_STARTED hook error:', err))
+
         return sprint
       } catch (e: any) {
         return reply.status(400).send({ error: e.message })
@@ -168,6 +177,14 @@ export async function sprintRoutes(app: FastifyInstance) {
 
       try {
         const result = await sprintService.completeSprint(sprintId, body.moveIncompleteTasksTo)
+
+        runAutomations({
+          projectId,
+          actorId: req.authUser.id,
+          triggerType: 'SPRINT_COMPLETED',
+          sprint: { id: sprintId, name: existing.name, projectId, status: 'COMPLETED' },
+        }).catch((err) => console.error('[automation] SPRINT_COMPLETED hook error:', err))
+
         return result
       } catch (e: any) {
         return reply.status(400).send({ error: e.message })

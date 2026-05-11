@@ -56,7 +56,14 @@ export function trackEvent(type: AnalyticsEventType, options: TrackOptions = {})
  * Sends SESSION_START and attaches a beforeunload listener for SESSION_END.
  */
 export function initSessionTracking(): void {
-  trackEvent('SESSION_START')
+  trackEvent('SESSION_START', {
+    metadata: {
+      screenResolution: `${window.screen.width}x${window.screen.height}`,
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }
+  })
 
   const handleUnload = () => {
     // Use sendBeacon so the request survives page unload

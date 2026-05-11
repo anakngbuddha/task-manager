@@ -8,6 +8,7 @@ import { notificationService } from '../services/notification.service.js'
 import { prisma } from '../lib/prisma.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { getIO } from '../lib/socketManager.js'
+import { runAutomations } from '../services/automation.engine.js'
 
 const DEFAULT_BOARD_COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY'] as const
 
@@ -279,6 +280,22 @@ export async function taskRoutes(app: FastifyInstance) {
     // Emit real-time event for the created task
     getIO().to(task.projectId).emit('task:created', { task, actorId: req.authUser.id })
 
+    // Fire automation engine (non-blocking — do not await to keep response fast)
+    runAutomations({
+      projectId: task.projectId,
+      actorId: req.authUser.id,
+      triggerType: 'TASK_CREATED',
+      task: {
+        id: task.id,
+        title: task.title,
+        status: task.status,
+        priority: task.priority,
+        assigneeId: task.assigneeId ?? null,
+        sprintId: task.sprintId ?? null,
+        projectId: task.projectId,
+      },
+    }).catch((err) => console.error('[automation] TASK_CREATED hook error:', err))
+
     return reply.status(201).send(task)
   })
 
@@ -493,6 +510,58 @@ export async function taskRoutes(app: FastifyInstance) {
 
     // Emit real-time event for the updated task
     getIO().to(updated.projectId).emit('task:updated', { task: updated, actorId: req.authUser.id })
+
+    // Fire automation engine hooks based on what changed
+    const automationChanges: Array<{ field: string; from: unknown; to: unknown }> = []
+    if (normalizedStatus && normalizedStatus !== existing.status) {
+      automationChanges.push({ field: 'status', from: existing.status, to: normalizedStatus })
+    }
+    if (body.assigneeId !== undefined && body.assigneeId !== existing.assigneeId) {
+      automationChanges.push({ field: 'assigneeId', from: existing.assigneeId, to: body.assigneeId })
+    }
+    if (body.priority !== undefined && body.priority !== existing.priority) {
+      automationChanges.push({ field: 'priority', from: existing.priority, to: body.priority })
+    }
+
+    const automationTaskCtx = {
+      id: updated.id,
+      title: updated.title,
+      status: updated.status,
+      priority: updated.priority,
+      assigneeId: updated.assigneeId ?? null,
+      sprintId: updated.sprintId ?? null,
+      projectId: updated.projectId,
+    }
+
+    if (normalizedStatus && normalizedStatus !== existing.status) {
+      runAutomations({
+        projectId: updated.projectId,
+        actorId: req.authUser.id,
+        triggerType: 'TASK_STATUS_CHANGED',
+        task: automationTaskCtx,
+        changes: automationChanges,
+      }).catch((err) => console.error('[automation] TASK_STATUS_CHANGED hook error:', err))
+    }
+
+    if (body.assigneeId !== undefined && body.assigneeId !== existing.assigneeId) {
+      runAutomations({
+        projectId: updated.projectId,
+        actorId: req.authUser.id,
+        triggerType: 'TASK_ASSIGNED',
+        task: automationTaskCtx,
+        changes: [{ field: 'assigneeId', from: existing.assigneeId, to: body.assigneeId }],
+      }).catch((err) => console.error('[automation] TASK_ASSIGNED hook error:', err))
+    }
+
+    if (body.priority !== undefined && body.priority !== existing.priority) {
+      runAutomations({
+        projectId: updated.projectId,
+        actorId: req.authUser.id,
+        triggerType: 'TASK_PRIORITY_CHANGED',
+        task: automationTaskCtx,
+        changes: [{ field: 'priority', from: existing.priority, to: body.priority }],
+      }).catch((err) => console.error('[automation] TASK_PRIORITY_CHANGED hook error:', err))
+    }
 
     return updated
   })

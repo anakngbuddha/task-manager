@@ -24,8 +24,9 @@ import {
 // ─── Types ────────────────────────────────────────────────────────
 interface BaseAnalytics {
   topPages: { url: string; count: number }[]
-  topClicks: { element: string; count: number }[]
-  topErrors: { problem: string; count: number }[]
+  topClicks: { element: string; count: number; text?: string; path?: string }[]
+  topErrors: { problem: string; count: number; source?: string; stack?: string }[]
+  performance?: { avgLoadTime: number }
 }
 
 interface ExtendedAnalytics {
@@ -121,6 +122,24 @@ export default function AdminAnalyticsPage() {
             <LogOut className="w-4 h-4 mr-2" />
             Logout
           </Button>
+        </div>
+      </div>
+
+      {/* ── Section: Platform Health ──────────────────────────────────── */}
+      <div className="mb-2">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Platform Health</p>
+        <div className="grid gap-4 md:grid-cols-3 mb-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Avg Page Load Time</CardTitle>
+              <CardDescription>From user performance events</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">
+                {loading ? '—' : base.performance?.avgLoadTime ? `${base.performance.avgLoadTime}ms` : 'N/A'}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -608,7 +627,7 @@ export default function AdminAnalyticsPage() {
                 <BarChart data={base.topClicks} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#888888" opacity={0.2} />
                   <XAxis type="number" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis width={120} dataKey="element" type="category" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                  <YAxis width={140} dataKey="element" type="category" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={val => val && val.length > 20 ? val.substring(0, 20) + '...' : val} />
                   <Tooltip cursor={{ fill: '#888888', opacity: 0.1 }} />
                   <Bar dataKey="count" fill="currentColor" className="fill-primary" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -633,6 +652,7 @@ export default function AdminAnalyticsPage() {
                   <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
                     <div className="space-y-1 overflow-hidden">
                       <p className="text-sm font-medium leading-none truncate" title={error.problem}>{error.problem}</p>
+                      <p className="text-xs text-muted-foreground truncate" title={error.source}>Source: {error.source}</p>
                     </div>
                     <div className="ml-auto font-medium bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs">
                       {error.count} occurrences

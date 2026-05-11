@@ -24,6 +24,7 @@ import { tagRoutes } from './routes/tags.js'
 import { adminRoutes } from './routes/admin.routes.js'
 import { analyticsRoutes } from './routes/analytics.routes.js'
 import { fileRoutes } from './routes/files.routes.js'
+import { automationRoutes } from './routes/automations.js'
 import multipart from '@fastify/multipart'
 import 'dotenv/config'
 import { completeIdempotencyFromPayload } from './services/idempotency.service.js'
@@ -140,6 +141,7 @@ app.register(tagRoutes, { prefix: '/api' })
 app.register(adminRoutes, { prefix: '/api' })
 app.register(analyticsRoutes, { prefix: '/api' })
 app.register(fileRoutes, { prefix: '/api' })
+app.register(automationRoutes, { prefix: '/api' })
 
 app.addHook('onSend', async (request, reply, payload) => {
   return completeIdempotencyFromPayload(request, reply, payload)

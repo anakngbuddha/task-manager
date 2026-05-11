@@ -41,6 +41,7 @@ model User {
   analyticsEvents          AnalyticsEvent[]
   role                     String                    @default("user")
   fileNodes                FileNode[]
+  createdAutomationRules   AutomationRule[]
 }
 
 model Account {
@@ -109,6 +110,7 @@ model Project {
   schedules               Schedule[]
   dependencyDiagramLayout ProjectDependencyDiagramLayout?
   fileNodes               FileNode[]
+  automationRules         AutomationRule[]
 }
 
 model ProjectDependencyDiagramLayout {
@@ -674,4 +676,67 @@ model TaskAttachment {
   @@unique([taskId, fileNodeId])
   @@index([taskId])
   @@index([fileNodeId])
+}
+
+// ─── Workflow Automation ─────────────────────────────────────────
+
+enum AutomationTrigger {
+  TASK_CREATED
+  TASK_STATUS_CHANGED
+  TASK_ASSIGNED
+  TASK_PRIORITY_CHANGED
+  TASK_DEADLINE_APPROACHING
+  SPRINT_STARTED
+  SPRINT_COMPLETED
+}
+
+enum AutomationActionType {
+  SET_STATUS
+  SET_PRIORITY
+  ASSIGN_TO_MEMBER
+  UNASSIGN_TASK
+  ADD_TAG
+  SEND_NOTIFICATION
+  MOVE_TO_SPRINT
+  REMOVE_FROM_SPRINT
+}
+
+model AutomationRule {
+  id             String            @id @default(cuid())
+  projectId      String
+  name           String            @db.VarChar(100)
+  description    String?           @db.VarChar(500)
+  isEnabled      Boolean           @default(true)
+  trigger        AutomationTrigger
+  conditions     Json?
+  actions        Json
+  executionOrder Int               @default(0)
+  createdById    String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User            @relation(fields: [createdById], references: [id])
+  logs      AutomationLog[]
+
+  @@index([projectId, isEnabled])
+  @@index([projectId, trigger])
+}
+
+model AutomationLog {
+  id           String   @id @default(cuid())
+  ruleId       String
+  projectId    String
+  taskId       String?
+  sprintId     String?
+  triggerData  Json
+  actionsRun   Json
+  success      Boolean
+  errorMessage String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  rule AutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, createdAt])
+  @@index([projectId, createdAt])
 }

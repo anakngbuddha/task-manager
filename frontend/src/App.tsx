@@ -31,6 +31,7 @@ import DocumentationPage from './pages/DocumentationPage'
 import LandingPage from './pages/LandingPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
+import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -161,6 +162,11 @@ export default function App() {
         <Route path="/projects/:id/roadmap" element={
           <ProtectedRoute>
             <RoadmapPage />
+          </ProtectedRoute>
+        } />
+        <Route path="/projects/:id/automations" element={
+          <ProtectedRoute>
+            <ProjectAutomationsPage />
           </ProtectedRoute>
         } />
         <Route path="/calendar" element={
