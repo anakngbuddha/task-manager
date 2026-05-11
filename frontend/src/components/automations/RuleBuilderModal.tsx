@@ -166,7 +166,7 @@ export default function RuleBuilderModal({ open, onClose, projectId, existingRul
     actions: [],
   }
 
-  const { register, handleSubmit, watch, setValue, control, reset, formState: { errors } } = useForm<FormData>({
+  const { handleSubmit, watch, setValue, control, reset, formState: { errors } } = useForm<FormData>({
     defaultValues,
   })
 
@@ -273,8 +273,8 @@ export default function RuleBuilderModal({ open, onClose, projectId, existingRul
                     <div className={cn(
                       'flex items-center justify-center size-5 rounded-full text-xs font-medium shrink-0 transition-colors',
                       i < step ? 'bg-primary text-primary-foreground' :
-                      i === step ? 'bg-primary/20 text-primary border border-primary/40' :
-                      'bg-muted text-muted-foreground'
+                        i === step ? 'bg-primary/20 text-primary border border-primary/40' :
+                          'bg-muted text-muted-foreground'
                     )}>
                       {i < step ? <Check className="size-3" /> : i + 1}
                     </div>
