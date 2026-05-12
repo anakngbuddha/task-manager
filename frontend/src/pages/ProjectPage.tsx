@@ -22,6 +22,7 @@ import { useCreateSprint, useSprints, useStartSprint, useCompleteSprint } from '
 import type { Sprint } from '@/hooks/useSprints'
 import { useProjectTimeReport } from '@/hooks/useTimeLogs'
 import { useSession } from '@/lib/auth-client'
+import { useOfflineToast } from '@/components/ui/OfflineToast'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -61,6 +62,7 @@ export default function ProjectPage() {
   const completeSprint = useCompleteSprint(projectId!)
   const createInvite = useCreateInvite(projectId!)
   const updateProject = useUpdateProject()
+  const { showToast } = useOfflineToast()
 
   const [activeTask, setActiveTask] = useState<any>(null)
   const [selectedTask, setSelectedTask] = useState<any>(null)
@@ -336,9 +338,12 @@ export default function ProjectPage() {
                       ...data,
                       projectId: projectId!,
                     })
+                    if (created?._queued) {
+                      showToast('Task created — will sync when you\'re online', 'offline')
+                    }
                     if (subtasks && subtasks.length > 0 && created?.id) {
                       for (const st of subtasks) {
-                        await createTask.mutateAsync({
+                        const subResult = await createTask.mutateAsync({
                           title: st,
                           description: 'Subtask belonging to ' + data.title,
                           priority: data.priority,
@@ -348,6 +353,9 @@ export default function ProjectPage() {
                           type: 'TASK',
                           sprintId: data.sprintId ?? null,
                         })
+                        if (subResult?._queued) {
+                          showToast(`Subtask created — will sync when you're online`, 'offline')
+                        }
                       }
                     }
                   }}
@@ -453,7 +461,10 @@ export default function ProjectPage() {
                     canManageRoles={canManageRoles}
                     isPending={createSprint.isPending}
                     onSubmit={async (data) => {
-                      await createSprint.mutateAsync(data)
+                      const result = await createSprint.mutateAsync(data)
+                      if (result?._queued) {
+                        showToast('Sprint created — will sync when you\'re online', 'offline')
+                      }
                     }}
                   />
                   <InviteMembersDialog
@@ -700,10 +711,13 @@ export default function ProjectPage() {
           sprint={sprintForStart}
           isPending={startSprint.isPending}
           onSubmit={async (data) => {
-            await startSprint.mutateAsync({
+            const result = await startSprint.mutateAsync({
               sprintId: sprintForStart.id,
               ...data,
             })
+            if (result?._queued) {
+              showToast('Sprint started — will sync when you\'re online', 'offline')
+            }
           }}
         />
       )}
@@ -716,10 +730,13 @@ export default function ProjectPage() {
           allSprints={sprints as Sprint[]}
           isPending={completeSprint.isPending}
           onSubmit={async (data) => {
-            await completeSprint.mutateAsync({
+            const result = await completeSprint.mutateAsync({
               sprintId: currentSprint.id,
               ...data,
             })
+            if (result?._queued) {
+              showToast('Sprint completed — will sync when you\'re online', 'offline')
+            }
           }}
         />
       )}

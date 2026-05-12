@@ -26,6 +26,7 @@ import { FileExplorerDialog } from '@/components/files/FileExplorerDialog'
 import { useTaskAttachments, useLinkTaskAttachment, useUnlinkTaskAttachment, type FileNode } from '@/hooks/useFiles'
 import { TASK_TYPE_CONFIG, VALID_PARENT_TYPES } from '@/lib/taskTypes'
 import type { TaskType } from '@/lib/taskTypes'
+import { useOfflineToast } from '@/components/ui/OfflineToast'
 
 function sanitizeUrl(url: string): string {
   try {
@@ -94,6 +95,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
   const createTask = useCreateTask()
   const createTimeLog = useCreateTaskTimeLog(projectId)
   const { data: session } = useSession()
+  const { showToast } = useOfflineToast()
   const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -593,7 +595,10 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                       className="h-8 rounded-none px-3 text-xs" 
                       disabled={!depTargetId || createDependency.isPending}
                       onClick={async () => {
-                         await createDependency.mutateAsync({ taskId: task.id, targetTaskId: depTargetId, type: depType, projectId })
+                         const result = await createDependency.mutateAsync({ taskId: task.id, targetTaskId: depTargetId, type: depType, projectId })
+                         if (result?._queued) {
+                           showToast('Dependency added — will sync when you\'re online', 'offline')
+                         }
                          setDepTargetId('')
                       }}
                     >
@@ -707,7 +712,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                           onKeyDown={async (e) => {
                              if (e.key === 'Enter' && newSubtaskTitle.trim()) {
                                e.preventDefault()
-                               await createTask.mutateAsync({
+                               const result = await createTask.mutateAsync({
                                  title: newSubtaskTitle.trim(),
                                  description: newSubtaskDescription.trim(),
                                  projectId: projectId,
@@ -717,6 +722,9 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                                  type: 'TASK',
                                  sprintId: task?.sprintId ?? null,
                                })
+                               if (result?._queued) {
+                                 showToast('Subtask created — will sync when you\'re online', 'offline')
+                               }
                                setNewSubtaskTitle('')
                                setNewSubtaskDescription('')
                              }
@@ -727,7 +735,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                           className="h-8 rounded-none px-3 text-xs shrink-0" 
                           disabled={!newSubtaskTitle.trim() || createTask.isPending}
                           onClick={async () => {
-                             await createTask.mutateAsync({
+                             const result = await createTask.mutateAsync({
                                title: newSubtaskTitle.trim(),
                                description: newSubtaskDescription.trim(),
                                projectId: projectId,
@@ -737,6 +745,9 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                                type: 'TASK',
                                sprintId: task?.sprintId ?? null,
                              })
+                             if (result?._queued) {
+                               showToast('Subtask created — will sync when you\'re online', 'offline')
+                             }
                              setNewSubtaskTitle('')
                              setNewSubtaskDescription('')
                           }}
