@@ -44,6 +44,22 @@ export function resolveFileUrl(path: string | null | undefined): string {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    // Track API errors
+    if (err.config && err.response) {
+      // Dynamic import to avoid circular dependencies
+      import('../hooks/useAnalytics').then(({ trackEvent }) => {
+        trackEvent('ERROR', {
+          elementId: `API Error: ${err.message}`,
+          metadata: {
+            source: `API Request: ${err.config.method?.toUpperCase()} ${err.config.url}`,
+            status: err.response.status,
+            url: err.config.url,
+            method: err.config.method?.toUpperCase()
+          }
+        }).catch(console.error)
+      }).catch(console.error)
+    }
+
     if (err.response?.status === 401 && window.location.pathname !== '/login') {
       window.location.href = '/login'
     }

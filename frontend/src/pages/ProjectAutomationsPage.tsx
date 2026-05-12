@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import axios from 'axios'
+import { api } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Zap, Plus, ArrowLeft, ToggleLeft, ToggleRight, Trash2,
@@ -12,8 +12,6 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import RuleBuilderModal from '@/components/automations/RuleBuilderModal'
 import AutomationLogDrawer from '@/components/automations/AutomationLogDrawer'
-
-const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
 const TRIGGER_LABELS: Record<string, string> = {
   TASK_CREATED: 'Task Created',
@@ -46,7 +44,7 @@ export default function ProjectAutomationsPage() {
   const { data: rules = [], isLoading } = useQuery({
     queryKey: ['automations', projectId],
     queryFn: async () => {
-      const r = await axios.get(`${API}/api/projects/${projectId}/automations`, { withCredentials: true })
+      const r = await api.get(`/projects/${projectId}/automations`)
       return r.data
     },
     enabled: !!projectId,
@@ -54,11 +52,7 @@ export default function ProjectAutomationsPage() {
 
   const toggleMutation = useMutation({
     mutationFn: async (ruleId: string) => {
-      const r = await axios.post(
-        `${API}/api/projects/${projectId}/automations/${ruleId}/toggle`,
-        {},
-        { withCredentials: true }
-      )
+      const r = await api.post(`/projects/${projectId}/automations/${ruleId}/toggle`)
       return r.data
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['automations', projectId] }),
@@ -66,7 +60,7 @@ export default function ProjectAutomationsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (ruleId: string) => {
-      await axios.delete(`${API}/api/projects/${projectId}/automations/${ruleId}`, { withCredentials: true })
+      await api.delete(`/projects/${projectId}/automations/${ruleId}`)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['automations', projectId] }),
   })

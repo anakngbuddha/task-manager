@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useForm, useFieldArray, Controller } from 'react-hook-form'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { api } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, Zap, ChevronRight, Plus, Trash2, GripVertical, ArrowLeft, Check,
@@ -9,8 +9,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-
-const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -63,7 +61,7 @@ function ActionParamField({ field, value, onChange, projectId }: {
   const { data: members = [] } = useQuery({
     queryKey: ['members', projectId],
     queryFn: async () => {
-      const r = await axios.get(`${API}/api/projects/${projectId}/members`, { withCredentials: true })
+      const r = await api.get(`/projects/${projectId}/members`)
       return r.data
     },
     enabled: field.type === 'member-select',
@@ -72,7 +70,7 @@ function ActionParamField({ field, value, onChange, projectId }: {
   const { data: sprints = [] } = useQuery({
     queryKey: ['sprints', projectId],
     queryFn: async () => {
-      const r = await axios.get(`${API}/api/projects/${projectId}/sprints`, { withCredentials: true })
+      const r = await api.get(`/projects/${projectId}/sprints`)
       return r.data
     },
     enabled: field.type === 'sprint-select',
@@ -202,7 +200,7 @@ export default function RuleBuilderModal({ open, onClose, projectId, existingRul
         conditions: Object.keys(data.conditions).length ? data.conditions : undefined,
         actions: data.actions,
       }
-      const r = await axios.post(`${API}/api/projects/${projectId}/automations`, payload, { withCredentials: true })
+      const r = await api.post(`/projects/${projectId}/automations`, payload)
       return r.data
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['automations', projectId] }); onClose() },
@@ -217,7 +215,7 @@ export default function RuleBuilderModal({ open, onClose, projectId, existingRul
         conditions: Object.keys(data.conditions).length ? data.conditions : null,
         actions: data.actions,
       }
-      const r = await axios.patch(`${API}/api/projects/${projectId}/automations/${existingRule.id}`, payload, { withCredentials: true })
+      const r = await api.patch(`/projects/${projectId}/automations/${existingRule.id}`, payload)
       return r.data
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['automations', projectId] }); onClose() },

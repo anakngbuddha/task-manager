@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import axios from 'axios'
+import { api } from '@/lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ScrollText, CheckCircle2, XCircle, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-
-const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000'
 
 const ACTION_LABELS: Record<string, string> = {
   SET_STATUS: 'Set Status',
@@ -130,10 +128,7 @@ export default function AutomationLogDrawer({ open, onClose, projectId, ruleId, 
   const { data, isLoading } = useQuery({
     queryKey: ['automation-logs', ruleId, page],
     queryFn: async () => {
-      const r = await axios.get(
-        `${API}/api/projects/${projectId}/automations/${ruleId}/logs?page=${page}&limit=${limit}`,
-        { withCredentials: true }
-      )
+      const r = await api.get(`/projects/${projectId}/automations/${ruleId}/logs?page=${page}&limit=${limit}`)
       return r.data
     },
     enabled: !!ruleId && open,
