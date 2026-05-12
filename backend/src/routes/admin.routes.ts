@@ -124,6 +124,26 @@ export async function adminRoutes(app: FastifyInstance) {
       if (staleMemberCount > 0) projectsWithUnreadChats++
     }
 
+    // ── Phase 4: Consent Overview ────────────────────────────────────
+    const allUsers = await prisma.user.findMany({ select: { consent: true } })
+    let acceptedAll = 0
+    let essentialOnly = 0
+    let noChoice = 0
+
+    allUsers.forEach(u => {
+      if (!u.consent) {
+        noChoice++
+      } else {
+        const c = u.consent as any
+        if (c.analytics && c.preferences) {
+          acceptedAll++
+        } else {
+          essentialOnly++
+        }
+      }
+    })
+    const consentOverview = { acceptedAll, essentialOnly, noChoice }
+
     return reply.send({
       totalUsers,
       activeProjects,
@@ -139,6 +159,7 @@ export async function adminRoutes(app: FastifyInstance) {
       churnRiskUsers,
       // Medium priority — NEW
       projectsWithUnreadChats,
+      consentOverview,
     })
   })
 

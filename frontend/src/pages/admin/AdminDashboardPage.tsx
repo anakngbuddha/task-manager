@@ -27,6 +27,12 @@ interface AdminMetrics {
   churnRiskUsers: number
   // Medium priority
   projectsWithUnreadChats: number
+  // Consent
+  consentOverview?: {
+    acceptedAll: number
+    essentialOnly: number
+    noChoice: number
+  }
 }
 
 function RateBar({ value }: { value: number }) {
@@ -285,6 +291,35 @@ export default function AdminDashboardPage() {
                 {loading ? '—' : metrics.churnRiskUsers}
               </div>
               <p className="text-xs text-muted-foreground">inactive for 7+ days</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* ── Section 4: Consent Health ──────────────────────── */}
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3 mt-8">Consent Health</p>
+        <div className="grid gap-4 md:grid-cols-3 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Accepted All Cookies</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-emerald-500">{loading ? '—' : metrics.consentOverview?.acceptedAll ?? 0}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Essential Only</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-amber-500">{loading ? '—' : metrics.consentOverview?.essentialOnly ?? 0}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">No Choice Made</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-muted-foreground">{loading ? '—' : metrics.consentOverview?.noChoice ?? 0}</div>
             </CardContent>
           </Card>
         </div>

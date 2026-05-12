@@ -42,6 +42,7 @@ model User {
   role                     String                    @default("user")
   fileNodes                FileNode[]
   createdAutomationRules   AutomationRule[]
+  consent                  Json?
 }
 
 model Account {

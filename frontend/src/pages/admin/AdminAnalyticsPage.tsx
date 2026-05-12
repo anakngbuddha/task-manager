@@ -117,6 +117,9 @@ export default function AdminAnalyticsPage() {
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Business Analytics</h2>
           <p className="text-muted-foreground">Track user behavior, engagement, and operational insights.</p>
+          <p className="text-xs text-amber-600 dark:text-amber-500 mt-2 font-medium bg-amber-100 dark:bg-amber-900/30 px-2 py-1 inline-block rounded">
+            Analytics data is shown only for users who have explicitly accepted analytics cookies.
+          </p>
         </div>
         <div className="flex items-center space-x-2">
           <Button asChild variant="outline">

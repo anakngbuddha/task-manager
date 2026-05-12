@@ -10,11 +10,19 @@ const updateStatusSchema = z.object({
   status: z.enum(USER_STATUSES),
 })
 
+const updateConsentSchema = z.object({
+  essential: z.boolean(),
+  analytics: z.boolean(),
+  preferences: z.boolean(),
+  timestamp: z.string(),
+  version: z.string(),
+})
+
 export async function userRoutes(app: FastifyInstance) {
   app.get('/users/me', { preHandler: authenticate }, async (req) => {
     const user = await prisma.user.findUnique({
       where: { id: req.authUser.id },
-      select: { id: true, name: true, email: true, status: true, lastSeenAt: true },
+      select: { id: true, name: true, email: true, status: true, lastSeenAt: true, consent: true },
     })
     return user
   })
@@ -25,6 +33,16 @@ export async function userRoutes(app: FastifyInstance) {
       where: { id: req.authUser.id },
       data: { status, lastSeenAt: new Date() },
       select: { id: true, status: true, lastSeenAt: true },
+    })
+    return reply.status(200).send(user)
+  })
+
+  app.patch('/users/me/consent', { preHandler: authenticate }, async (req, reply) => {
+    const consent = updateConsentSchema.parse(req.body)
+    const user = await prisma.user.update({
+      where: { id: req.authUser.id },
+      data: { consent: consent as any },
+      select: { id: true, consent: true },
     })
     return reply.status(200).send(user)
   })

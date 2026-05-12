@@ -36,6 +36,8 @@ import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
 import { OfflineBanner } from './components/ui/OfflineBanner'
 import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
 import { OfflineToastProvider } from './components/ui/OfflineToast'
+import PrivacyPage from './pages/PrivacyPage'
+import CookieBanner from './components/ui/CookieBanner'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -88,6 +90,7 @@ export default function App() {
     <BrowserRouter>
       <AnalyticsWrapper />
       <PWAUpdatePrompt />
+      <CookieBanner />
       <Routes>
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />
@@ -110,6 +113,7 @@ export default function App() {
             <ActivityPage />
           </ProtectedRoute>
         } />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/docs" element={<DocumentationPage />} />
         <Route path="/projects/:id" element={
           <ProtectedRoute>

@@ -1,8 +1,11 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
+import { getConsent } from '../lib/consent'
 
 // Simple helper to post an event to our backend
-export async function trackEvent(eventType: string, data: { pageUrl?: string; elementId?: string; metadata?: any } = {}) {
+export async function trackEvent(eventType: string, data: { pageUrl?: string; elementId?: string | null; metadata?: any } = {}) {
+  if (!getConsent('analytics')) return
+
   try {
     const session = localStorage.getItem('__better-auth-session') || sessionStorage.getItem('__better-auth-session')
     let headers: Record<string, string> = {
@@ -26,8 +29,8 @@ export async function trackEvent(eventType: string, data: { pageUrl?: string; el
       body: JSON.stringify({
         eventType,
         pageUrl: window.location.pathname,
-        elementId: data.elementId,
-        metadata: data.metadata,
+        elementId: data.elementId ?? undefined,
+        metadata: data.metadata ?? undefined,
       }),
     })
   } catch (error) {
@@ -45,6 +48,8 @@ export function useAnalytics() {
 
   // Track session start
   useEffect(() => {
+    if (!getConsent('analytics')) return
+    
     if (!sessionStorage.getItem('__analytics_session_started')) {
       sessionStorage.setItem('__analytics_session_started', 'true')
       
@@ -168,9 +173,9 @@ if (typeof window !== 'undefined') {
   // Global error listener
   window.addEventListener('error', (e) => {
     trackEvent('ERROR', { 
-      elementId: e.message || 'Unknown Error',
+      elementId: String(e.message || 'Unknown Error').substring(0, 100),
       metadata: { 
-        source: e.filename, 
+        source: e.filename || 'Unknown', 
         lineno: e.lineno,
         stack: e.error?.stack
       } 
@@ -180,8 +185,9 @@ if (typeof window !== 'undefined') {
   // Unhandled promise rejections
   window.addEventListener('unhandledrejection', (e) => {
     trackEvent('ERROR', {
-      elementId: e.reason?.message || 'Unhandled Promise Rejection',
+      elementId: String(e.reason?.message || 'Unhandled Promise Rejection').substring(0, 100),
       metadata: {
+        source: 'unhandledrejection',
         stack: e.reason?.stack,
         reason: String(e.reason)
       }

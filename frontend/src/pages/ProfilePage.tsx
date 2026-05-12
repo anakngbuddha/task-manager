@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { GitBranch, Unplug, Loader2, Link2, RefreshCw } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { FileExplorer } from '@/components/files/FileExplorer'
+import CookiePreferences from '@/components/ui/CookiePreferences'
 
 export default function ProfilePage() {
   const { data: session } = useSession()
@@ -47,6 +48,7 @@ export default function ProfilePage() {
   const [polling, setPolling] = useState(false)
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [justDisconnected, setJustDisconnected] = useState(false)
+  const [showCookiePreferences, setShowCookiePreferences] = useState(false)
 
   // No Drive state needed anymore
 
@@ -401,8 +403,27 @@ export default function ProfilePage() {
               )}
             </div>
           </div>
+
+          <div className="rounded-xl border border-border/60 bg-background/60 backdrop-blur p-4">
+            <p className="text-sm font-medium">Privacy & Cookies</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Manage your cookie preferences and tracking settings.
+            </p>
+            <div className="mt-4">
+              <Button variant="outline" onClick={() => setShowCookiePreferences(true)}>
+                Cookie Settings
+              </Button>
+            </div>
+          </div>
         </div>
       </main>
+
+      {showCookiePreferences && (
+        <CookiePreferences 
+          open={showCookiePreferences} 
+          onClose={() => setShowCookiePreferences(false)} 
+        />
+      )}
     </div>
   )
 }
