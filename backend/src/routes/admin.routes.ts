@@ -483,4 +483,62 @@ export async function adminRoutes(app: FastifyInstance) {
     })
     return reply.send(users)
   })
+
+  // ─── PATCH /api/admin/users/:id/status ───────────────────────────
+  // Ban or unban a user account (status: 'active' | 'banned')
+  app.patch('/admin/users/:id/status', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { status } = req.body as { status: string }
+
+    if (!['active', 'banned'].includes(status)) {
+      return reply.status(400).send({ error: 'status must be "active" or "banned"' })
+    }
+
+    const target = await prisma.user.findUnique({ where: { id } })
+    if (!target) return reply.status(404).send({ error: 'User not found' })
+    if (target.role === 'admin') {
+      return reply.status(403).send({ error: 'Cannot ban a system admin.' })
+    }
+
+    if (status === 'banned') {
+      // Revoke all active sessions to immediately log the user out
+      await prisma.session.deleteMany({ where: { userId: id } })
+      await prisma.user.update({ where: { id }, data: { role: 'banned' } })
+    } else {
+      // Restore to regular user
+      await prisma.user.update({ where: { id }, data: { role: 'user' } })
+    }
+
+    return reply.send({ id, status })
+  })
+
+  // ─── DELETE /api/admin/projects/:id ─────────────────────────────
+  // Hard-delete a project and all related data (cascades via Prisma)
+  app.delete('/admin/projects/:id', async (req, reply) => {
+    const { id } = req.params as { id: string }
+
+    const project = await prisma.project.findUnique({ where: { id } })
+    if (!project) return reply.status(404).send({ error: 'Project not found' })
+
+    // Delete in dependency order to satisfy FK constraints
+    await prisma.$transaction([
+      prisma.automationLog.deleteMany({ where: { projectId: id } }),
+      prisma.automationRule.deleteMany({ where: { projectId: id } }),
+      prisma.projectMessage.deleteMany({ where: { projectId: id } }),
+      prisma.projectDirectMessage.deleteMany({ where: { projectId: id } }),
+      prisma.projectChatReadState.deleteMany({ where: { projectId: id } }),
+      prisma.taskComment.deleteMany({ where: { task: { projectId: id } } }),
+      prisma.timeLog.deleteMany({ where: { task: { projectId: id } } }),
+      prisma.taskTag.deleteMany({ where: { task: { projectId: id } } }),
+      prisma.task.deleteMany({ where: { projectId: id } }),
+      prisma.sprint.deleteMany({ where: { projectId: id } }),
+      prisma.projectMember.deleteMany({ where: { projectId: id } }),
+      prisma.projectInvite.deleteMany({ where: { projectId: id } }),
+      prisma.activityEvent.deleteMany({ where: { projectId: id } }),
+      prisma.auditLog.deleteMany({ where: { projectId: id } }),
+      prisma.project.delete({ where: { id } }),
+    ])
+
+    return reply.status(204).send()
+  })
 }

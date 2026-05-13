@@ -74,7 +74,12 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   // Authorization check
   if ((session.user as any).role !== 'admin') return <Navigate to="/dashboard" replace />
 
-  return <>{children}</>
+  return (
+    <TerminalProvider>
+      {children}
+      <GlobalTerminal />
+    </TerminalProvider>
+  )
 }
 
 import { useAnalytics } from './hooks/useAnalytics'

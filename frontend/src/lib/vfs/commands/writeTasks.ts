@@ -15,6 +15,7 @@ import type { VirtualFileSystem } from '../VirtualFileSystem'
 import { STATUS_PATH_MAP } from '../mounts'
 import { TASK_TYPE_CONFIG, VALID_PARENT_TYPES } from '@/lib/taskTypes'
 import type { TaskType } from '@/lib/taskTypes'
+import { fetchTaskFiles } from '../dataAdapters'
 
 const WRITE_ROLES = ['MASTER_ADMIN', 'PROJECT_MANAGER'] as const
 const VALID_TASK_TYPES: TaskType[] = ['EPIC', 'STORY', 'TASK']
@@ -22,11 +23,52 @@ const VALID_TASK_TYPES: TaskType[] = ['EPIC', 'STORY', 'TASK']
 /**
  * Resolve a filename-encoded entity id from a .json file name.
  * Format: <safe-title>__<8-char-id>.json  OR just  <entity-id>.json
+ * Returns the id portion, or null if no __id suffix was found (bare title).
  */
-function extractEntityId(filename: string): string {
+function extractEntityId(filename: string): string | null {
   const base = filename.replace(/\.json$/, '')
   const match = base.match(/__([a-zA-Z0-9]+)$/)
-  return match ? match[1] : base
+  return match ? match[1] : null
+}
+
+/**
+ * Normalise a string to alphanumeric for fuzzy comparison.
+ */
+function norm(s: string): string {
+  return String(s).toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/**
+ * Resolve entity id from path, with fuzzy title fallback.
+ * - If the filename has the expected __id suffix, return that id.
+ * - Otherwise, query fetchTaskFiles for the given status and match
+ *   by sanitised title prefix against the filename.
+ */
+async function resolveTaskEntityId(
+  projectId: string,
+  resolvedPath: string,
+): Promise<{ entityId: string; filename: string } | null> {
+  const filename = resolvedPath.split('/').pop() ?? ''
+  const statusSlug = resolvedPath.split('/')[2] // e.g. 'todo'
+
+  // Fast path: has __id suffix
+  const directId = extractEntityId(filename)
+  if (directId) return { entityId: directId, filename }
+
+  // Fuzzy fallback: search the task list for matching title
+  const statusMap: Record<string, string> = {
+    todo: 'TODO', in_progress: 'IN_PROGRESS',
+    in_review: 'IN_REVIEW', done: 'DONE', ready: 'READY',
+  }
+  const statusFilter = (statusMap[statusSlug] ?? null) as any
+  const taskFiles = await fetchTaskFiles(projectId, statusFilter)
+  const normalizedQuery = norm(filename.replace(/\.json$/, ''))
+  const match = taskFiles.find(f => norm(f.name.replace(/\.json$/, '')).includes(normalizedQuery)
+    || normalizedQuery.includes(norm(f.name.replace(/\.json$/, '').split('__')[0]))
+    || norm(f.name.replace(/\.json$/, '').split('__')[0]) === normalizedQuery
+  )
+  if (!match) return null
+  return { entityId: match.entityId, filename: match.name }
 }
 
 export function createTaskWriteHandlers(
@@ -301,15 +343,16 @@ export function createTaskWriteHandlers(
       if (!targetPath) return { lines: [{ type: 'stderr', content: 'rm: missing operand' }] }
 
       const resolvedPath = vfs.resolve(targetPath)
-      const filename = resolvedPath.split('/').pop() ?? ''
-      const entityId = extractEntityId(filename)
+      const resolved = await resolveTaskEntityId(vfs.projectId, resolvedPath)
 
-      if (!entityId) return { lines: [{ type: 'stderr', content: `rm: could not resolve task id from "${targetPath}"` }] }
+      if (!resolved) {
+        return { lines: [{ type: 'stderr', content: `rm: Task not found: "${targetPath}"` }] }
+      }
 
       try {
-        await api.delete(`/tasks/${entityId}`)
+        await api.delete(`/tasks/${resolved.entityId}`)
         return {
-          lines: [{ type: 'success', content: `✓ Removed task: ${filename}` }],
+          lines: [{ type: 'success', content: `✓ Removed task: ${resolved.filename}` }],
           invalidations: [['tasks', vfs.projectId], ['sprints', vfs.projectId]]
         }
       } catch (err: any) {
@@ -320,6 +363,7 @@ export function createTaskWriteHandlers(
 
     // ── mv task (change status) ────────────────────────────────────────────────
     // Usage: mv tasks/todo/my-task__abc123.json tasks/in_progress/
+    //    or: mv tasks/todo/My_Task_Title tasks/in_progress   (fuzzy match)
     'mv-task': async (parsed, context): Promise<CommandResult> => {
       try { assertVFSRole(context.userRole, [...WRITE_ROLES], 'mv task') }
       catch (e: any) { return { lines: authDeniedLines(context.userRole, [...WRITE_ROLES], 'mv task') } }
@@ -330,8 +374,11 @@ export function createTaskWriteHandlers(
       }
 
       const resolvedSrc = vfs.resolve(srcPath)
-      const filename = resolvedSrc.split('/').pop() ?? ''
-      const entityId = extractEntityId(filename)
+      const resolved = await resolveTaskEntityId(vfs.projectId, resolvedSrc)
+
+      if (!resolved) {
+        return { lines: [{ type: 'stderr', content: `mv: Task not found: "${srcPath}". Use ls tasks/<status> to see exact filenames.` }] }
+      }
 
       // Resolve target status
       const resolvedDst = vfs.resolve(dstPath.replace(/\/$/, ''))
@@ -348,15 +395,90 @@ export function createTaskWriteHandlers(
       }
 
       try {
-        await api.patch(`/tasks/${entityId}`, { status: newStatus })
+        await api.patch(`/tasks/${resolved.entityId}`, { status: newStatus })
         return {
-          lines: [{ type: 'success', content: `✓ Task moved: ${filename} → /tasks/${targetSlug}` }],
+          lines: [{ type: 'success', content: `✓ Task moved: ${resolved.filename} → /tasks/${targetSlug}` }],
           newCwd: `/tasks/${targetSlug}`, // Switch PWD natively to show where it arrived
           invalidations: [['tasks', vfs.projectId], ['sprints', vfs.projectId]]
         }
       } catch (err: any) {
         const msg = err?.response?.data?.error ?? err.message
         return { lines: [{ type: 'stderr', content: `mv: ${msg}` }] }
+      }
+    },
+
+    // ── edit task (patch fields) ───────────────────────────────────────────────
+    // Usage: edit tasks/<status>/<file> [--title="..."] [--priority=HIGH] [--deadline="..."] [--description="..."]
+    'edit-task': async (parsed, context): Promise<CommandResult> => {
+      try { assertVFSRole(context.userRole, [...WRITE_ROLES], 'edit task') }
+      catch (e: any) { return { lines: authDeniedLines(context.userRole, [...WRITE_ROLES], 'edit task') } }
+
+      const srcPath = parsed.args[0]
+      if (!srcPath) {
+        return {
+          lines: [
+            { type: 'stderr', content: 'edit: missing task path.' },
+            { type: 'system', content: '  Usage: edit tasks/<status>/<file> [--title="..."] [--priority=HIGH] [--deadline="..."] [--description="..."]' },
+          ],
+        }
+      }
+
+      const resolvedSrc = vfs.resolve(srcPath)
+      const resolved = await resolveTaskEntityId(vfs.projectId, resolvedSrc)
+
+      if (!resolved) {
+        return { lines: [{ type: 'stderr', content: `edit: Task not found: "${srcPath}"` }] }
+      }
+
+      const body: Record<string, unknown> = {}
+      if (parsed.flags['title'])       body.title       = parsed.flags['title']
+      if (parsed.flags['description']) body.description = parsed.flags['description']
+      if (parsed.flags['priority']) {
+        const p = String(parsed.flags['priority']).toUpperCase()
+        if (!['LOW', 'MEDIUM', 'HIGH', 'URGENT'].includes(p)) {
+          return { lines: [{ type: 'stderr', content: `edit: invalid priority "${p}". Use LOW, MEDIUM, HIGH, or URGENT.` }] }
+        }
+        body.priority = p
+      }
+      if (parsed.flags['deadline']) {
+        const d = new Date(String(parsed.flags['deadline']))
+        if (isNaN(d.getTime())) {
+          return { lines: [{ type: 'stderr', content: `edit: invalid deadline format. Use YYYY-MM-DDTHH:MM` }] }
+        }
+        body.deadline = d.toISOString()
+      }
+      if (parsed.flags['status']) {
+        const s = String(parsed.flags['status']).toLowerCase()
+        const mapped = STATUS_PATH_MAP[s]
+        if (!mapped) {
+          return { lines: [{ type: 'stderr', content: `edit: unknown status "${s}". Valid: ${Object.keys(STATUS_PATH_MAP).join(', ')}` }] }
+        }
+        body.status = mapped
+      }
+
+      if (Object.keys(body).length === 0) {
+        return {
+          lines: [
+            { type: 'stderr', content: 'edit: no fields specified.' },
+            { type: 'system', content: '  Flags: --title="..." --priority=HIGH --deadline="YYYY-MM-DDTHH:MM" --description="..." --status=in_progress' },
+          ],
+        }
+      }
+
+      try {
+        const { data: updated } = await api.patch(`/tasks/${resolved.entityId}`, body)
+        const changed = Object.keys(body).map(k => `${k}=${JSON.stringify(body[k])}`).join(', ')
+        return {
+          lines: [
+            { type: 'success', content: `✓ Task updated: ${resolved.filename}` },
+            { type: 'system',  content: `  Changed: ${changed}` },
+            { type: 'json',    content: JSON.stringify({ id: updated.id, status: updated.status, priority: updated.priority }) },
+          ],
+          invalidations: [['tasks', vfs.projectId], ['sprints', vfs.projectId]]
+        }
+      } catch (err: any) {
+        const msg = err?.response?.data?.error ?? err.message
+        return { lines: [{ type: 'stderr', content: `edit: ${msg}` }] }
       }
     },
   }

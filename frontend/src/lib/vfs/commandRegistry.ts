@@ -16,6 +16,8 @@ import { createTimeLogWriteHandlers } from './commands/writeTimeLogs'
 import { createGithubHandlers } from './commands/writeGithub'
 import { createProjectWriteHandlers } from './commands/writeProjects'
 import { createProfileWriteHandlers } from './commands/writeProfile'
+import { createAdminHandlers } from './commands/writeAdmin'
+import { createAutomationHandlers } from './commands/writeAutomations'
 
 const BANNER = `
  __   _______ ____
@@ -61,6 +63,8 @@ export class CommandRegistry {
     const ghHandlers      = createGithubHandlers(this.vfs)
     const projHandlers    = createProjectWriteHandlers(this.vfs)
     const profileHandlers = createProfileWriteHandlers(this.vfs, this.navigate)
+    const adminHandlers   = createAdminHandlers(this.vfs)
+    const autoHandlers    = createAutomationHandlers(this.vfs)
 
     // Register all flat write handlers
     for (const handlers of [
@@ -73,6 +77,8 @@ export class CommandRegistry {
       ghHandlers,
       projHandlers,
       profileHandlers,
+      adminHandlers,
+      autoHandlers,
     ]) {
       for (const [name, handler] of Object.entries(handlers)) {
         this.handlers[name] = handler
@@ -178,11 +184,14 @@ export class CommandRegistry {
       if (resolved.startsWith('/members/')) {
         return this.handlers['rm-member'](parsed, context)
       }
+      if (resolved.startsWith('/automations/')) {
+        return this.handlers['rm-automation'](parsed, context)
+      }
 
       return {
         lines: [
           { type: 'stderr', content: `rm: cannot remove '${path}': unsupported path.` },
-          { type: 'system', content: '  Supported: tasks/..., sprints/..., members/...' },
+          { type: 'system', content: '  Supported: tasks/..., sprints/..., members/..., automations/...' },
         ],
       }
     }
@@ -204,6 +213,48 @@ export class CommandRegistry {
       return {
         lines: [
           { type: 'stderr', content: `mv: cannot move '${path}': unsupported. Only tasks are moveable via CLI.` },
+        ],
+      }
+    }
+
+    // ── Dispatch: edit ────────────────────────────────────────────────────────────
+    // "edit tasks/..." → edit-task
+    this.handlers['edit'] = async (parsed, context): Promise<CommandResult> => {
+      const path = parsed.args[0] ?? ''
+      const resolved = this.vfs.resolve(path)
+
+      if (!path) {
+        return { lines: [{ type: 'stderr', content: 'edit: missing operand.' }] }
+      }
+
+      if (resolved.startsWith('/tasks/')) {
+        return this.handlers['edit-task'](parsed, context)
+      }
+
+      return {
+        lines: [
+          { type: 'stderr', content: `edit: cannot edit '${path}'. Supported: tasks/<status>/...` },
+        ],
+      }
+    }
+
+    // ── Dispatch: toggle ───────────────────────────────────────────────────────────
+    // "toggle automations/..." → toggle-automation
+    this.handlers['toggle'] = async (parsed, context): Promise<CommandResult> => {
+      const path = parsed.args[0] ?? ''
+      const resolved = this.vfs.resolve(path)
+
+      if (!path) {
+        return { lines: [{ type: 'stderr', content: 'toggle: missing operand.' }] }
+      }
+
+      if (resolved.startsWith('/automations/')) {
+        return this.handlers['toggle-automation'](parsed, context)
+      }
+
+      return {
+        lines: [
+          { type: 'stderr', content: `toggle: cannot toggle '${path}'. Supported: automations/<name>` },
         ],
       }
     }

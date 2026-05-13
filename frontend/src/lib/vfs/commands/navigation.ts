@@ -159,6 +159,53 @@ const HELP_TEXT: Record<string, string[]> = {
     '  open change-password      — go to change-password page',
     '  open activity             — go to the activity feed',
     '  open projects/archive     — go to completed/axed projects',
+    '  open roadmap              — go to the project roadmap',
+    '  open backlog              — go to the sprint backlog',
+    '  open dependencies         — go to the dependency diagram',
+    '  open automations          — go to the automations page',
+    '  open sprint-report        — go to the sprint report',
+    '  open time-report          — go to the time report',
+    '  open github               — go to GitHub activity',
+    '  open files                — go to project files',
+    '  open admin                — go to admin dashboard [MASTER_ADMIN only]',
+  ],
+  // ── Edit ────────────────────────────────────────────────────────────────
+  edit: [
+    '[MASTER_ADMIN, PROJECT_MANAGER] Edit task fields without deleting and recreating.',
+    '  Usage: edit tasks/<status>/<file> [--title="..."] [--priority=HIGH] [--deadline="..."] [--description="..."] [--status=in_progress]',
+    '  Example: edit tasks/todo/fix-login --priority=URGENT --deadline="2026-06-01T09:00"',
+  ],
+  // ── Automations ────────────────────────────────────────────────────────────────
+  toggle: [
+    '[MASTER_ADMIN, PROJECT_MANAGER] Enable or disable an automation rule.',
+    '  Usage: toggle automations/<name>',
+  ],
+  // ── Admin commands (MASTER_ADMIN only) ─────────────────────────────────────────
+  users: [
+    '[MASTER_ADMIN only] List all platform users.',
+    '  Usage: users',
+  ],
+  metrics: [
+    '[MASTER_ADMIN only] Print platform health metrics summary.',
+    '  Usage: metrics',
+  ],
+  audit: [
+    '[MASTER_ADMIN only] Show recent platform audit log entries.',
+    '  Usage: audit [n]   (default 20, max 50)',
+    '  Example: audit 10',
+  ],
+  ban: [
+    '[MASTER_ADMIN only] Suspend a user account.',
+    '  Usage: ban <user@email.com>',
+  ],
+  unban: [
+    '[MASTER_ADMIN only] Reactivate a suspended user account.',
+    '  Usage: unban <user@email.com>',
+  ],
+  'purge-project': [
+    '[MASTER_ADMIN only] Permanently delete a project and all its data.',
+    '  Usage: purge-project <project-id>',
+    '  ⚠ This action is IRREVERSIBLE.',
   ],
 }
 

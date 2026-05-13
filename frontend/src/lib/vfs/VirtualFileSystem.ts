@@ -28,6 +28,7 @@ import {
   fetchProfileSettings,
   fetchProfileFiles,
 } from './dataAdapters'
+import { fetchAutomationFiles, fetchTaskCommentFiles } from './automationAdapters'
 
 /** Pending project switch info — set by cd, cleared after read */
 export interface PendingProjectSwitch {
@@ -116,6 +117,42 @@ export class VirtualFileSystem {
       return filtered.map((p) => this.staticDir(p)!).filter(Boolean)
     }
 
+    // task-comments sub-directory: /tasks/<status>/<taskSlug>/comments
+    if (target.startsWith('/tasks/') && target.split('/').length === 5 && target.endsWith('/comments')) {
+      const parts = target.split('/').filter(Boolean)  // ['tasks', status, taskSlug, 'comments']
+      const taskSlug = parts[2]
+      const parentPath = `/tasks/${parts[1]}`
+      const taskFiles = await fetchTaskFiles(this.projectId, MOUNT_TABLE[parentPath]?.taskStatus as TaskStatus | undefined)
+      const taskFile = taskFiles.find(f => f.name === taskSlug || f.name === taskSlug + '.json' || f.name.startsWith(taskSlug))
+      if (!taskFile) throw new Error(`No such directory: ${target}`)
+      return fetchTaskCommentFiles(taskFile.entityId, target)
+    }
+
+    // task-subtasks sub-directory: /tasks/<status>/<taskSlug>/subtasks
+    if (target.startsWith('/tasks/') && target.split('/').length === 5 && target.endsWith('/subtasks')) {
+      const parts = target.split('/').filter(Boolean)
+      const taskSlug = parts[2]
+      const parentPath = `/tasks/${parts[1]}`
+      const taskFiles = await fetchTaskFiles(this.projectId, MOUNT_TABLE[parentPath]?.taskStatus as TaskStatus | undefined)
+      const taskFile = taskFiles.find(f => f.name === taskSlug || f.name === taskSlug + '.json' || f.name.startsWith(taskSlug))
+      if (!taskFile) throw new Error(`No such directory: ${target}`)
+      // Fetch subtasks (tasks where parentId = this task's id)
+      const { data } = await api.get(`/projects/${this.projectId}/tasks`)
+      const allTasks: any[] = data ?? []
+      const subtasks = allTasks.filter(t => t.parentId === taskFile.entityId)
+      return subtasks.map(t => {
+        const safeName = (t.title ?? 'subtask').toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 40)
+        return {
+          name: `${safeName}__${String(t.id).slice(0, 8)}.json`,
+          path: `${target}/${safeName}__${String(t.id).slice(0, 8)}.json`,
+          type: 'file' as const,
+          entityType: 'task-subtask' as const,
+          entityId: String(t.id),
+          data: t,
+        }
+      })
+    }
+
     // Check if it's a dynamic timelogs directory first
     if (target.startsWith('/timelogs/') && target.split('/').length === 3) {
       const taskDirName = target.split('/')[2]
@@ -171,6 +208,12 @@ export class VirtualFileSystem {
 
       case 'activity':
         return await fetchActivityFiles(this.projectId)
+
+      case 'automations':
+        if (this.projectId === '__workspace__') {
+          throw new Error('automations: navigate to a project first (cd projects/<name>)')
+        }
+        return await fetchAutomationFiles(this.projectId)
 
       case 'profile':
         // /profile — return the sub-dirs (files) plus virtual settings/github nodes
@@ -321,8 +364,19 @@ export class VirtualFileSystem {
     if (parentPath === '/tags') return fetchTagFiles(this.projectId)
     if (parentPath === '/schedules') return fetchScheduleFiles(this.projectId)
     if (parentPath === '/activity') return fetchActivityFiles(this.projectId)
+    if (parentPath === '/automations') return fetchAutomationFiles(this.projectId)
     if (parentPath === '/profile') return fetchProfileSettings()
     if (parentPath === '/profile/files') return fetchProfileFiles()
+
+    // task comments: /tasks/<status>/<taskSlug>/comments/<file>
+    if (parts.length === 5 && parts[0] === 'tasks' && parts[3] === 'comments') {
+      const taskSlug = parts[2]
+      const parentStatus = MOUNT_TABLE[`/tasks/${parts[1]}`]?.taskStatus as TaskStatus | undefined
+      const taskFiles = await fetchTaskFiles(this.projectId, parentStatus)
+      const taskFile = taskFiles.find(f => f.name === taskSlug || f.name === taskSlug + '.json' || f.name.startsWith(taskSlug))
+      if (!taskFile) throw new Error(`cat: no such file`)
+      return fetchTaskCommentFiles(taskFile.entityId, parentPath)
+    }
 
     // /timelogs/<taskDirName>/<logFile>
     if (parts[0] === 'timelogs' && parts.length === 3) {

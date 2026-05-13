@@ -115,6 +115,11 @@ export const MOUNT_TABLE: Record<string, MountEntry> = {
     label: 'activity',
     leaf: true,
   },
+  '/automations': {
+    entityType: 'automations',
+    label: 'automations',
+    leaf: true,
+  },
   '/profile': {
     entityType: 'profile',
     label: 'profile',

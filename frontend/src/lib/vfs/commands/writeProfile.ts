@@ -162,27 +162,62 @@ export function createProfileWriteHandlers(
       const target = parsed.args[0]
       if (!target) return { lines: [{ type: 'stderr', content: 'open: missing destination' }] }
 
-      const routes: Record<string, string> = {
+      // Resolve current project id from VFS for project-scoped routes
+      const pid = vfs.projectId !== '__workspace__' ? vfs.projectId : null
+
+      const staticRoutes: Record<string, string> = {
         'profile': '/profile',
         'profile/settings': '/settings',
         'change-password': '/change-password',
         'activity': '/activity',
         'projects/archive': '/projects/archive',
+        'admin': '/admin/dashboard',
       }
 
-      const route = routes[target] ?? routes[target.replace(/^\//, '')]
-      if (!route) {
-        return { lines: [{ type: 'stderr', content: `open: unknown destination '${target}'. Valid: profile, profile/settings, change-password, activity, projects/archive.` }] }
+      const projectRoutes: Record<string, string> = {
+        'roadmap': 'roadmap',
+        'backlog': 'backlog',
+        'dependencies': 'dependencies',
+        'automations': 'automations',
+        'sprint-report': 'sprint-report',
+        'time-report': 'time-report',
+        'github': 'github',
+        'files': 'files',
+        'messages': 'messages',
+        'members': 'members',
+        'settings': 'settings',
+        'activity': 'activity',
       }
 
-      // BUG-10 fix: use SPA navigate when available to avoid full page reload.
-      // Falls back to window.location.assign for non-React environments.
-      if (navigate) {
-        navigate(route)
-      } else {
-        window.location.assign(route)
+      const normalizedTarget = target.replace(/^\//, '')
+
+      // Static (non-project) route
+      const staticRoute = staticRoutes[normalizedTarget]
+      if (staticRoute) {
+        if (navigate) navigate(staticRoute)
+        else window.location.assign(staticRoute)
+        return { lines: [{ type: 'system', content: `Opening ${target}...` }] }
       }
-      return { lines: [{ type: 'system', content: `Opening ${target}...` }] }
+
+      // Project-scoped route
+      const projectSuffix = projectRoutes[normalizedTarget]
+      if (projectSuffix) {
+        if (!pid) {
+          return {
+            lines: [
+              { type: 'stderr', content: `open: "${target}" requires a project context.` },
+              { type: 'system', content: '  Navigate to a project first: cd projects/<name>' },
+            ],
+          }
+        }
+        const route = `/projects/${pid}/${projectSuffix}`
+        if (navigate) navigate(route)
+        else window.location.assign(route)
+        return { lines: [{ type: 'system', content: `Opening ${target} for current project...` }] }
+      }
+
+      const allValid = [...Object.keys(staticRoutes), ...Object.keys(projectRoutes)].join(', ')
+      return { lines: [{ type: 'stderr', content: `open: unknown destination '${target}'. Valid: ${allValid}` }] }
     }
   }
 }
