@@ -627,11 +627,22 @@ model AnalyticsEvent {
   metadata  Json?
   createdAt DateTime @default(now())
 
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  issueAnalysis IssueAnalysis?
 
   @@index([eventType])
   @@index([createdAt])
   @@index([userId])
+}
+
+model IssueAnalysis {
+  id               String   @id @default(cuid())
+  analyticsEventId String   @unique
+  cause            String   @db.Text
+  fix              String   @db.Text
+  createdAt        DateTime @default(now())
+
+  event AnalyticsEvent @relation(fields: [analyticsEventId], references: [id], onDelete: Cascade)
 }
 
 // ─── File System ───────────────────────────────

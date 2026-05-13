@@ -512,6 +512,26 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ id, status })
   })
 
+  // ─── PATCH /api/admin/users/:id/role ───────────────────────────
+  // Update a user's role (admin | user)
+  app.patch('/admin/users/:id/role', async (req, reply) => {
+    const { id } = req.params as { id: string }
+    const { role } = req.body as { role: string }
+
+    if (!['admin', 'user'].includes(role)) {
+      return reply.status(400).send({ error: 'role must be "admin" or "user"' })
+    }
+
+    const target = await prisma.user.findUnique({ where: { id } })
+    if (!target) return reply.status(404).send({ error: 'User not found' })
+
+    // Optionally prevent demoting oneself if they are the only admin,
+    // but for now we just allow it.
+    await prisma.user.update({ where: { id }, data: { role } })
+
+    return reply.send({ id, role })
+  })
+
   // ─── DELETE /api/admin/projects/:id ─────────────────────────────
   // Hard-delete a project and all related data (cascades via Prisma)
   app.delete('/admin/projects/:id', async (req, reply) => {

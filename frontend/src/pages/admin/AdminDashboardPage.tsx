@@ -98,12 +98,18 @@ export default function AdminDashboardPage() {
             <h2 className="text-3xl font-bold tracking-tight">Admin Dashboard</h2>
             <p className="text-muted-foreground text-sm mt-1">Platform health, user needs & engagement overview</p>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center flex-wrap gap-2">
             <Button asChild variant="outline">
               <Link to="/dashboard">Back to App</Link>
             </Button>
             <Button asChild>
-              <Link to="/admin/analytics">View Detailed Analytics</Link>
+              <Link to="/admin/analytics">Analytics</Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link to="/admin/users">Users</Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link to="/admin/issues">Issues</Link>
             </Button>
             <Button asChild variant="secondary">
               <Link to="/admin/audit-logs">Audit Logs</Link>

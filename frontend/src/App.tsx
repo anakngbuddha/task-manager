@@ -32,6 +32,8 @@ import LandingPage from './pages/LandingPage'
 import AdminDashboardPage from './pages/admin/AdminDashboardPage'
 import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
 import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage'
+import AdminUsersPage from './pages/admin/AdminUsersPage'
+import AdminIssuesPage from './pages/admin/AdminIssuesPage'
 import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
 import { OfflineBanner } from './components/ui/OfflineBanner'
 import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
@@ -228,6 +230,16 @@ export default function App() {
         <Route path="/admin/audit-logs" element={
           <AdminRoute>
             <AdminAuditLogsPage />
+          </AdminRoute>
+        } />
+        <Route path="/admin/users" element={
+          <AdminRoute>
+            <AdminUsersPage />
+          </AdminRoute>
+        } />
+        <Route path="/admin/issues" element={
+          <AdminRoute>
+            <AdminIssuesPage />
           </AdminRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
