@@ -5,6 +5,13 @@ import path from 'path'
 import { Server } from 'socket.io'
 import { startNotificationCron } from './jobs/notificationCron.js'
 import { setIO, directRoom } from './lib/socketManager.js'
+import {
+  disconnectSocket,
+  identifySocketUser,
+  recordSocketHeartbeat,
+  recordSocketIdle,
+  setPresenceIO,
+} from './lib/userPresence.js'
 import { prisma } from './lib/prisma.js'
 import { assertEmailProviderConfigured } from './services/email.service.js'
 import { seedAdmin } from './scripts/seed-admin.js'
@@ -59,9 +66,43 @@ const start = async () => {
     })
 
     setIO(io)
+    setPresenceIO(io)
 
     io.on('connection', (socket) => {
       console.log('Client connected:', socket.id)
+
+      socket.on('auth:identify', async (payload: { userId?: string }) => {
+        if (!payload?.userId) return
+        try {
+          await identifySocketUser(socket.id, payload.userId)
+        } catch (error) {
+          console.error('Failed to identify socket user', error)
+        }
+      })
+
+      socket.on('activity:heartbeat', async () => {
+        try {
+          await recordSocketHeartbeat(socket.id)
+        } catch (error) {
+          console.error('Failed to record heartbeat', error)
+        }
+      })
+
+      socket.on('activity:idle', async (payload: { isIdle?: boolean }) => {
+        try {
+          await recordSocketIdle(socket.id, Boolean(payload?.isIdle))
+        } catch (error) {
+          console.error('Failed to record idle state', error)
+        }
+      })
+
+      socket.on('activity:disconnect', async () => {
+        try {
+          await disconnectSocket(socket.id)
+        } catch (error) {
+          console.error('Failed to record disconnect', error)
+        }
+      })
 
       socket.on('join:project', (projectId: string) => {
         socket.join(projectId)
@@ -90,8 +131,13 @@ const start = async () => {
         socket.to(room).emit('read:direct', payload)
       })
 
-      socket.on('disconnect', () => {
+      socket.on('disconnect', async () => {
         console.log('Client disconnected:', socket.id)
+        try {
+          await disconnectSocket(socket.id)
+        } catch (error) {
+          console.error('Failed to finalize socket disconnect', error)
+        }
       })
     })
 

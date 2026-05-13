@@ -190,16 +190,16 @@ export default function CreateTaskDialog({
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="sm:max-w-2xl xl:max-w-3xl p-0 overflow-hidden rounded-xl border border-border shadow-lg">
+      <DialogContent className="sm:max-w-2xl xl:max-w-3xl max-h-[80vh] flex flex-col p-0 overflow-hidden rounded-xl border border-border shadow-lg">
 
-        <DialogHeader className="px-6 py-4 border-b bg-muted/20">
+        <DialogHeader className="shrink-0 px-6 py-4 border-b bg-muted/20">
           <DialogTitle className="text-lg font-semibold text-foreground">
             Create task
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleCreateTask} className="flex flex-col max-h-[85vh] overflow-y-auto w-full scrollbar-thin scrollbar-thumb-muted">
-          <div className="p-5 sm:p-6 space-y-6">
+        <form onSubmit={handleCreateTask} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 scrollbar-thin scrollbar-thumb-muted">
 
             {/* Core Details */}
             <div className="space-y-5">
@@ -480,7 +480,7 @@ export default function CreateTaskDialog({
 
           </div>
 
-          <DialogFooter className="px-5 sm:px-6 py-4 border-t bg-muted/20 mt-auto">
+          <DialogFooter className="shrink-0 px-5 sm:px-6 py-4 border-t bg-muted/20">
              <div className="flex w-full flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="w-full sm:w-auto text-center sm:text-left">
                   {deadlineError && <p className="text-sm font-medium text-destructive">{deadlineError}</p>}

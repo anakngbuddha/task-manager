@@ -46,7 +46,7 @@ export default function ArchivedProjectsPage() {
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects-archived-report'],
     queryFn: async (): Promise<ProjectWithTaskSummary[]> => {
-      const { data } = await api.get('/projects')
+      const { data } = await api.get('/projects/archived')
       const allProjects: any[] = data ?? []
 
       const taskRows = await Promise.all(

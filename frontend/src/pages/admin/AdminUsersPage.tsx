@@ -5,6 +5,8 @@ import { api } from '../../lib/api'
 import { Link, useNavigate } from 'react-router-dom'
 import { LogOut, ArrowLeft, Shield, User, Ban, CheckCircle } from 'lucide-react'
 import { signOut } from '../../lib/auth-client'
+import { useOnlineUsers } from '../../hooks/useOnlineUsers'
+import { cn } from '../../lib/utils'
 
 interface UserItem {
   id: string
@@ -20,6 +22,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+  const onlineUsers = useOnlineUsers(true)
 
   useEffect(() => {
     fetchUsers()
@@ -112,18 +115,45 @@ export default function AdminUsersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map(user => (
+                    {users.map(user => {
+                      const liveStatus = onlineUsers[user.id]?.status ?? 'OFFLINE'
+                      return (
                       <tr key={user.id} className="border-b border-border/50">
-                        <td className="px-4 py-3 font-medium">{user.name || '—'}</td>
-                        <td className="px-4 py-3">{user.email}</td>
+                        <td className="px-4 py-3 font-medium">
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-2 text-left hover:text-primary"
+                            onClick={() => navigate(`/admin/users/${user.id}`)}
+                          >
+                            <span
+                              className={cn(
+                                'size-2.5 rounded-full',
+                                liveStatus === 'ONLINE' && 'bg-emerald-500',
+                                liveStatus === 'IDLE' && 'bg-amber-400',
+                                liveStatus === 'OFFLINE' && 'bg-muted-foreground/40',
+                              )}
+                              title={liveStatus}
+                            />
+                            {user.name || '—'}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            className="text-left hover:text-primary"
+                            onClick={() => navigate(`/admin/users/${user.id}`)}
+                          >
+                            {user.email}
+                          </button>
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${user.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>
                             {user.role}
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center ${user.status === 'ONLINE' ? 'text-emerald-500' : 'text-muted-foreground'}`}>
-                            {user.role === 'banned' ? 'BANNED' : user.status}
+                          <span className={`inline-flex items-center ${liveStatus === 'ONLINE' ? 'text-emerald-500' : liveStatus === 'IDLE' ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            {user.role === 'banned' ? 'BANNED' : liveStatus}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
@@ -149,7 +179,8 @@ export default function AdminUsersPage() {
                           </Button>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

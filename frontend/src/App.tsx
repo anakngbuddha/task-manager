@@ -34,6 +34,7 @@ import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
 import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminIssuesPage from './pages/admin/AdminIssuesPage'
+import AdminUserDetailPage from './pages/admin/AdminUserDetailPage'
 import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
 import { OfflineBanner } from './components/ui/OfflineBanner'
 import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
@@ -85,9 +86,15 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 import { useAnalytics } from './hooks/useAnalytics'
+import { usePresenceTracking } from './hooks/usePresenceTracking'
 
 function AnalyticsWrapper() {
   useAnalytics()
+  return null
+}
+
+function PresenceWrapper() {
+  usePresenceTracking()
   return null
 }
 
@@ -96,6 +103,7 @@ export default function App() {
     <OfflineToastProvider>
     <BrowserRouter>
       <AnalyticsWrapper />
+      <PresenceWrapper />
       <PWAUpdatePrompt />
       <CookieBanner />
       <Routes>
@@ -235,6 +243,11 @@ export default function App() {
         <Route path="/admin/users" element={
           <AdminRoute>
             <AdminUsersPage />
+          </AdminRoute>
+        } />
+        <Route path="/admin/users/:id" element={
+          <AdminRoute>
+            <AdminUserDetailPage />
           </AdminRoute>
         } />
         <Route path="/admin/issues" element={

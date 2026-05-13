@@ -129,6 +129,19 @@ export const projectService = {
         return prisma.project.findMany({
             where: {
                 members: { some: { userId } },
+                status: 'ACTIVE',
+            },
+            include: {
+                members: { include: { user: true } },
+                _count: { select: { tasks: true } },
+            },
+        });
+    },
+    async getArchivedForUser(userId) {
+        return prisma.project.findMany({
+            where: {
+                members: { some: { userId } },
+                status: { in: ['COMPLETED', 'AXED'] },
             },
             include: {
                 members: { include: { user: true } },

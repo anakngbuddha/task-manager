@@ -43,6 +43,7 @@ model User {
   fileNodes                FileNode[]
   createdAutomationRules   AutomationRule[]
   consent                  Json?
+  userSessions             UserSession[]
 }
 
 model Account {
@@ -643,6 +644,18 @@ model IssueAnalysis {
   createdAt        DateTime @default(now())
 
   event AnalyticsEvent @relation(fields: [analyticsEventId], references: [id], onDelete: Cascade)
+}
+
+model UserSession {
+  id        String    @id @default(cuid())
+  userId    String
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  duration  Int?
+  idleTime  Int       @default(0)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
 }
 
 // ─── File System ───────────────────────────────

@@ -35,5 +35,7 @@ services:
         sync: false
       - key: EMAIL_FROM_NAME
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: PORT
         value: 3000

@@ -332,7 +332,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl rounded-none p-0" showCloseButton={false}>
+      <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col rounded-none p-0 overflow-hidden" showCloseButton={false}>
         <DialogHeader>
           <div className="border-b px-5 py-4">
             <div className="flex items-start justify-between gap-3">
@@ -448,7 +448,7 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
           </div>
         </DialogHeader>
         {mode === 'view' ? (
-          <div className="min-h-[28rem] max-h-[72vh] overflow-auto px-5 py-6 space-y-4">
+          <div className="min-h-0 flex-1 overflow-auto px-5 py-6 space-y-4">
             <div className="grid gap-4">
               <div className="border border-border/60 bg-card p-5">
                 <p className="text-xs font-medium text-muted-foreground mb-3">Properties</p>
@@ -918,7 +918,8 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
             </div>
           </div>
         ) : (
-          <div className="min-h-[28rem] max-h-[72vh] overflow-auto space-y-4 px-5 py-6">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-6">
             <div className="space-y-1">
               <Label>Title</Label>
               <Input className="h-10 rounded-none" value={title} onChange={e => setTitle(e.target.value)} />
@@ -1036,25 +1037,28 @@ export default function TaskDialog({ task, projectId, projectMembers, open, onCl
                 onChange={e => setGithubPrUrl(e.target.value)}
               />
             </div>
-            <div className="flex gap-2 pt-2">
-              <Button
-                onClick={() => setMode('view')}
-                variant="outline"
-                className="flex-1 rounded-none"
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleSave} className="flex-1 rounded-none" disabled={updateTask.isPending}>
-                {updateTask.isPending ? 'Saving...' : 'Save'}
-              </Button>
-              <Button
-                variant="destructive"
-                className="rounded-none"
-                onClick={handleDelete}
-                disabled={deleteTask.isPending || !canManageTasks}
-              >
-                Delete
-              </Button>
+            </div>
+            <div className="sticky bottom-0 shrink-0 border-t bg-background px-5 py-4">
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setMode('view')}
+                  variant="outline"
+                  className="flex-1 rounded-none"
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleSave} className="flex-1 rounded-none" disabled={updateTask.isPending}>
+                  {updateTask.isPending ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="rounded-none"
+                  onClick={handleDelete}
+                  disabled={deleteTask.isPending || !canManageTasks}
+                >
+                  Delete
+                </Button>
+              </div>
             </div>
           </div>
         )}

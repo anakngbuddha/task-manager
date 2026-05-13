@@ -45,7 +45,9 @@ export async function adminIssuesRoutes(app: FastifyInstance) {
 
     const apiKey = process.env.GEMINI_API_KEY
     if (!apiKey) {
-      return reply.status(500).send({ error: 'GEMINI_API_KEY is not configured.' })
+      return reply.status(503).send({
+        error: 'AI diagnosis is temporarily unavailable. The API key is not configured on the server.',
+      })
     }
 
     // Prepare prompt
@@ -87,7 +89,9 @@ Provide the response in the following strict JSON format without markdown wrappi
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Gemini API Error:', errorText)
-        return reply.status(502).send({ error: 'Failed to analyze error with AI.' })
+        return reply.status(502).send({
+          error: 'Failed to analyze error with AI. Verify the Gemini API key and model access on the server.',
+        })
       }
 
       const data = await response.json()

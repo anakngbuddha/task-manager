@@ -25,6 +25,12 @@ export async function projectRoutes(app: FastifyInstance) {
     return projectService.getAllForUser(req.authUser.id)
   })
 
+  app.get('/projects/archived', {
+    preHandler: authenticate,
+  }, async (req) => {
+    return projectService.getArchivedForUser(req.authUser.id)
+  })
+
   app.get('/projects/dashboard', {
     preHandler: authenticate,
   }, async (req) => {

@@ -91,6 +91,8 @@ export default function Sidebar() {
   const statusCfg = STATUS_CONFIG[currentStatus]
   const userInitial = session?.user?.name?.charAt(0).toUpperCase() ?? 'U'
 
+  const isAdmin = (session?.user as any)?.role === 'admin'
+
   const StatusAvatar = ({
     sizeCls = 'h-7 w-7',
     dotSizeCls = 'size-2.5',
@@ -332,12 +334,12 @@ export default function Sidebar() {
         {/* Profile */}
         <div className="pt-1">
           <Link
-            to="/profile"
-            title={!expanded ? 'Profile & Settings' : undefined}
-            className={navItemCls(activeRoot === 'profile', expanded)}
+            to={isAdmin ? '/admin/dashboard' : '/profile'}
+            title={!expanded ? (isAdmin ? 'Admin dashboard' : 'Profile & Settings') : undefined}
+            className={navItemCls(isAdmin ? activeRoot === 'admin' : activeRoot === 'profile', expanded)}
           >
             <Settings className="size-4 shrink-0" />
-            {expanded && <span className="font-medium">Profile</span>}
+            {expanded && <span className="font-medium">{isAdmin ? 'Admin dashboard' : 'Profile'}</span>}
           </Link>
         </div>
 
