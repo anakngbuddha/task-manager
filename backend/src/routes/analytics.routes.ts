@@ -1,66 +1,82 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
+import { auth } from '../lib/auth.js'
+
+// Mirror of frontend/src/lib/analytics.ts::AnalyticsEventType plus a few
+// runtime-only event types emitted from hooks (PERFORMANCE, etc.).
+const ALLOWED_EVENT_TYPES = [
+  'PAGE_VIEW',
+  'CLICK',
+  'ERROR',
+  'PERFORMANCE',
+  'SESSION_START',
+  'SESSION_END',
+  'TASK_CREATED',
+  'TASK_COMPLETED',
+  'FEATURE_USED',
+  'SEARCH',
+  'INVITE_SENT',
+  'INVITE_ACCEPTED',
+] as const
+
+const MAX_METADATA_BYTES = 4096
 
 const analyticsSchema = z.object({
-  eventType: z.string(),
-  pageUrl: z.string().optional(),
-  elementId: z.string().optional(),
-  metadata: z.any().optional(),
+  eventType: z.enum(ALLOWED_EVENT_TYPES),
+  pageUrl: z.string().max(512).optional(),
+  elementId: z.string().max(256).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 })
 
-// Simple analytics ingestion route.
+// Simple analytics ingestion route. Authentication is optional — we tag the
+// user when their session cookie is present, otherwise we record an anonymous
+// event. Rate limiting is enforced at the route config level (see app.ts).
 export async function analyticsRoutes(app: FastifyInstance) {
-  app.post(
-    '/analytics/event',
-    async (req, reply) => {
-      const body = analyticsSchema.parse(req.body) as {
-        eventType: string
-        pageUrl?: string
-        elementId?: string
-        metadata?: any
-      }
+  app.post('/analytics/event', {
+    config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
+    let body: z.infer<typeof analyticsSchema>
+    try {
+      body = analyticsSchema.parse(req.body)
+    } catch (err: any) {
+      return reply.status(400).send({ error: 'Invalid analytics payload' })
+    }
 
-      // Try reading userId from session if they are authenticated, it's fine if they aren't.
-      let userId: string | null = null
-      
-      let sessionToken: string | undefined
-      const getCookie = (name: string) => {
-        const match = req.headers.cookie?.match(new RegExp('(^|;\\s*)(' + name + ')=([^;]*)'))
-        return match ? match[3] : undefined
-      }
-      
-      sessionToken = getCookie('better-auth.session_token') || getCookie('__Secure-better-auth.session_token')
-      
-      const session = sessionToken || req.headers.authorization?.replace('Bearer ', '')
-
-      if (session) {
-        // Try getting userId from db session
-        try {
-          const dbSession = await prisma.session.findFirst({
-            where: { token: session }
-          });
-          if (dbSession) {
-            userId = dbSession.userId;
-          }
-        } catch(_) {}
-      }
-
+    if (body.metadata !== undefined) {
+      // Bound metadata to prevent abuse / database bloat (audit finding #6).
       try {
-        await prisma.analyticsEvent.create({
-          data: {
-            eventType: body.eventType,
-            pageUrl: body.pageUrl || null,
-            elementId: body.elementId || null,
-            metadata: body.metadata || null,
-            userId: userId,
-          },
-        })
-        return reply.status(204).send()
-      } catch (err) {
-        req.log.error(err, 'Failed to save analytics event')
-        return reply.status(500).send({ error: 'Failed to record event' })
+        const serialized = JSON.stringify(body.metadata)
+        if (serialized.length > MAX_METADATA_BYTES) {
+          return reply.status(400).send({ error: 'metadata too large' })
+        }
+      } catch {
+        return reply.status(400).send({ error: 'metadata is not serialisable' })
       }
     }
-  )
+
+    let userId: string | null = null
+    try {
+      const session = await auth.api.getSession({ headers: req.headers as any })
+      if (session?.user?.id) userId = session.user.id
+    } catch {
+      // Anonymous event — fine, leave userId null.
+    }
+
+    try {
+      await prisma.analyticsEvent.create({
+        data: {
+          eventType: body.eventType,
+          pageUrl: body.pageUrl ?? null,
+          elementId: body.elementId ?? null,
+          metadata: (body.metadata as any) ?? null,
+          userId,
+        },
+      })
+      return reply.status(204).send()
+    } catch (err) {
+      req.log.error(err, 'Failed to save analytics event')
+      return reply.status(500).send({ error: 'Failed to record event' })
+    }
+  })
 }

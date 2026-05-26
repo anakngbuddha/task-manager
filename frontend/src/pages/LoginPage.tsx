@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { signIn, authClient } from '../lib/auth-client'
+import { api } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,6 +28,8 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const isValidEmail = useMemo(() => /\S+@\S+\.\S+/.test(email), [email])
+  const [needsVerification, setNeedsVerification] = useState(false)
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle')
 
   // Forgot password
   const [isForgotOpen, setIsForgotOpen] = useState(false)
@@ -95,11 +98,24 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    setNeedsVerification(false)
+    setResendState('idle')
 
     try {
       const result = await signIn.email({ email, password })
       if (result?.error) {
-        setError(result.error.message ?? 'Login failed')
+        const msg = result.error.message ?? 'Login failed'
+        setError(msg)
+        // Better-Auth returns this code when an unverified user tries to sign
+        // in. Surface the resend link so they're not locked out (audit #8).
+        const code = (result.error as any)?.code as string | undefined
+        if (
+          code === 'EMAIL_NOT_VERIFIED' ||
+          /verify/i.test(msg) ||
+          /not.*verified/i.test(msg)
+        ) {
+          setNeedsVerification(true)
+        }
         setLoading(false)
         return
       }
@@ -109,6 +125,18 @@ export default function LoginPage() {
       setError(err?.message ?? 'Login failed')
       setLoading(false)
     }
+  }
+
+  const handleResendVerification = async () => {
+    if (!isValidEmail) return
+    setResendState('sending')
+    try {
+      await api.post('/users/resend-verification', { email })
+    } catch {
+      // Silently ignore — the endpoint returns 204 regardless to avoid leaking
+      // which emails exist. Worst case the user clicks again.
+    }
+    setResendState('sent')
   }
 
   const handleGoogle = async () => {
@@ -207,7 +235,25 @@ export default function LoginPage() {
 
             {error && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
+                <div>{error}</div>
+                {needsVerification && (
+                  <div className="mt-2 text-xs">
+                    {resendState === 'sent' ? (
+                      <span className="text-foreground">
+                        If an account with that email exists, we just sent a fresh verification link.
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleResendVerification}
+                        disabled={!isValidEmail || resendState === 'sending'}
+                        className="font-medium text-teal-700 hover:underline disabled:opacity-50"
+                      >
+                        {resendState === 'sending' ? 'Sending…' : 'Resend verification email'}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

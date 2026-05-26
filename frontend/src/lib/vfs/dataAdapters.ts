@@ -248,6 +248,17 @@ export async function fetchActivityFiles(projectId: string): Promise<VFSFile[]> 
 // BUG-13 fix: Session-scoped cache for profile settings
 let _profileSettingsCache: { time: number, data: VFSFile[] } | null = null
 
+export function invalidateVfsCache(projectId?: string) {
+  if (projectId) {
+    delete _taskDirsCache[projectId]
+  } else {
+    for (const key of Object.keys(_taskDirsCache)) {
+      delete _taskDirsCache[key]
+    }
+  }
+  _profileSettingsCache = null
+}
+
 export async function fetchProfileSettings(): Promise<VFSFile[]> {
   const now = Date.now()
   if (_profileSettingsCache && now - _profileSettingsCache.time < 60000) {

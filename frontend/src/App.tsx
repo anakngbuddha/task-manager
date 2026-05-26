@@ -41,6 +41,7 @@ import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
 import { OfflineToastProvider } from './components/ui/OfflineToast'
 import PrivacyPage from './pages/PrivacyPage'
 import CookieBanner from './components/ui/CookieBanner'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -100,6 +101,7 @@ function PresenceWrapper() {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <OfflineToastProvider>
     <BrowserRouter>
       <AnalyticsWrapper />
@@ -259,5 +261,6 @@ export default function App() {
       </Routes>
     </BrowserRouter>
     </OfflineToastProvider>
+    </ErrorBoundary>
   )
 }

@@ -35,6 +35,17 @@ function getBackendOrigin(): string {
 
 const BACKEND_ORIGIN = getBackendOrigin()
 
+/** Pull a user-facing message from an axios (or unknown) API error. */
+export function getApiErrorMessage(err: unknown, fallback = 'Something went wrong. Please try again.'): string {
+  if (err && typeof err === 'object' && 'response' in err) {
+    const data = (err as { response?: { data?: { error?: string; message?: string } } }).response?.data
+    if (typeof data?.error === 'string' && data.error.trim()) return data.error
+    if (typeof data?.message === 'string' && data.message.trim()) return data.message
+  }
+  if (err instanceof Error && err.message) return err.message
+  return fallback
+}
+
 export function resolveFileUrl(path: string | null | undefined): string {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) return path

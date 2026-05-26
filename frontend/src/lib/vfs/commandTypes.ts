@@ -22,7 +22,7 @@ export interface CommandContext {
   /** The caller's effective role within this project */
   userRole: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER' | null
   /** The logged-in user info */
-  user: { id: string; name?: string | null; email?: string | null } | null
+  user: { id: string; name?: string | null; email?: string | null; role?: string | null } | null
   /** Interactive prompt callback */
   promptUser?: (msg: string) => Promise<string>
 }

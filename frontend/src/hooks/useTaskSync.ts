@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useSession } from '@/lib/auth-client'
 import { createSocket } from '@/lib/socket'
 import type { Socket } from 'socket.io-client'
+import { invalidateVfsCache } from '@/lib/vfs/dataAdapters'
 
 /**
  * Real-time task synchronization hook.
@@ -36,6 +37,7 @@ export function useTaskSync(projectId: string | undefined) {
 
     // ── task:created ─────────────────────────────────────────────────────
     socket.on('task:created', (payload: { task: any; actorId: string }) => {
+      invalidateVfsCache(projectId)
       if (payload.actorId === currentUserId) return
 
       queryClient.setQueryData(['tasks', projectId], (old: any[] | undefined) => {
@@ -53,6 +55,7 @@ export function useTaskSync(projectId: string | undefined) {
 
     // ── task:updated ─────────────────────────────────────────────────────
     socket.on('task:updated', (payload: { task: any; actorId: string }) => {
+      invalidateVfsCache(projectId)
       if (payload.actorId === currentUserId) return
 
       queryClient.setQueryData(['tasks', projectId], (old: any[] | undefined) => {
@@ -69,6 +72,7 @@ export function useTaskSync(projectId: string | undefined) {
 
     // ── task:deleted ─────────────────────────────────────────────────────
     socket.on('task:deleted', (payload: { id: string; projectId: string; actorId: string }) => {
+      invalidateVfsCache(projectId)
       if (payload.actorId === currentUserId) return
 
       queryClient.setQueryData(['tasks', projectId], (old: any[] | undefined) => {

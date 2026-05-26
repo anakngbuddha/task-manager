@@ -61,7 +61,7 @@ export async function inviteRoutes(app: FastifyInstance) {
     }
   })
 
-  app.get('/invites/:code', async (req, reply) => {
+  app.get('/invites/:code', { preHandler: authenticate }, async (req, reply) => {
     const { code } = req.params as { code: string }
 
     const invite = await prisma.projectInvite.findUnique({
@@ -86,6 +86,7 @@ export async function inviteRoutes(app: FastifyInstance) {
 
   app.post('/invites/:code/accept', {
     preHandler: authenticate,
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const { code } = req.params as { code: string }
     const userId = req.authUser.id

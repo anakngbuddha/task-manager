@@ -14,9 +14,15 @@ interface UserItem {
   email: string
   role: string
   status: string
+  // 'active' | 'banned' — derived server-side from `bannedAt`.
+  accountStatus?: 'active' | 'banned'
+  bannedAt?: string | null
   createdAt: string
   lastSeenAt: string
 }
+
+const isBanned = (u: UserItem) =>
+  u.accountStatus === 'banned' || !!u.bannedAt || u.role === 'banned'
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserItem[]>([])
@@ -44,28 +50,28 @@ export default function AdminUsersPage() {
     navigate('/login')
   }
 
-  const toggleBan = async (id: string, currentRole: string) => {
-    if (currentRole === 'admin') {
+  const toggleBan = async (user: UserItem) => {
+    if (user.role === 'admin') {
       alert('Cannot ban an admin.')
       return
     }
-    const newStatus = currentRole === 'banned' ? 'active' : 'banned'
+    const newStatus = isBanned(user) ? 'active' : 'banned'
     try {
-      await api.patch(`/admin/users/${id}/status`, { status: newStatus })
+      await api.patch(`/admin/users/${user.id}/status`, { status: newStatus })
       fetchUsers()
     } catch (err) {
       console.error('Failed to toggle ban status', err)
     }
   }
 
-  const toggleRole = async (id: string, currentRole: string) => {
-    if (currentRole === 'banned') {
+  const toggleRole = async (user: UserItem) => {
+    if (isBanned(user)) {
       alert('Cannot change role of a banned user.')
       return
     }
-    const newRole = currentRole === 'admin' ? 'user' : 'admin'
+    const newRole = user.role === 'admin' ? 'user' : 'admin'
     try {
-      await api.patch(`/admin/users/${id}/role`, { role: newRole })
+      await api.patch(`/admin/users/${user.id}/role`, { role: newRole })
       fetchUsers()
     } catch (err) {
       console.error('Failed to toggle role', err)
@@ -117,6 +123,7 @@ export default function AdminUsersPage() {
                   <tbody>
                     {users.map(user => {
                       const liveStatus = onlineUsers[user.id]?.status ?? 'OFFLINE'
+                      const banned = isBanned(user)
                       return (
                       <tr key={user.id} className="border-b border-border/50">
                         <td className="px-4 py-3 font-medium">
@@ -152,30 +159,30 @@ export default function AdminUsersPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center ${liveStatus === 'ONLINE' ? 'text-emerald-500' : liveStatus === 'IDLE' ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                            {user.role === 'banned' ? 'BANNED' : liveStatus}
+                          <span className={`inline-flex items-center ${banned ? 'text-destructive' : liveStatus === 'ONLINE' ? 'text-emerald-500' : liveStatus === 'IDLE' ? 'text-amber-500' : 'text-muted-foreground'}`}>
+                            {banned ? 'BANNED' : liveStatus}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {new Date(user.lastSeenAt).toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-right space-x-2">
-                          {user.role !== 'banned' && (
-                            <Button 
-                              variant="outline" 
+                          {!banned && (
+                            <Button
+                              variant="outline"
                               size="sm"
-                              onClick={() => toggleRole(user.id, user.role)}
+                              onClick={() => toggleRole(user)}
                             >
                               {user.role === 'admin' ? <User className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
                             </Button>
                           )}
-                          <Button 
-                            variant={user.role === 'banned' ? 'secondary' : 'destructive'} 
+                          <Button
+                            variant={banned ? 'secondary' : 'destructive'}
                             size="sm"
-                            onClick={() => toggleBan(user.id, user.role)}
+                            onClick={() => toggleBan(user)}
                             disabled={user.role === 'admin'}
                           >
-                            {user.role === 'banned' ? <CheckCircle className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                            {banned ? <CheckCircle className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
                           </Button>
                         </td>
                       </tr>

@@ -8,6 +8,7 @@ import { notificationService } from '../services/notification.service.js'
 import { prisma } from '../lib/prisma.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { getIO, directRoom } from '../lib/socketManager.js'
+import { logger } from '../app.js'
 
 const createDirectMessageSchema = z.object({
   content: z.string().max(2000).optional().default(''),
@@ -38,11 +39,27 @@ export async function projectDirectMessageRoutes(app: FastifyInstance) {
 
   app.post('/projects/:projectId/direct-messages/:otherUserId', { preHandler: [authenticate, idempotencyPreHandler('projects.direct_messages.create')] }, async (req, reply) => {
     const { projectId, otherUserId } = req.params as { projectId: string; otherUserId: string }
+
+    if (otherUserId === req.authUser.id) {
+      return reply.status(400).send({ error: 'You cannot send a direct message to yourself' })
+    }
+
     try {
       await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER'])
     } catch {
       return reply.status(403).send({ error: 'Forbidden' })
     }
+
+    // Audit finding #16 — recipient must also be a member of the same project.
+    // Without this check users can DM outsiders by guessing user ids.
+    const recipientMembership = await prisma.projectMember.findUnique({
+      where: { userId_projectId: { userId: otherUserId, projectId } },
+      select: { userId: true },
+    })
+    if (!recipientMembership) {
+      return reply.status(404).send({ error: 'Recipient is not a member of this project' })
+    }
+
     const body = createDirectMessageSchema.parse(req.body)
 
     const created = await projectDirectMessageService.create({
@@ -79,7 +96,7 @@ export async function projectDirectMessageRoutes(app: FastifyInstance) {
           data: { projectId, fromUserId: req.authUser.id },
         })
       } catch (err) {
-        console.error('Background notification error:', err)
+        logger.error({ err }, 'background_notification_error')
       }
     })
 

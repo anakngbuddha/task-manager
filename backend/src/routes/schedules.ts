@@ -46,7 +46,8 @@ const respondScheduleSchema = z.object({
   response: z.nativeEnum(ScheduleAttendeeResponse),
 })
 
-const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '') || 'https://task-manager-mauve-eta.vercel.app'
+import { FRONTEND_URL } from '../config/constants.js'
+import { logger } from '../app.js'
 
 export async function scheduleRoutes(app: FastifyInstance) {
 
@@ -149,7 +150,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
             metadata: { title: body.title, type: body.type },
           })
         } catch (err: any) {
-          console.error('Failed to log activity:', err)
+          logger.error({ err, projectId: body.projectId }, 'schedule_activity_log_failed')
         }
       }
 
@@ -165,7 +166,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
           location: schedule.location,
         })
       } catch (err) {
-        console.error('Failed to send schedule invite emails:', err)
+        logger.error({ err }, 'schedule_invite_email_failed')
       }
 
       // Notifications + activity for all participants.
@@ -418,7 +419,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
             viewInAppUrl,
           })
         } catch (err) {
-          console.error('Failed to send invite emails to new attendees:', err)
+          logger.error({ err }, 'schedule_new_attendee_email_failed')
         }
       }
 
@@ -562,7 +563,7 @@ export async function scheduleRoutes(app: FastifyInstance) {
           })
         }
       } catch (err) {
-        console.error('Failed to send cancellation emails:', err)
+        logger.error({ err }, 'schedule_cancellation_email_failed')
       }
 
       await prisma.schedule.delete({ where: { id } })

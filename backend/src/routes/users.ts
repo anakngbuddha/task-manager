@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../middlewares/authenticate.js'
 import { prisma } from '../lib/prisma.js'
+import { auth } from '../lib/auth.js'
 
 const USER_STATUSES = ['ONLINE', 'WORKING', 'BUSY', 'AWAY', 'IN_MEETING', 'OFFLINE'] as const
 type UserStatusType = (typeof USER_STATUSES)[number]
@@ -52,6 +53,40 @@ export async function userRoutes(app: FastifyInstance) {
       where: { id: req.authUser.id },
       data: { lastSeenAt: new Date() },
     })
+    return reply.status(204).send()
+  })
+
+  // ── POST /users/resend-verification ─────────────────────────────────────
+  // Audit finding #8. Unauthenticated by design — sign-up emails are
+  // fire-and-forget so a missed verification email would otherwise lock a
+  // user out. Heavily rate-limited (3/hour/IP) so we don't become an email
+  // bomb. Always returns 204 to avoid leaking which addresses exist.
+  app.post('/users/resend-verification', {
+    config: { rateLimit: { max: 3, timeWindow: '1 hour' } },
+  }, async (req, reply) => {
+    const body = z.object({ email: z.string().email() }).safeParse(req.body)
+    if (!body.success) {
+      return reply.status(204).send()
+    }
+    const { email } = body.data
+
+    try {
+      const user = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, emailVerified: true },
+      })
+      if (user && !user.emailVerified) {
+        try {
+          await auth.api.sendVerificationEmail({
+            body: { email, callbackURL: '/login' },
+          } as any)
+        } catch (err) {
+          req.log.warn({ err, email }, 'Failed to resend verification email')
+        }
+      }
+    } catch (err) {
+      req.log.warn({ err }, 'resend-verification handler failed')
+    }
     return reply.status(204).send()
   })
 

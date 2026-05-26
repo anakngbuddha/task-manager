@@ -13,7 +13,7 @@ export async function adminRoutes(app) {
         const user = await prisma.user.findUnique({
             where: { id: session.user.id }
         });
-        if (!user || user.role !== 'admin') {
+        if (!user || user.role !== 'ADMIN') {
             return reply.status(403).send({ error: 'Forbidden. Admin level required.' });
         }
         ;
@@ -53,7 +53,7 @@ export async function adminRoutes(app) {
             }),
             prisma.user.count({
                 where: {
-                    role: { not: 'admin' },
+                    role: { not: 'ADMIN' },
                     lastSeenAt: { lt: oneWeekAgo },
                 }
             }),
@@ -410,11 +410,18 @@ export async function adminRoutes(app) {
                 email: true,
                 role: true,
                 status: true,
+                bannedAt: true,
                 createdAt: true,
                 lastSeenAt: true,
             }
         });
-        return reply.send(users);
+        // Frontend already keys off `status === 'banned'`; keep that contract by
+        // synthesising the field from the new `bannedAt` flag instead of reading
+        // it from the `role` column.
+        return reply.send(users.map((u) => ({
+            ...u,
+            accountStatus: u.bannedAt ? 'banned' : 'active',
+        })));
     });
     // ─── PATCH /api/admin/users/:id/status ───────────────────────────
     // Ban or unban a user account (status: 'active' | 'banned')
@@ -427,17 +434,18 @@ export async function adminRoutes(app) {
         const target = await prisma.user.findUnique({ where: { id } });
         if (!target)
             return reply.status(404).send({ error: 'User not found' });
-        if (target.role === 'admin') {
+        if (target.role === 'ADMIN') {
             return reply.status(403).send({ error: 'Cannot ban a system admin.' });
         }
         if (status === 'banned') {
-            // Revoke all active sessions to immediately log the user out
+            // Revoke all active sessions to immediately log the user out.
+            // We flag the account via `bannedAt` instead of overwriting `role` so the
+            // original role is preserved across an unban (audit finding #13).
             await prisma.session.deleteMany({ where: { userId: id } });
-            await prisma.user.update({ where: { id }, data: { role: 'banned' } });
+            await prisma.user.update({ where: { id }, data: { bannedAt: new Date() } });
         }
         else {
-            // Restore to regular user
-            await prisma.user.update({ where: { id }, data: { role: 'user' } });
+            await prisma.user.update({ where: { id }, data: { bannedAt: null } });
         }
         return reply.send({ id, status });
     });
@@ -446,15 +454,20 @@ export async function adminRoutes(app) {
     app.patch('/admin/users/:id/role', async (req, reply) => {
         const { id } = req.params;
         const { role } = req.body;
-        if (!['admin', 'user'].includes(role)) {
-            return reply.status(400).send({ error: 'role must be "admin" or "user"' });
+        if (!['ADMIN', 'USER'].includes(role)) {
+            return reply.status(400).send({ error: 'role must be "ADMIN" or "USER"' });
         }
         const target = await prisma.user.findUnique({ where: { id } });
         if (!target)
             return reply.status(404).send({ error: 'User not found' });
-        // Optionally prevent demoting oneself if they are the only admin,
-        // but for now we just allow it.
-        await prisma.user.update({ where: { id }, data: { role } });
+        // Prevent demoting oneself if they are the last active admin
+        if (target.role === 'ADMIN' && role === 'USER') {
+            const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
+            if (adminCount <= 1) {
+                return reply.status(400).send({ error: 'Cannot demote the last active admin' });
+            }
+        }
+        await prisma.user.update({ where: { id }, data: { role: role } });
         return reply.send({ id, role });
     });
     // ─── DELETE /api/admin/projects/:id ─────────────────────────────
@@ -465,23 +478,45 @@ export async function adminRoutes(app) {
         if (!project)
             return reply.status(404).send({ error: 'Project not found' });
         // Delete in dependency order to satisfy FK constraints
-        await prisma.$transaction([
-            prisma.automationLog.deleteMany({ where: { projectId: id } }),
-            prisma.automationRule.deleteMany({ where: { projectId: id } }),
-            prisma.projectMessage.deleteMany({ where: { projectId: id } }),
-            prisma.projectDirectMessage.deleteMany({ where: { projectId: id } }),
-            prisma.projectChatReadState.deleteMany({ where: { projectId: id } }),
-            prisma.taskComment.deleteMany({ where: { task: { projectId: id } } }),
-            prisma.timeLog.deleteMany({ where: { task: { projectId: id } } }),
-            prisma.taskTag.deleteMany({ where: { task: { projectId: id } } }),
-            prisma.task.deleteMany({ where: { projectId: id } }),
-            prisma.sprint.deleteMany({ where: { projectId: id } }),
-            prisma.projectMember.deleteMany({ where: { projectId: id } }),
-            prisma.projectInvite.deleteMany({ where: { projectId: id } }),
-            prisma.activityEvent.deleteMany({ where: { projectId: id } }),
-            prisma.auditLog.deleteMany({ where: { projectId: id } }),
-            prisma.project.delete({ where: { id } }),
-        ]);
+        await prisma.$transaction(async (tx) => {
+            // 1. Delete standalone project dependents
+            await tx.automationLog.deleteMany({ where: { projectId: id } });
+            await tx.automationRule.deleteMany({ where: { projectId: id } });
+            await tx.projectMessage.deleteMany({ where: { projectId: id } });
+            await tx.projectDirectMessage.deleteMany({ where: { projectId: id } });
+            await tx.projectChatReadState.deleteMany({ where: { projectId: id } });
+            await tx.directChatReadState.deleteMany({ where: { projectId: id } });
+            await tx.activityEvent.deleteMany({ where: { projectId: id } });
+            await tx.notification.deleteMany({ where: { projectId: id } });
+            await tx.dashboardLayout.deleteMany({ where: { projectId: id } });
+            await tx.githubInstallation.deleteMany({ where: { projectId: id } });
+            await tx.projectRepository.deleteMany({ where: { projectId: id } });
+            await tx.repoEvent.deleteMany({ where: { projectId: id } });
+            await tx.projectDependencyDiagramLayout.deleteMany({ where: { projectId: id } });
+            await tx.fileNode.deleteMany({ where: { projectId: id } });
+            // 2. Fetch tasks to delete task dependents
+            const tasks = await tx.task.findMany({ where: { projectId: id }, select: { id: true } });
+            const taskIds = tasks.map((t) => t.id);
+            if (taskIds.length > 0) {
+                await tx.taskDependency.deleteMany({
+                    where: { OR: [{ blockingTaskId: { in: taskIds } }, { blockedTaskId: { in: taskIds } }] }
+                });
+                await tx.taskGithubLink.deleteMany({ where: { taskId: { in: taskIds } } });
+                await tx.scheduleNotificationLog.deleteMany({ where: { taskId: { in: taskIds } } });
+                await tx.taskAttachment.deleteMany({ where: { taskId: { in: taskIds } } });
+                await tx.timeLog.deleteMany({ where: { taskId: { in: taskIds } } });
+                await tx.taskComment.deleteMany({ where: { taskId: { in: taskIds } } });
+                await tx.taskTag.deleteMany({ where: { taskId: { in: taskIds } } });
+            }
+            // 3. Delete tasks and other project-level entities
+            await tx.task.deleteMany({ where: { projectId: id } });
+            await tx.sprint.deleteMany({ where: { projectId: id } });
+            await tx.projectMember.deleteMany({ where: { projectId: id } });
+            await tx.projectInvite.deleteMany({ where: { projectId: id } });
+            await tx.schedule.deleteMany({ where: { projectId: id } });
+            // 4. Finally delete the project itself
+            await tx.project.delete({ where: { id } });
+        });
         return reply.status(204).send();
     });
 }

@@ -52,7 +52,7 @@ export async function inviteRoutes(app) {
             expiresAt: invite.expiresAt,
         };
     });
-    app.get('/invites/:code', async (req, reply) => {
+    app.get('/invites/:code', { preHandler: authenticate }, async (req, reply) => {
         const { code } = req.params;
         const invite = await prisma.projectInvite.findUnique({
             where: { code },
@@ -72,6 +72,7 @@ export async function inviteRoutes(app) {
     });
     app.post('/invites/:code/accept', {
         preHandler: authenticate,
+        config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
     }, async (req, reply) => {
         const { code } = req.params;
         const userId = req.authUser.id;

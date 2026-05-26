@@ -143,7 +143,7 @@ export class CommandRegistry {
     // ── Dispatch: mkdir ───────────────────────────────────────────────────────
     // "mkdir profile/files/..."     → mkdir-profile-file
     this.handlers['mkdir'] = async (parsed, context): Promise<CommandResult> => {
-      const path = parsed.args[0]?.toLowerCase() ?? ''
+      const path = parsed.args[0] ?? ''
       
       if (!path) {
         return { lines: [{ type: 'stderr', content: 'mkdir: missing operand.' }] }

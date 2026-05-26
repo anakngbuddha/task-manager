@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { getApiErrorMessage } from '@/lib/api'
+import { AlertCircle } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus, X, ListTodo, AlignLeft, ChevronDown } from 'lucide-react'
@@ -90,6 +92,11 @@ export default function CreateTaskDialog({
 
   const [subtasks, setSubtasks] = useState<string[]>([])
   const [subtaskInput, setSubtaskInput] = useState('')
+  const [errorDialog, setErrorDialog] = useState<{ open: boolean; title: string; message: string }>({
+    open: false,
+    title: '',
+    message: '',
+  })
 
   // Close parent dropdown when clicking outside
   useEffect(() => {
@@ -146,19 +153,33 @@ export default function CreateTaskDialog({
     }
 
     setDeadlineError('')
-    await onSubmit({
-      title: newTitle.trim(),
-      description: newDescription.trim(),
-      priority: newPriority,
-      assigneeId: newAssigneeId,
-      status: resolvedStatus,
-      sprintId: newSprintId === 'NONE' ? null : newSprintId,
-      deadline: new Date(newDeadline).toISOString(),
-      type: taskType,
-      parentId,
-    }, subtasks)
 
-    // Reset
+    try {
+      await onSubmit({
+        title: newTitle.trim(),
+        description: newDescription.trim(),
+        priority: newPriority,
+        assigneeId: newAssigneeId,
+        status: resolvedStatus,
+        sprintId: newSprintId === 'NONE' ? null : newSprintId,
+        deadline: new Date(newDeadline).toISOString(),
+        type: taskType,
+        parentId,
+      }, subtasks)
+    } catch (err) {
+      const message = getApiErrorMessage(err, 'Failed to create the task.')
+      const isDuplicate = /already exists|duplicate/i.test(message)
+      setErrorDialog({
+        open: true,
+        title: isDuplicate ? 'Task title already in use' : 'Could not create task',
+        message: isDuplicate
+          ? 'A task with this title already exists in this project. Choose a different title.'
+          : message,
+      })
+      return
+    }
+
+    // Reset only after a successful create
     setNewTitle('')
     setNewDescription('')
     setNewPriority('MEDIUM')
@@ -178,6 +199,33 @@ export default function CreateTaskDialog({
   const TASK_TYPES: TaskType[] = ['EPIC', 'STORY', 'TASK']
 
   return (
+    <>
+    <Dialog open={errorDialog.open} onOpenChange={(v) => setErrorDialog((prev) => ({ ...prev, open: v }))}>
+      <DialogContent className="sm:max-w-md rounded-xl">
+        <DialogHeader>
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+              <AlertCircle className="size-5 text-destructive" aria-hidden />
+            </div>
+            <div className="space-y-1.5 text-left">
+              <DialogTitle>{errorDialog.title}</DialogTitle>
+              <DialogDescription className="text-sm text-muted-foreground">
+                {errorDialog.message}
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+        <DialogFooter className="sm:justify-end">
+          <Button
+            type="button"
+            onClick={() => setErrorDialog((prev) => ({ ...prev, open: false }))}
+          >
+            OK
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
         <Button
@@ -497,5 +545,6 @@ export default function CreateTaskDialog({
 
       </DialogContent>
     </Dialog>
+    </>
   )
 }

@@ -7,6 +7,8 @@ import { acquireIdempotency, attachIdempotencyContext, } from '../services/idemp
 import cloudinary from '../config/cloudinary.js';
 import streamifier from 'streamifier';
 import { auditLogService } from '../services/auditLog.service.js';
+import { requireProjectRole } from '../services/projectAuth.service.js';
+import { logger } from '../app.js';
 const ALLOWED_MIME_TYPES = new Set([
     'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif',
     'application/pdf',
@@ -184,7 +186,7 @@ export async function fileRoutes(app) {
             return reply.status(201).send(fileNode);
         }
         catch (error) {
-            console.error('File upload error:', error);
+            logger.error({ err: error }, 'file_upload_error');
             return reply.status(500).send({ error: 'Upload failed' });
         }
     });
@@ -223,6 +225,18 @@ export async function fileRoutes(app) {
     // ─── GET /api/files/tasks/:taskId/attachments ───────────────────────────
     app.get('/files/tasks/:taskId/attachments', { preHandler: authenticate }, async (req, reply) => {
         const { taskId } = req.params;
+        const task = await prisma.task.findUnique({
+            where: { id: taskId },
+            select: { id: true, projectId: true },
+        });
+        if (!task)
+            return reply.status(404).send({ error: 'Task not found' });
+        try {
+            await requireProjectRole(task.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         const attachments = await prisma.taskAttachment.findMany({
             where: { taskId },
             include: {
@@ -241,9 +255,29 @@ export async function fileRoutes(app) {
         const body = req.body;
         if (!body.taskId || !body.fileNodeId)
             return reply.status(400).send({ error: 'Bad Request' });
+        const task = await prisma.task.findUnique({
+            where: { id: body.taskId },
+            select: { id: true, projectId: true },
+        });
+        if (!task)
+            return reply.status(404).send({ error: 'Task not found' });
+        try {
+            await requireProjectRole(task.projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
         const fileNode = await prisma.fileNode.findUnique({ where: { id: body.fileNodeId } });
         if (!fileNode)
             return reply.status(404).send({ error: 'File not found' });
+        // Caller must either own the file (personal upload) or it must already
+        // belong to the same project the task lives in. Prevents leaking arbitrary
+        // files from other projects/users into tasks.
+        const ownsFile = fileNode.userId === req.authUser.id && fileNode.projectId === null;
+        const sameProject = fileNode.projectId !== null && fileNode.projectId === task.projectId;
+        if (!ownsFile && !sameProject) {
+            return reply.status(403).send({ error: 'You do not have access to this file' });
+        }
         try {
             const attachment = await prisma.taskAttachment.create({
                 data: { taskId: body.taskId, fileNodeId: body.fileNodeId },
@@ -261,7 +295,7 @@ export async function fileRoutes(app) {
                 entityType: 'FILE',
                 entityId: attachment.id,
                 entityName: `taskAttachment:${body.taskId}`,
-                projectId: fileNode.projectId,
+                projectId: task.projectId,
                 metadata: { taskId: body.taskId, fileNodeId: body.fileNodeId },
                 req,
             });
@@ -288,9 +322,28 @@ export async function fileRoutes(app) {
     // ─── DELETE /api/files/tasks/attachments/:id ──────────────────────────
     app.delete('/files/tasks/attachments/:attachmentId', { preHandler: authenticate }, async (req, reply) => {
         const { attachmentId } = req.params;
-        const attachment = await prisma.taskAttachment.findUnique({ where: { id: attachmentId }, include: { fileNode: true } });
+        const attachment = await prisma.taskAttachment.findUnique({
+            where: { id: attachmentId },
+            include: {
+                fileNode: true,
+                task: { select: { id: true, projectId: true } },
+            },
+        });
         if (!attachment)
             return reply.status(404).send({ error: 'Not found' });
+        const projectId = attachment.task.projectId;
+        let role;
+        try {
+            role = await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER', 'MEMBER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        // Managers can always detach. Plain members can only detach if they were
+        // the original uploader of the underlying file.
+        if (role === 'MEMBER' && attachment.fileNode.userId !== req.authUser.id) {
+            return reply.status(403).send({ error: 'Only managers or the uploader can remove this attachment' });
+        }
         await prisma.taskAttachment.delete({ where: { id: attachmentId } });
         auditLogService.record({
             userId: req.authUser.id,
@@ -300,7 +353,7 @@ export async function fileRoutes(app) {
             entityType: 'FILE',
             entityId: attachmentId,
             entityName: `taskAttachment:${attachment.taskId}`,
-            projectId: attachment.fileNode.projectId,
+            projectId,
             metadata: { taskId: attachment.taskId, fileNodeId: attachment.fileNodeId },
             req,
         });

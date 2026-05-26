@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+*.log
+email-debug.log
+email-test-output.txt
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment files (never commit secrets)
+.env
+.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# Uploads (local dev only)
+backend/uploads/
+
+# Vercel / Render artifacts
+.vercel/
+.render/

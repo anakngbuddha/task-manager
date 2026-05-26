@@ -14,11 +14,15 @@
  * defence-in-depth for a better UX error message.
  */
 import { api } from '@/lib/api'
-import { assertVFSRole, authDeniedLines } from '../vfsAuth'
-import type { CommandHandler, CommandResult } from '../commandTypes'
+import type { CommandHandler, CommandResult, CommandContext } from '../commandTypes'
 import type { VirtualFileSystem } from '../VirtualFileSystem'
 
-const ADMIN_ONLY = ['MASTER_ADMIN'] as const
+function checkAdmin(context: CommandContext, cmd: string): CommandResult | null {
+  if (context.user?.role?.toUpperCase() !== 'ADMIN') {
+    return { lines: [{ type: 'stderr', content: `${cmd}: permission denied. System ADMIN required.` }] }
+  }
+  return null
+}
 
 function escapeHtml(str: unknown): string {
   return String(str ?? '')
@@ -36,8 +40,8 @@ export function createAdminHandlers(
     // ── users ─────────────────────────────────────────────────────────────────
     // Usage: users
     users: async (_parsed, context): Promise<CommandResult> => {
-      try { assertVFSRole(context.userRole, [...ADMIN_ONLY], 'users') }
-      catch { return { lines: authDeniedLines(context.userRole, [...ADMIN_ONLY], 'users') } }
+      const authError = checkAdmin(context, 'users')
+      if (authError) return authError
 
       try {
         const { data } = await api.get('/admin/users')
@@ -55,10 +59,10 @@ export function createAdminHandlers(
           const lastSeen = u.lastSeenAt
             ? new Date(u.lastSeenAt).toLocaleDateString()
             : '—'
-          const roleColor = role === 'admin' ? '#bc8cff' : role === 'banned' ? '#f85149' : '#3fb950'
+          const roleColor = role.toUpperCase() === 'ADMIN' ? '#bc8cff' : role.toUpperCase() === 'BANNED' ? '#f85149' : '#3fb950'
           return (
             `<span class="term-file">${id.padEnd(12)} ${email.padEnd(32)} ${name.padEnd(20)} </span>` +
-            `<span style="color:${roleColor}">${role.padEnd(14)}</span> ` +
+            `<span style="color:${escapeHtml(roleColor)}">${role.padEnd(14)}</span> ` +
             `<span class="term-json-str">${escapeHtml(lastSeen)}</span>`
           )
         })
@@ -77,8 +81,8 @@ export function createAdminHandlers(
     // ── metrics ───────────────────────────────────────────────────────────────
     // Usage: metrics
     metrics: async (_parsed, context): Promise<CommandResult> => {
-      try { assertVFSRole(context.userRole, [...ADMIN_ONLY], 'metrics') }
-      catch { return { lines: authDeniedLines(context.userRole, [...ADMIN_ONLY], 'metrics') } }
+      const authError = checkAdmin(context, 'metrics')
+      if (authError) return authError
 
       try {
         const { data: m } = await api.get('/admin/metrics')
@@ -115,8 +119,8 @@ export function createAdminHandlers(
     // ── audit ─────────────────────────────────────────────────────────────────
     // Usage: audit [n]   — shows last n audit log entries (default 20, max 50)
     audit: async (parsed, context): Promise<CommandResult> => {
-      try { assertVFSRole(context.userRole, [...ADMIN_ONLY], 'audit') }
-      catch { return { lines: authDeniedLines(context.userRole, [...ADMIN_ONLY], 'audit') } }
+      const authError = checkAdmin(context, 'audit')
+      if (authError) return authError
 
       const n = Math.min(50, Math.max(1, parseInt(parsed.args[0] ?? '20', 10) || 20))
 
@@ -156,8 +160,8 @@ export function createAdminHandlers(
     // ── ban ───────────────────────────────────────────────────────────────────
     // Usage: ban <email>
     ban: async (parsed, context): Promise<CommandResult> => {
-      try { assertVFSRole(context.userRole, [...ADMIN_ONLY], 'ban') }
-      catch { return { lines: authDeniedLines(context.userRole, [...ADMIN_ONLY], 'ban') } }
+      const authError = checkAdmin(context, 'ban')
+      if (authError) return authError
 
       const email = parsed.args[0]?.trim()
       if (!email) {
@@ -192,8 +196,8 @@ export function createAdminHandlers(
     // ── unban ─────────────────────────────────────────────────────────────────
     // Usage: unban <email>
     unban: async (parsed, context): Promise<CommandResult> => {
-      try { assertVFSRole(context.userRole, [...ADMIN_ONLY], 'unban') }
-      catch { return { lines: authDeniedLines(context.userRole, [...ADMIN_ONLY], 'unban') } }
+      const authError = checkAdmin(context, 'unban')
+      if (authError) return authError
 
       const email = parsed.args[0]?.trim()
       if (!email) {
@@ -224,8 +228,8 @@ export function createAdminHandlers(
     // ── purge-project ─────────────────────────────────────────────────────────
     // Usage: purge-project <projectId>
     'purge-project': async (parsed, context): Promise<CommandResult> => {
-      try { assertVFSRole(context.userRole, [...ADMIN_ONLY], 'purge-project') }
-      catch { return { lines: authDeniedLines(context.userRole, [...ADMIN_ONLY], 'purge-project') } }
+      const authError = checkAdmin(context, 'purge-project')
+      if (authError) return authError
 
       const projectId = parsed.args[0]?.trim()
       if (!projectId) {

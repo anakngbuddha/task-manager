@@ -2,7 +2,6 @@ import cron from 'node-cron'
 import { prisma } from '../lib/prisma.js'
 import { purgeExpiredIdempotencyKeys } from '../services/idempotency.service.js'
 import { notificationService } from '../services/notification.service.js'
-import { auditLogService } from '../services/auditLog.service.js'
 import {
   sendScheduleReminderEmail,
   sendTaskDeadlineEmail,
@@ -10,21 +9,23 @@ import {
 import { scheduleCalendarUrl } from '../lib/publicUrls.js'
 import { runAutomations } from '../services/automation.engine.js'
 
-const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '') || 'https://task-manager-mauve-eta.vercel.app'
+import { FRONTEND_URL } from '../config/constants.js'
+import { logger } from '../app.js'
 
 export function startNotificationCron() {
   cron.schedule('*/5 * * * *', async () => {
-    console.log('[cron] Running notification checks...')
+    logger.info('cron_notification_tick')
     try {
       await purgeExpiredIdempotencyKeys()
-      await auditLogService.cleanupOldLogs()
+      // Audit log retention is intentionally infinite (audit finding #9).
+      // Move to an archival table if storage pressure ever becomes an issue.
       await checkScheduleReminders()
       await checkTaskDeadlineReminders()
     } catch (err) {
-      console.error('[cron] Top-level error:', err)
+      logger.error({ err }, 'cron_top_level_error')
     }
   })
-  console.log('[cron] Notification cron started (every 5 minutes)')
+  logger.info('cron_notification_started')
 }
 
 // ─── Schedule reminders ───────────────────────────────────
@@ -104,9 +105,9 @@ async function processScheduleWindow(
           href: `/schedules`,
         })
 
-        console.log(`[cron] Sent ${type} for schedule "${schedule.title}" to ${attendee.email}`)
+        logger.info({ type, scheduleTitle: schedule.title, email: attendee.email }, 'cron_schedule_reminder_sent')
       } catch (err) {
-        console.error(`[cron] Error sending ${type} for schedule ${schedule.id} to ${attendee.email}:`, err)
+        logger.error({ err, type, scheduleId: schedule.id, email: attendee.email }, 'cron_schedule_reminder_error')
       }
     }
   }
@@ -199,9 +200,9 @@ async function processTaskWindow(
             href: `/projects/${task.projectId}?task=${task.id}`,
           })
 
-          console.log(`[cron] Sent ${type} for task "${task.title}" to ${recipient.email}`)
+          logger.info({ type, taskTitle: task.title, email: recipient.email }, 'cron_task_deadline_sent')
         } catch (err) {
-          console.error(`[cron] Error sending ${type} for task ${task.id} to ${recipient.email}:`, err)
+          logger.error({ err, type, taskId: task.id, email: recipient.email }, 'cron_task_deadline_error')
         }
       }
 
@@ -220,10 +221,10 @@ async function processTaskWindow(
             sprintId: null,
             projectId: task.projectId,
           },
-        }).catch((err) => console.error(`[automation] TASK_DEADLINE_APPROACHING hook error for task ${task.id}:`, err))
+        }).catch((err) => logger.error({ err, taskId: task.id }, 'automation_deadline_hook_error'))
       }
     } catch (err) {
-      console.error(`[cron] Error processing task ${task.id} for ${type}:`, err)
+      logger.error({ err, taskId: task.id, type }, 'cron_task_processing_error')
     }
   }
 }

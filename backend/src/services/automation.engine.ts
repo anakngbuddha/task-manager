@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { getIO } from '../lib/socketManager.js'
 import { notificationService } from './notification.service.js'
+import { logger } from '../app.js'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -259,7 +260,7 @@ export async function runAutomations(ctx: AutomationContext): Promise<void> {
   // Depth guard — prevent infinite chains
   const depth = ctx.depth ?? 0
   if (depth > 3) {
-    console.warn(`[automation] Max chain depth reached for project ${ctx.projectId}, aborting.`)
+    logger.warn({ projectId: ctx.projectId }, '[automation] Max chain depth reached for project, aborting.')
     return
   }
 
@@ -321,9 +322,9 @@ export async function runAutomations(ctx: AutomationContext): Promise<void> {
         taskId: ctx.task?.id,
       })
 
-      console.log(`[automation] Rule "${rule.name}" fired (depth=${depth}) — success=${overallSuccess}`)
+      logger.info({ ruleName: rule.name, depth, success: overallSuccess }, '[automation] Rule fired')
     }
   } catch (err) {
-    console.error('[automation] Engine error:', err)
+    logger.error({ err }, '[automation] Engine error')
   }
 }

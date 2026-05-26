@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js'
 import { FastifyRequest } from 'fastify'
 import { Prisma } from '@prisma/client'
+import { logger } from '../app.js'
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export const auditLogService = {
         },
       })
     } catch (err) {
-      console.error('[audit-log] Failed to record audit log:', err)
+      logger.error({ err }, 'audit_log_record_failed')
     }
   },
 
@@ -174,22 +175,15 @@ export const auditLogService = {
   },
 
   /**
-   * Delete audit logs older than the retention period (90 days).
-   * Called from the notification cron job.
+   * Audit logs are intentionally immutable (see schema comment for AuditLog).
+   * Past versions of this service deleted records older than 90 days, which
+   * silently broke that contract. We now keep the entire history; if storage
+   * pressure becomes a problem, copy to a cold table rather than deleting.
+   *
+   * Returns 0 unconditionally so callers that still invoke this method don't
+   * crash. Audit finding #9.
    */
   async cleanupOldLogs(): Promise<number> {
-    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-    try {
-      const result = await prisma.auditLog.deleteMany({
-        where: { createdAt: { lt: cutoff } },
-      })
-      if (result.count > 0) {
-        console.log(`[audit-log] Cleaned up ${result.count} audit logs older than 90 days`)
-      }
-      return result.count
-    } catch (err) {
-      console.error('[audit-log] Failed to cleanup old logs:', err)
-      return 0
-    }
+    return 0
   },
 }

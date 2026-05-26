@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { stableStringify } from '../lib/stableStringify.js';
+import { logger } from '../app.js';
 const STALE_LOCK_MS = 120_000;
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000;
 export function hashForIdempotency(routeKey, req) {
@@ -127,6 +128,7 @@ export async function completeIdempotencyFromPayload(req, reply, payload) {
     }
     catch (err) {
         req.log?.warn?.({ err }, 'idempotency_complete_failed');
+        logger.error({ err }, '[idempotency] Failed to complete idempotency record');
     }
     return payload;
 }
@@ -135,6 +137,6 @@ export async function purgeExpiredIdempotencyKeys() {
         where: { expiresAt: { lt: new Date() } },
     });
     if (res.count > 0) {
-        console.log(`[cron] Purged ${res.count} expired idempotency key(s)`);
+        logger.info({ count: res.count }, '[cron] Purged expired idempotency key(s)');
     }
 }

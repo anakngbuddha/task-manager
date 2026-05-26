@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { queueOrRunMutation } from '../lib/offlineQueue'
 import type { TaskType } from '../lib/taskTypes'
 import { useTaskSync } from './useTaskSync'
+import { invalidateVfsCache } from '../lib/vfs/dataAdapters'
 
 export function useTasks(projectId: string) {
   // Real-time sync: listens for task:created / task:updated / task:deleted
@@ -57,6 +58,7 @@ export function useCreateTask() {
         : result.data
     },
     onSuccess: (data: any, vars) => {
+      invalidateVfsCache(vars.projectId)
       if (!data?._queued) {
         queryClient.invalidateQueries({ queryKey: ['tasks', vars.projectId] })
       }

@@ -42,6 +42,8 @@ export class VirtualFileSystem {
   public projectId: string
   public _pendingProjectSwitch: PendingProjectSwitch | null = null
 
+  private _mounts: Record<string, any> | null = null;
+
   constructor(projectId: string) {
     this.projectId = projectId
   }
@@ -75,14 +77,44 @@ export class VirtualFileSystem {
     return '/' + resolved.join('/')
   }
 
+  // ── Dynamic Mounts ─────────────────────────────────────────────────
+  
+  private async getMounts() {
+    if (this._mounts) return this._mounts
+    const mounts = { ...MOUNT_TABLE }
+    if (this.projectId !== '__workspace__') {
+      try {
+        const { data } = await api.get(`/projects/${this.projectId}`)
+        if (data?.boardColumns) {
+          Object.keys(mounts).forEach((k) => {
+            if (k.startsWith('/tasks/') && k !== '/tasks') delete mounts[k]
+          })
+          data.boardColumns.forEach((col: string) => {
+            const slug = col.toLowerCase().replace(/[^a-z0-9_-]/g, '-')
+            mounts[`/tasks/${slug}`] = {
+              entityType: 'tasks-status',
+              label: slug,
+              taskStatus: col,
+              leaf: true,
+            }
+          })
+        }
+      } catch (err) {
+        // fallback to default MOUNT_TABLE
+      }
+    }
+    this._mounts = mounts
+    return mounts
+  }
+
   // ── Static node helpers ────────────────────────────────────────────
 
   /** Return the static directory node for a mount path, or null */
-  private staticDir(path: string): VFSDirectory | null {
+  private staticDir(path: string, mounts: Record<string, any>): VFSDirectory | null {
     if (path === '/') {
       return { name: '/', path: '/', type: 'dir', entityType: 'root' }
     }
-    const entry = MOUNT_TABLE[path]
+    const entry = mounts[path]
     if (!entry) return null
     return {
       name: entry.label,
@@ -101,10 +133,11 @@ export class VirtualFileSystem {
    */
   async listDir(dirPath?: string): Promise<VFSNode[]> {
     const target = dirPath ? this.resolve(dirPath) : this._cwd
+    const mounts = await this.getMounts()
 
     // Root: list top-level mount dirs filtered by context
     if (target === '/') {
-      const childPaths = getMountChildren('/')
+      const childPaths = Object.keys(mounts).filter(p => p !== '/' && p.lastIndexOf('/') === 0)
       const isWorkspace = this.projectId === '__workspace__'
       const filtered = childPaths.filter((p) => {
         if (isWorkspace) {
@@ -114,43 +147,38 @@ export class VirtualFileSystem {
         // Inside a project: show everything EXCEPT /projects
         return p !== '/projects'
       })
-      return filtered.map((p) => this.staticDir(p)!).filter(Boolean)
+      return filtered.map((p) => this.staticDir(p, mounts)!).filter(Boolean)
     }
 
-    // task-comments sub-directory: /tasks/<status>/<taskSlug>/comments
-    if (target.startsWith('/tasks/') && target.split('/').length === 5 && target.endsWith('/comments')) {
-      const parts = target.split('/').filter(Boolean)  // ['tasks', status, taskSlug, 'comments']
-      const taskSlug = parts[2]
-      const parentPath = `/tasks/${parts[1]}`
-      const taskFiles = await fetchTaskFiles(this.projectId, MOUNT_TABLE[parentPath]?.taskStatus as TaskStatus | undefined)
+    // task-comments and subtasks via regex for robust segment handling (V-04)
+    const taskMatch = target.match(/^\/tasks\/([^\/]+)\/([^\/]+)\/(comments|subtasks)$/)
+    if (taskMatch) {
+      const statusSegment = taskMatch[1]
+      const taskSlug = taskMatch[2]
+      const subType = taskMatch[3]
+      const parentPath = `/tasks/${statusSegment}`
+      const taskFiles = await fetchTaskFiles(this.projectId, mounts[parentPath]?.taskStatus)
       const taskFile = taskFiles.find(f => f.name === taskSlug || f.name === taskSlug + '.json' || f.name.startsWith(taskSlug))
       if (!taskFile) throw new Error(`No such directory: ${target}`)
-      return fetchTaskCommentFiles(taskFile.entityId, target)
-    }
-
-    // task-subtasks sub-directory: /tasks/<status>/<taskSlug>/subtasks
-    if (target.startsWith('/tasks/') && target.split('/').length === 5 && target.endsWith('/subtasks')) {
-      const parts = target.split('/').filter(Boolean)
-      const taskSlug = parts[2]
-      const parentPath = `/tasks/${parts[1]}`
-      const taskFiles = await fetchTaskFiles(this.projectId, MOUNT_TABLE[parentPath]?.taskStatus as TaskStatus | undefined)
-      const taskFile = taskFiles.find(f => f.name === taskSlug || f.name === taskSlug + '.json' || f.name.startsWith(taskSlug))
-      if (!taskFile) throw new Error(`No such directory: ${target}`)
-      // Fetch subtasks (tasks where parentId = this task's id)
-      const { data } = await api.get(`/projects/${this.projectId}/tasks`)
-      const allTasks: any[] = data ?? []
-      const subtasks = allTasks.filter(t => t.parentId === taskFile.entityId)
-      return subtasks.map(t => {
-        const safeName = (t.title ?? 'subtask').toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 40)
-        return {
-          name: `${safeName}__${String(t.id).slice(0, 8)}.json`,
-          path: `${target}/${safeName}__${String(t.id).slice(0, 8)}.json`,
-          type: 'file' as const,
-          entityType: 'task-subtask' as const,
-          entityId: String(t.id),
-          data: t,
-        }
-      })
+      
+      if (subType === 'comments') {
+        return fetchTaskCommentFiles(taskFile.entityId, target)
+      } else {
+        const { data } = await api.get(`/projects/${this.projectId}/tasks`)
+        const allTasks: any[] = data ?? []
+        const subtasks = allTasks.filter(t => t.parentId === taskFile.entityId)
+        return subtasks.map(t => {
+          const safeName = (t.title ?? 'subtask').toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 40)
+          return {
+            name: `${safeName}__${String(t.id).slice(0, 8)}.json`,
+            path: `${target}/${safeName}__${String(t.id).slice(0, 8)}.json`,
+            type: 'file' as const,
+            entityType: 'task-subtask' as const,
+            entityId: String(t.id),
+            data: t,
+          }
+        })
+      }
     }
 
     // Check if it's a dynamic timelogs directory first
@@ -163,7 +191,7 @@ export class VirtualFileSystem {
     }
 
     // Check if it's a static mount directory
-    const mount = MOUNT_TABLE[target]
+    const mount = mounts[target]
     if (!mount) {
       throw new Error(`No such directory: ${target}`)
     }
@@ -172,7 +200,7 @@ export class VirtualFileSystem {
     switch (mount.entityType) {
       case 'tasks':
         // /tasks — return the status sub-dirs
-        return getMountChildren(target).map((p) => this.staticDir(p)!).filter(Boolean)
+        return getMountChildren(target).map((p) => this.staticDir(p, mounts)!).filter(Boolean)
 
       case 'tasks-status': {
         const status = mount.taskStatus as TaskStatus
@@ -218,7 +246,7 @@ export class VirtualFileSystem {
       case 'profile':
         // /profile — return the sub-dirs (files) plus virtual settings/github nodes
         return [
-          ...getMountChildren(target).map((p) => this.staticDir(p)!).filter(Boolean),
+          ...getMountChildren(target).map((p) => this.staticDir(p, mounts)!).filter(Boolean),
           ...(await fetchProfileSettings()),
         ]
 
@@ -272,24 +300,25 @@ export class VirtualFileSystem {
         const { data } = await api.get('/projects')
         const projects: any[] = data ?? []
         // Match by: exact slug, name prefix, or id prefix
+        // Match by: exact slug, exact name, name prefix, or id prefix (V-01)
         const match = projects.find((p: any) => {
           const safeName = (p.name ?? '')
             .toLowerCase()
             .replace(/[^a-z0-9_-]/g, '-')
             .slice(0, 40)
           const fullSlug = `${safeName}__${String(p.id).slice(0, 8)}_${(p.status ?? 'active').toLowerCase()}`
-          
-          // Symmetrical alphanumeric comparison to bypass special character failures
+          if (fullSlug === slug) return true
+          return false
+        }) || projects.find((p: any) => {
           const cleanName = (p.name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
           const cleanSlug = slug.replace(/[^a-z0-9]/g, '')
-
-          return (
-            fullSlug === slug ||
-            (cleanSlug.length > 0 && cleanName === cleanSlug) ||
-            (cleanSlug.length > 0 && cleanName.startsWith(cleanSlug)) ||
-            String(p.id).startsWith(slug)
-          )
+          return (cleanSlug.length > 0 && cleanName === cleanSlug) || String(p.id).startsWith(slug)
+        }) || projects.find((p: any) => {
+          const cleanName = (p.name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+          const cleanSlug = slug.replace(/[^a-z0-9]/g, '')
+          return (cleanSlug.length > 0 && cleanName.startsWith(cleanSlug))
         })
+
         if (!match) {
           throw new Error(`cd: no such project: "${slug}". Use ls to see available projects.`)
         }
@@ -303,9 +332,12 @@ export class VirtualFileSystem {
       }
     }
 
-    // Check if it's a /timelogs/<taskDir>
+    // Check if it's a /timelogs/<taskDir> (M-08)
     if (target.startsWith('/timelogs/') && target.split('/').length === 3) {
-      // We allow cd into any timelogs sub-dir (we'll validate lazily on ls)
+      const taskDirName = target.split('/')[2]
+      const taskDirs = await fetchTimelogTaskDirs(this.projectId)
+      const taskProxy = taskDirs.find((d) => d.name === taskDirName)
+      if (!taskProxy) throw new Error(`cd: no such directory: ${taskDirName}`)
       this._cwd = target
       return this._cwd
     }
@@ -352,26 +384,28 @@ export class VirtualFileSystem {
     parentPath: string,
     parts: string[]
   ): Promise<VFSNode[]> {
-    const parentMount = MOUNT_TABLE[parentPath]
+    const mounts = await this.getMounts()
+    const parentMount = mounts[parentPath]
 
-    if (parentPath === '/tasks/todo') return fetchTaskFiles(this.projectId, 'TODO')
-    if (parentPath === '/tasks/in_progress') return fetchTaskFiles(this.projectId, 'IN_PROGRESS')
-    if (parentPath === '/tasks/in_review') return fetchTaskFiles(this.projectId, 'IN_REVIEW')
-    if (parentPath === '/tasks/done') return fetchTaskFiles(this.projectId, 'DONE')
-    if (parentPath === '/tasks/ready') return fetchTaskFiles(this.projectId, 'READY')
-    if (parentPath === '/sprints') return fetchSprintFiles(this.projectId)
-    if (parentPath === '/members') return fetchMemberFiles(this.projectId)
-    if (parentPath === '/tags') return fetchTagFiles(this.projectId)
-    if (parentPath === '/schedules') return fetchScheduleFiles(this.projectId)
-    if (parentPath === '/activity') return fetchActivityFiles(this.projectId)
-    if (parentPath === '/automations') return fetchAutomationFiles(this.projectId)
-    if (parentPath === '/profile') return fetchProfileSettings()
+    if (parentMount) {
+      if (parentMount.entityType === 'tasks-status') return fetchTaskFiles(this.projectId, parentMount.taskStatus)
+      if (parentMount.entityType === 'sprints') return fetchSprintFiles(this.projectId)
+      if (parentMount.entityType === 'members') return fetchMemberFiles(this.projectId)
+      if (parentMount.entityType === 'tags') return fetchTagFiles(this.projectId)
+      if (parentMount.entityType === 'schedules') return fetchScheduleFiles(this.projectId)
+      if (parentMount.entityType === 'activity') return fetchActivityFiles(this.projectId)
+      if (parentMount.entityType === 'automations') return fetchAutomationFiles(this.projectId)
+      if (parentMount.entityType === 'profile') return fetchProfileSettings()
+    }
     if (parentPath === '/profile/files') return fetchProfileFiles()
 
-    // task comments: /tasks/<status>/<taskSlug>/comments/<file>
-    if (parts.length === 5 && parts[0] === 'tasks' && parts[3] === 'comments') {
-      const taskSlug = parts[2]
-      const parentStatus = MOUNT_TABLE[`/tasks/${parts[1]}`]?.taskStatus as TaskStatus | undefined
+    // task comments via regex (V-04)
+    const taskMatch = parentPath.match(/^\/tasks\/([^\/]+)\/([^\/]+)\/(comments|subtasks)$/)
+    if (taskMatch) {
+      const statusSegment = taskMatch[1]
+      const taskSlug = taskMatch[2]
+      // const subType = taskMatch[3]
+      const parentStatus = mounts[`/tasks/${statusSegment}`]?.taskStatus
       const taskFiles = await fetchTaskFiles(this.projectId, parentStatus)
       const taskFile = taskFiles.find(f => f.name === taskSlug || f.name === taskSlug + '.json' || f.name.startsWith(taskSlug))
       if (!taskFile) throw new Error(`cat: no such file`)
@@ -404,10 +438,13 @@ export class VirtualFileSystem {
    */
   async find(
     searchPath: string,
-    filters: Record<string, string>
+    filters: Record<string, string>,
+    currentDepth = 0,
+    maxDepth = 5
   ): Promise<VFSFile[]> {
-    const target = this.resolve(searchPath)
     let matchedFiles: VFSFile[] = []
+    if (currentDepth > maxDepth) return matchedFiles
+    const target = this.resolve(searchPath)
 
     const nodes = await this.listDir(target)
 
@@ -423,7 +460,7 @@ export class VirtualFileSystem {
         }
         if (matches) matchedFiles.push(node)
       } else if (node.type === 'dir' && node.name !== '.' && node.name !== '..') {
-        const subFiles = await this.find(`${target}/${node.name}`, filters)
+        const subFiles = await this.find(`${target}/${node.name}`, filters, currentDepth + 1, maxDepth)
         matchedFiles = matchedFiles.concat(subFiles)
       }
     }
@@ -439,14 +476,15 @@ export class VirtualFileSystem {
     const target = this.resolve(dirPath)
     
     // Recursive stat helper
-    const countNodes = async (p: string): Promise<{ d: number, f: number }> => {
+    const countNodes = async (p: string, depth = 0): Promise<{ d: number, f: number }> => {
+      if (depth > 5) return { d: 0, f: 0 }
       const nodes = await this.listDir(p)
       let d = 0, f = 0
       for (const node of nodes) {
         if (node.type === 'file') f++
         else if (node.type === 'dir' && node.name !== '.' && node.name !== '..') {
           d++
-          const sub = await countNodes(`${p}/${node.name}`)
+          const sub = await countNodes(`${p}/${node.name}`, depth + 1)
           d += sub.d
           f += sub.f
         }

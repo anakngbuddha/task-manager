@@ -1,12 +1,11 @@
 import { authenticate } from '../middlewares/authenticate.js';
 import { prisma } from '../lib/prisma.js';
 import { getInstallationToken } from '../lib/githubApp.js';
-import { removePendingInstallation, registerExpectingUser, clearExpectingUser, } from '../lib/pendingInstallations.js';
+import { removePendingInstallation, registerExpectingUser, isUserExpecting, clearExpectingUser, } from '../lib/pendingInstallations.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
 const INSTALLATION_URL = process.env.GITHUB_INSTALLATION_URL ||
     'https://github.com/apps/wsi-taska/installations/new';
-const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '') ||
-    'http://localhost:5173';
+import { FRONTEND_URL } from '../config/constants.js';
 export async function githubRoutes(app) {
     // ── Connect button URL ────────────────────────────────────────────────
     app.get('/github/connect', { preHandler: authenticate }, async (req) => {
@@ -52,6 +51,15 @@ export async function githubRoutes(app) {
         if (existing && existing.userId !== req.authUser.id) {
             return reply.status(403).send({
                 error: 'This GitHub installation is already linked to another account. Please ask the owner to disconnect it first, or use a different GitHub account.'
+            });
+        }
+        // Audit finding #17: only allow claiming an installation when this user
+        // *initiated* the install flow (GET /github/connect set the marker).
+        // Without this any logged-in user could grab someone else's installation
+        // id from a leaked URL and bind it to their own account.
+        if (!existing && !isUserExpecting(req.authUser.id)) {
+            return reply.status(403).send({
+                error: 'Click "Connect GitHub" before authorizing the app so we know the installation belongs to you.',
             });
         }
         const installation = await prisma.githubInstallation.upsert({

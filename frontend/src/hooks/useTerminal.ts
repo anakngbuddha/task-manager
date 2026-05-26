@@ -36,7 +36,7 @@ interface UseTerminalOptions {
   projectId: string
   projectName: string
   userRole?: 'MASTER_ADMIN' | 'PROJECT_MANAGER' | 'MEMBER' | null
-  user?: { id: string; name?: string | null; email?: string | null } | null
+  user?: { id: string; name?: string | null; email?: string | null; role?: string | null } | null
   /** When provided, the hook reads/writes lines via these instead of local state */
   externalLines?: OutputLine[]
   onLinesChange?: React.Dispatch<React.SetStateAction<OutputLine[]>>
@@ -135,7 +135,7 @@ export function useTerminalHook({
 
   const promptUser = useCallback((msg: string): Promise<string> => {
     const promptLine: OutputLine = { id: nextId(), type: 'system', content: msg }
-    setOutputLines((prev) => [...prev, promptLine])
+    setOutputLines((prev) => [...prev, promptLine].slice(-500))
     setIsPrompting(true)
     return new Promise<string>((resolve) => {
       promptResolveRef.current = (val: string) => {
@@ -165,7 +165,7 @@ export function useTerminalHook({
       content: `Project: ${activeProjectName} | Role: ${activeUserRole ?? 'MEMBER'}`,
     }
     const empty: OutputLine = { id: nextId(), type: 'empty', content: '' }
-    setOutputLines([...bannerLines, systemLine, empty])
+    setOutputLines([...bannerLines, systemLine, empty].slice(-500))
     setCwd('/')
     if (vfsRef.current) {
       vfsRef.current['_cwd'] = '/'
@@ -176,7 +176,7 @@ export function useTerminalHook({
   // Build context — uses the terminal's INTERNAL active values
   const buildContext = useCallback((): CommandContext => {
     const resolvedUser = userProp ?? (session?.user
-      ? { id: session.user.id, name: session.user.name ?? null, email: session.user.email ?? null }
+      ? { id: session.user.id, name: session.user.name ?? null, email: session.user.email ?? null, role: (session.user as any).role ?? null }
       : null)
     return {
       projectId: activeProjectId,
@@ -193,7 +193,8 @@ export function useTerminalHook({
 
     if (promptResolveRef.current) {
       if (trimmed) {
-        setOutputLines((prev) => [...prev, { id: nextId(), type: 'echo', content: `> ${input}` }])
+        const echoLine: OutputLine = { id: nextId(), type: 'echo', content: `> ${input}` }
+        setOutputLines((prev) => [...prev, echoLine].slice(-500))
         promptResolveRef.current(trimmed)
       }
       return
@@ -213,7 +214,7 @@ export function useTerminalHook({
       content: `${vfs.cwd}$ ${trimmed}`,
     }
 
-    setOutputLines((prev) => [...prev, echoLine])
+    setOutputLines((prev) => [...prev, echoLine].slice(-500))
     setIsLoading(true)
 
     try {
@@ -257,14 +258,14 @@ export function useTerminalHook({
       }))
 
       const separator: OutputLine = { id: nextId(), type: 'empty', content: '' }
-      setOutputLines((prev) => [...prev, ...newLines, separator])
+      setOutputLines((prev) => [...prev, ...newLines, separator].slice(-500))
     } catch (err: any) {
       const errLine: OutputLine = {
         id: nextId(),
         type: 'stderr',
         content: `Error: ${err?.message ?? 'unknown error'}`,
       }
-      setOutputLines((prev) => [...prev, errLine])
+      setOutputLines((prev) => [...prev, errLine].slice(-500))
     } finally {
       setIsLoading(false)
     }

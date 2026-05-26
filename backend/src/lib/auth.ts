@@ -3,6 +3,8 @@ import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { emailOTP } from 'better-auth/plugins'
 import { prisma } from './prisma.js'
 import { sendVerificationEmail, sendPasswordResetOTPEmail } from '../services/email.service.js'
+import { FRONTEND_URL } from '../config/constants.js'
+import { logger } from '../app.js'
 
 const isProd = process.env.NODE_ENV === 'production' || process.env.BETTER_AUTH_URL?.startsWith('https://')
 
@@ -32,7 +34,7 @@ export const auth = betterAuth({
         userName: user.name,
       })
         .catch((err) => {
-          console.error('[email] Failed to send verification email to', user.email, err)
+          logger.error({ err, email: user.email }, 'email_verification_send_failed')
         })
     },
   },
@@ -52,7 +54,7 @@ export const auth = betterAuth({
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'https://task-manager-mauve-eta.vercel.app',
-    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL.replace(/\/$/, '')] : []),
+    ...(FRONTEND_URL ? [FRONTEND_URL] : []),
   ],
   advanced: {
     crossSubdomainCookies: {
@@ -77,7 +79,7 @@ export const auth = betterAuth({
             otp,
           })
             .catch((err) => {
-              console.error('[email] Failed to send password reset OTP to', email, err)
+              logger.error({ err, email }, 'email_otp_send_failed')
             })
         }
       },

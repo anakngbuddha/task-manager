@@ -10,6 +10,7 @@ import { requireProjectRole } from '../services/projectAuth.service.js'
 import { getIO } from '../lib/socketManager.js'
 import { runAutomations } from '../services/automation.engine.js'
 import { auditLogService, computeChanges } from '../services/auditLog.service.js'
+import { logger } from '../app.js'
 
 const DEFAULT_BOARD_COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY'] as const
 
@@ -17,6 +18,16 @@ function normalizeStatus(input: string) {
   return input.trim().toUpperCase().replace(/\s+/g, '_')
 }
 
+/**
+ * Validate that `status` is one of the project's existing board columns. This
+ * is intentionally read-only — new columns must be added explicitly through
+ * the project-update route (which is manager-gated) rather than being
+ * auto-created whenever any member sets a fresh task status.
+ *
+ * Returns `{ project, statusList }` when valid, `null` if the project does not
+ * exist, or `{ project, statusList, invalid: true }` when the status is not
+ * configured for the project.
+ */
 async function ensureProjectHasStatus(projectId: string, status: string) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -29,28 +40,9 @@ async function ensureProjectHasStatus(projectId: string, status: string) {
     : [...DEFAULT_BOARD_COLUMNS]
 
   if (currentColumns.includes(status)) {
-    return { project, statusList: currentColumns }
+    return { project, statusList: currentColumns, invalid: false as const }
   }
-
-  // Atomic: re-read and append inside a transaction to avoid lost-update race
-  const updated = await prisma.$transaction(async (tx) => {
-    const fresh = await tx.project.findUnique({
-      where: { id: projectId },
-      select: { boardColumns: true },
-    })
-    const cols = Array.isArray(fresh?.boardColumns) && fresh!.boardColumns.length > 0
-      ? fresh!.boardColumns.map((s) => String(s))
-      : [...DEFAULT_BOARD_COLUMNS]
-    if (cols.includes(status)) return cols
-    const newCols = [...cols, status]
-    await tx.project.update({
-      where: { id: projectId },
-      data: { boardColumns: newCols },
-    })
-    return newCols
-  })
-
-  return { project, statusList: updated }
+  return { project, statusList: currentColumns, invalid: true as const }
 }
 
 const createTaskSchema = z.object({
@@ -77,7 +69,7 @@ const updateTaskSchema = z.object({
   assigneeId: z.string().nullable().optional(),
   // If null, clear sprint assignment.
   sprintId: z.string().nullable().optional(),
-  type: z.enum(['EPIC', 'STORY', 'TASK']).optional().default('TASK'),
+  type: z.enum(['EPIC', 'STORY', 'TASK']).optional(),
   parentId: z.string().nullable().optional(),
   startDate: z.string().datetime().nullable().optional(),
   deadline: z.string().datetime().nullable().optional(),
@@ -184,8 +176,14 @@ export async function taskRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
 
-    if (!(await ensureProjectHasStatus(body.projectId, normalizedStatus))) {
+    const statusCheck = await ensureProjectHasStatus(body.projectId, normalizedStatus)
+    if (!statusCheck) {
       return reply.status(404).send({ error: 'Project not found' })
+    }
+    if (statusCheck.invalid) {
+      return reply.status(400).send({
+        error: `Status "${normalizedStatus}" is not configured for this project. Available: ${statusCheck.statusList.join(', ')}`,
+      })
     }
 
     // Enforce that sprintId (if provided) belongs to the same project.
@@ -199,10 +197,13 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
-    const now = new Date()
     if (body.deadline) {
       const deadlineDate = new Date(body.deadline)
-      if (deadlineDate.getTime() < now.getTime()) {
+      const now = new Date()
+      // Strip time to allow deadlines set to "today" regardless of timezone differences
+      const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+      const deadlineDay = new Date(Date.UTC(deadlineDate.getUTCFullYear(), deadlineDate.getUTCMonth(), deadlineDate.getUTCDate()))
+      if (deadlineDay.getTime() < today.getTime()) {
         return reply.status(400).send({ error: 'Deadline cannot be in the past' })
       }
     }
@@ -221,26 +222,29 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
-    const existingTask = await prisma.task.findFirst({
-      where: { projectId: body.projectId, title: body.title }
-    })
-    if (existingTask) {
-      return reply.status(400).send({ error: 'A task with this title already exists in the project' })
-    }
-
     // "EVERYONE" → single shared task with null assigneeId
     const resolvedAssigneeId = body.assigneeId === 'EVERYONE' ? undefined : (body.assigneeId ?? undefined)
 
-    const task = await taskService.create({
-      ...body,
-      assigneeId: resolvedAssigneeId,
-      status: normalizedStatus,
-      startDate: body.startDate ? new Date(body.startDate) : null,
-      deadline: body.deadline ? new Date(body.deadline) : null,
-      parentId: body.parentId ?? null,
-      type: type as any,
-      hierarchyLevel,
-    })
+    let task
+    try {
+      task = await taskService.create({
+        ...body,
+        assigneeId: resolvedAssigneeId,
+        status: normalizedStatus,
+        startDate: body.startDate ? new Date(body.startDate) : null,
+        deadline: body.deadline ? new Date(body.deadline) : null,
+        parentId: body.parentId ?? null,
+        type: type as any,
+        hierarchyLevel,
+      })
+    } catch (err: any) {
+      // Audit finding #14 — rely on the (projectId, title) unique constraint
+      // instead of a racy findFirst preflight.
+      if (err?.code === 'P2002') {
+        return reply.status(400).send({ error: 'A task with this title already exists in the project' })
+      }
+      throw err
+    }
 
     await activityService.record({
       projectId: task.projectId,
@@ -308,7 +312,7 @@ export async function taskRoutes(app: FastifyInstance) {
         sprintId: task.sprintId ?? null,
         projectId: task.projectId,
       },
-    }).catch((err) => console.error('[automation] TASK_CREATED hook error:', err))
+    }).catch((err) => logger.error({ err }, 'automation_task_created_hook_error'))
 
     return reply.status(201).send(task)
   })
@@ -319,10 +323,7 @@ export async function taskRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string }
     const rawBody = (req.body ?? {}) as Record<string, unknown>
     const body = updateTaskSchema.parse(req.body)
-    const typeProvided = Object.prototype.hasOwnProperty.call(rawBody, 'type')
-    if (!typeProvided) {
-      delete (body as any).type
-    }
+    // type field is natively optional in the schema now
 
     const existing = await taskService.getById(id)
     if (!existing) return reply.status(404).send({ error: 'Task not found' })
@@ -375,7 +376,7 @@ export async function taskRoutes(app: FastifyInstance) {
 
       // Members may only change the status field
       const allowedFields = ['status']
-      const attemptedFields = Object.keys(body).filter(k => (body as any)[k] !== undefined && k !== 'type')
+      const attemptedFields = Object.keys(body).filter(k => (body as any)[k] !== undefined)
       const disallowedFields = attemptedFields.filter(f => !allowedFields.includes(f))
       if (disallowedFields.length > 0) {
         return reply.status(403).send({ error: `Forbidden: members can only update status. Cannot change: ${disallowedFields.join(', ')}` })
@@ -387,14 +388,9 @@ export async function taskRoutes(app: FastifyInstance) {
       }
     }
 
-    if (body.title && body.title !== existing.title) {
-      const duplicateTask = await prisma.task.findFirst({
-        where: { projectId: existing.projectId, title: body.title }
-      })
-      if (duplicateTask) {
-        return reply.status(400).send({ error: 'A task with this title already exists in the project' })
-      }
-    }
+    // Title-uniqueness is enforced atomically by the (projectId, title) unique
+    // index — see audit finding #14. The catch block below maps P2002 back to
+    // a friendly 400.
 
     // Enforce that sprintId (if provided) belongs to the same project.
     if (body.sprintId != null) {
@@ -410,7 +406,9 @@ export async function taskRoutes(app: FastifyInstance) {
     if (body.deadline) {
       const deadlineDate = new Date(body.deadline)
       const now = new Date()
-      if (deadlineDate.getTime() < now.getTime()) {
+      const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+      const deadlineDay = new Date(Date.UTC(deadlineDate.getUTCFullYear(), deadlineDate.getUTCMonth(), deadlineDate.getUTCDate()))
+      if (deadlineDay.getTime() < today.getTime()) {
         return reply.status(400).send({ error: 'Deadline cannot be in the past' })
       }
     }
@@ -422,8 +420,14 @@ export async function taskRoutes(app: FastifyInstance) {
     }
 
     if (normalizedStatus) {
-      if (!(await ensureProjectHasStatus(existing.projectId, normalizedStatus))) {
+      const statusCheck = await ensureProjectHasStatus(existing.projectId, normalizedStatus)
+      if (!statusCheck) {
         return reply.status(404).send({ error: 'Project not found' })
+      }
+      if (statusCheck.invalid) {
+        return reply.status(400).send({
+          error: `Status "${normalizedStatus}" is not configured for this project. Available: ${statusCheck.statusList.join(', ')}`,
+        })
       }
     }
 
@@ -442,7 +446,15 @@ export async function taskRoutes(app: FastifyInstance) {
       updateData.startDate = body.startDate ? new Date(body.startDate) : null
     }
 
-    const updated = await taskService.update(id, updateData)
+    let updated
+    try {
+      updated = await taskService.update(id, updateData)
+    } catch (err: any) {
+      if (err?.code === 'P2002') {
+        return reply.status(400).send({ error: 'A task with this title already exists in the project' })
+      }
+      throw err
+    }
 
     await activityService.record({
       projectId: updated.projectId,
@@ -572,7 +584,7 @@ export async function taskRoutes(app: FastifyInstance) {
         triggerType: 'TASK_STATUS_CHANGED',
         task: automationTaskCtx,
         changes: automationChanges,
-      }).catch((err) => console.error('[automation] TASK_STATUS_CHANGED hook error:', err))
+      }).catch((err) => logger.error({ err }, 'automation_task_status_changed_hook_error'))
     }
 
     if (body.assigneeId !== undefined && body.assigneeId !== existing.assigneeId) {
@@ -582,7 +594,7 @@ export async function taskRoutes(app: FastifyInstance) {
         triggerType: 'TASK_ASSIGNED',
         task: automationTaskCtx,
         changes: [{ field: 'assigneeId', from: existing.assigneeId, to: body.assigneeId }],
-      }).catch((err) => console.error('[automation] TASK_ASSIGNED hook error:', err))
+      }).catch((err) => logger.error({ err }, 'automation_task_assigned_hook_error'))
     }
 
     if (body.priority !== undefined && body.priority !== existing.priority) {
@@ -592,7 +604,7 @@ export async function taskRoutes(app: FastifyInstance) {
         triggerType: 'TASK_PRIORITY_CHANGED',
         task: automationTaskCtx,
         changes: [{ field: 'priority', from: existing.priority, to: body.priority }],
-      }).catch((err) => console.error('[automation] TASK_PRIORITY_CHANGED hook error:', err))
+      }).catch((err) => logger.error({ err }, 'automation_task_priority_changed_hook_error'))
     }
 
     return updated
@@ -631,12 +643,17 @@ export async function taskRoutes(app: FastifyInstance) {
     return reply.status(204).send()
   })
 
+  const taskDependencySchema = z.object({
+    targetTaskId: z.string().min(1),
+    type: z.enum(['BLOCKS', 'IS_BLOCKED_BY']),
+  })
+
   // Dependencies
   app.post('/tasks/:id/dependencies', {
     preHandler: authenticate,
   }, async (req, reply) => {
     const { id } = req.params as { id: string }
-    const { targetTaskId, type } = req.body as { targetTaskId: string; type: 'BLOCKS' | 'IS_BLOCKED_BY' }
+    const { targetTaskId, type } = taskDependencySchema.parse(req.body)
 
     if (id === targetTaskId) return reply.status(400).send({ error: 'Cannot depend on itself' })
 

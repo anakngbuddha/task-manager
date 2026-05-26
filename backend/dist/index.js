@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './config/env.js';
 import app from './app.js';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
@@ -9,20 +10,10 @@ import { disconnectSocket, identifySocketUser, recordSocketHeartbeat, recordSock
 import { prisma } from './lib/prisma.js';
 import { assertEmailProviderConfigured } from './services/email.service.js';
 import { seedAdmin } from './scripts/seed-admin.js';
+import { auth } from './lib/auth.js';
+import { logger } from './app.js';
 const PORT = Number(process.env.PORT) || 3000;
-const ALLOWED_ORIGINS = [
-    'http://localhost:4173',
-    'http://localhost:5173',
-    'http://localhost:5174',
-    'http://127.0.0.1:4173',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:5174',
-    'https://task-manager-mauve-eta.vercel.app',
-];
-const FRONTEND_URL = process.env.FRONTEND_URL?.replace(/\/$/, '');
-if (FRONTEND_URL && !ALLOWED_ORIGINS.includes(FRONTEND_URL)) {
-    ALLOWED_ORIGINS.push(FRONTEND_URL);
-}
+import { ALLOWED_ORIGINS } from './config/cors.js';
 const start = async () => {
     try {
         // Fail fast (in prod) or warn (in dev) if email provider config is missing.
@@ -30,7 +21,7 @@ const start = async () => {
         // Force DB connect at startup so cold-start cost is visible in logs.
         const dbStart = Date.now();
         await prisma.$connect();
-        console.log(`[db] prisma.$connect OK (${Date.now() - dbStart}ms)`);
+        logger.info({ ms: Date.now() - dbStart }, '[db] prisma.$connect OK');
         await seedAdmin();
         app.register(fastifyStatic, {
             root: path.join(process.cwd(), 'uploads'),
@@ -52,16 +43,48 @@ const start = async () => {
         });
         setIO(io);
         setPresenceIO(io);
-        io.on('connection', (socket) => {
-            console.log('Client connected:', socket.id);
-            socket.on('auth:identify', async (payload) => {
-                if (!payload?.userId)
-                    return;
+        // ── Authenticate every Socket.IO connection via the same session cookie
+        //    used by the REST API. Without this, any client can impersonate any
+        //    userId via auth:identify (audit finding #4).
+        io.use(async (socket, next) => {
+            try {
+                const headers = socket.handshake.headers;
+                const session = await auth.api.getSession({ headers });
+                if (!session?.user?.id) {
+                    return next(new Error('Unauthorized'));
+                }
+                socket.data.userId = session.user.id;
+                next();
+            }
+            catch (err) {
+                next(new Error('Unauthorized'));
+            }
+        });
+        // Helper: confirm the verified socket user is a member of the given project.
+        const isProjectMember = async (userId, projectId) => {
+            const member = await prisma.projectMember.findUnique({
+                where: { userId_projectId: { userId, projectId } },
+                select: { userId: true },
+            });
+            return !!member;
+        };
+        io.on('connection', async (socket) => {
+            const userId = socket.data.userId;
+            logger.info({ socketId: socket.id, userId }, 'socket_connected');
+            try {
+                await identifySocketUser(socket.id, userId);
+            }
+            catch (error) {
+                logger.error({ err: error, socketId: socket.id }, 'socket_identify_failed');
+            }
+            // Kept for backward compatibility — payload is ignored, server uses the
+            // verified userId from the handshake.
+            socket.on('auth:identify', async () => {
                 try {
-                    await identifySocketUser(socket.id, payload.userId);
+                    await identifySocketUser(socket.id, userId);
                 }
                 catch (error) {
-                    console.error('Failed to identify socket user', error);
+                    logger.error({ err: error, socketId: socket.id }, 'socket_identify_failed');
                 }
             });
             socket.on('activity:heartbeat', async () => {
@@ -69,7 +92,7 @@ const start = async () => {
                     await recordSocketHeartbeat(socket.id);
                 }
                 catch (error) {
-                    console.error('Failed to record heartbeat', error);
+                    logger.error({ err: error, socketId: socket.id }, 'socket_heartbeat_failed');
                 }
             });
             socket.on('activity:idle', async (payload) => {
@@ -77,7 +100,7 @@ const start = async () => {
                     await recordSocketIdle(socket.id, Boolean(payload?.isIdle));
                 }
                 catch (error) {
-                    console.error('Failed to record idle state', error);
+                    logger.error({ err: error, socketId: socket.id }, 'socket_idle_failed');
                 }
             });
             socket.on('activity:disconnect', async () => {
@@ -85,42 +108,109 @@ const start = async () => {
                     await disconnectSocket(socket.id);
                 }
                 catch (error) {
-                    console.error('Failed to record disconnect', error);
+                    logger.error({ err: error, socketId: socket.id }, 'socket_disconnect_record_failed');
                 }
             });
-            socket.on('join:project', (projectId) => {
-                socket.join(projectId);
+            socket.on('join:project', async (projectId) => {
+                if (typeof projectId !== 'string' || !projectId)
+                    return;
+                try {
+                    if (!(await isProjectMember(userId, projectId)))
+                        return;
+                    socket.join(projectId);
+                }
+                catch (err) {
+                    logger.error({ err, socketId: socket.id, projectId }, 'socket_join_project_failed');
+                }
             });
-            socket.on('join:direct', (payload) => {
-                const room = directRoom(payload.projectId, payload.userId, payload.otherUserId);
-                socket.join(room);
+            socket.on('join:direct', async (payload) => {
+                if (!payload?.projectId || !payload?.otherUserId)
+                    return;
+                try {
+                    // Only join if the verified user is a member of the project.
+                    if (!(await isProjectMember(userId, payload.projectId)))
+                        return;
+                    // Always compute the room from the verified userId, ignoring any
+                    // client-supplied userId in the payload.
+                    const room = directRoom(payload.projectId, userId, payload.otherUserId);
+                    socket.join(room);
+                }
+                catch (err) {
+                    logger.error({ err, socketId: socket.id }, 'socket_join_direct_failed');
+                }
             });
             socket.on('typing:project', (payload) => {
-                socket.to(payload.projectId).emit('typing:project', payload);
+                if (!payload?.projectId)
+                    return;
+                // Re-emit with the verified userId so peers can't be impersonated.
+                socket.to(payload.projectId).emit('typing:project', { ...payload, userId });
             });
             socket.on('typing:direct', (payload) => {
-                const room = directRoom(payload.projectId, payload.userId, payload.otherUserId);
-                socket.to(room).emit('typing:direct', payload);
+                if (!payload?.projectId || !payload?.otherUserId)
+                    return;
+                const room = directRoom(payload.projectId, userId, payload.otherUserId);
+                socket.to(room).emit('typing:direct', { ...payload, userId });
             });
             socket.on('read:project', (payload) => {
-                socket.to(payload.projectId).emit('read:project', payload);
+                if (!payload?.projectId)
+                    return;
+                socket.to(payload.projectId).emit('read:project', { ...payload, userId });
             });
             socket.on('read:direct', (payload) => {
-                const room = directRoom(payload.projectId, payload.userId, payload.otherUserId);
-                socket.to(room).emit('read:direct', payload);
+                if (!payload?.projectId || !payload?.otherUserId)
+                    return;
+                const room = directRoom(payload.projectId, userId, payload.otherUserId);
+                socket.to(room).emit('read:direct', { ...payload, userId });
             });
             socket.on('disconnect', async () => {
-                console.log('Client disconnected:', socket.id);
+                logger.info({ socketId: socket.id }, 'socket_disconnected');
                 try {
                     await disconnectSocket(socket.id);
                 }
                 catch (error) {
-                    console.error('Failed to finalize socket disconnect', error);
+                    logger.error({ err: error, socketId: socket.id }, 'socket_finalize_disconnect_failed');
                 }
             });
         });
         startNotificationCron();
-        console.log(`REST API + Socket.io running on http://localhost:${PORT}`);
+        logger.info({ port: PORT }, 'REST API + Socket.io running');
+        // ── Graceful shutdown (audit finding #18) ────────────────────────────
+        // SIGTERM is what Render/Docker send on deploy; SIGINT covers Ctrl+C.
+        let shuttingDown = false;
+        const shutdown = async (signal) => {
+            if (shuttingDown)
+                return;
+            shuttingDown = true;
+            logger.info({ signal }, 'shutdown_signal_received');
+            // Hard kill if we're still alive after 10s.
+            const hardKill = setTimeout(() => {
+                logger.error('shutdown_hard_kill');
+                process.exit(1);
+            }, 10_000);
+            hardKill.unref?.();
+            try {
+                io.close();
+            }
+            catch (err) {
+                logger.warn({ err }, 'shutdown_io_close_failed');
+            }
+            try {
+                await app.close();
+            }
+            catch (err) {
+                logger.warn({ err }, 'shutdown_app_close_failed');
+            }
+            try {
+                await prisma.$disconnect();
+            }
+            catch (err) {
+                logger.warn({ err }, 'shutdown_prisma_disconnect_failed');
+            }
+            logger.info('shutdown_complete');
+            process.exit(0);
+        };
+        process.on('SIGTERM', () => void shutdown('SIGTERM'));
+        process.on('SIGINT', () => void shutdown('SIGINT'));
     }
     catch (err) {
         app.log.error(err);

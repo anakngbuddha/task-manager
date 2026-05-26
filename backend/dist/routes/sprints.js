@@ -4,6 +4,7 @@ import { requireProjectRole } from '../services/projectAuth.service.js';
 import { sprintService } from '../services/sprint.service.js';
 import { runAutomations } from '../services/automation.engine.js';
 import { auditLogService, computeChanges } from '../services/auditLog.service.js';
+import { logger } from '../app.js';
 const createSprintSchema = z.object({
     name: z.string().min(1).max(100),
     goal: z.string().max(1000).optional(),
@@ -154,7 +155,7 @@ export async function sprintRoutes(app) {
                 actorId: req.authUser.id,
                 triggerType: 'SPRINT_STARTED',
                 sprint: { id: sprint.id, name: sprint.name, projectId, status: sprint.status },
-            }).catch((err) => console.error('[automation] SPRINT_STARTED hook error:', err));
+            }).catch((err) => logger.error({ err }, 'automation_sprint_started_hook_error'));
             return sprint;
         }
         catch (e) {
@@ -194,7 +195,7 @@ export async function sprintRoutes(app) {
                 actorId: req.authUser.id,
                 triggerType: 'SPRINT_COMPLETED',
                 sprint: { id: sprintId, name: existing.name, projectId, status: 'COMPLETED' },
-            }).catch((err) => console.error('[automation] SPRINT_COMPLETED hook error:', err));
+            }).catch((err) => logger.error({ err }, 'automation_sprint_completed_hook_error'));
             return result;
         }
         catch (e) {

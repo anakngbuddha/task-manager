@@ -1,4 +1,5 @@
 import type { ScheduleType } from '@prisma/client'
+import { logger } from '../app.js'
 
 function isProd() {
   return process.env.NODE_ENV === 'production'
@@ -55,9 +56,9 @@ async function sendEmail(opts: {
       throw new Error(`Brevo API responded with status ${response.status}: ${errorData}`)
     }
 
-    console.log(`[email] Sent "${opts.subject}" to ${toList.map((t) => t.email).join(', ')}`)
+    logger.info({ subject: opts.subject, to: toList.map((t) => t.email) }, 'email_sent')
   } catch (err: unknown) {
-    console.error(`[email] Failed to send "${opts.subject}" via Brevo:`, err)
+    logger.error({ err, subject: opts.subject }, 'email_send_failed')
     throw err
   }
 }

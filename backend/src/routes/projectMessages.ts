@@ -8,6 +8,7 @@ import { notificationService } from '../services/notification.service.js'
 import { prisma } from '../lib/prisma.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { getIO } from '../lib/socketManager.js'
+import { logger } from '../app.js'
 
 const createMessageSchema = z.object({
   content: z.string().max(2000).optional().default(''),
@@ -119,7 +120,7 @@ export async function projectMessageRoutes(app: FastifyInstance) {
           }
         }
       } catch (err) {
-        console.error('Background notification error:', err)
+        logger.error({ err }, 'background_notification_error')
       }
     })
 

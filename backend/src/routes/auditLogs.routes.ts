@@ -32,7 +32,7 @@ export async function auditLogRoutes(app: FastifyInstance) {
       where: { id: session.user.id },
     })
 
-    if (!user || user.role !== 'admin') {
+    if (!user || user.role !== 'ADMIN') {
       return reply.status(403).send({ error: 'Forbidden. Admin level required.' })
     }
 
