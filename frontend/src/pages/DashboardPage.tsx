@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { FolderPlus, Plus, FolderKanban, ListTodo, CheckCircle2, Users } from 'lucide-react'
+import { FolderPlus, Plus, FolderKanban, ListTodo, CheckCircle2, Users, ShieldAlert } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useSession } from '@/lib/auth-client'
@@ -47,11 +47,7 @@ export default function DashboardPage() {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    if ((session?.user as any)?.role === 'admin') {
-      navigate('/admin/dashboard', { replace: true })
-    }
-  }, [session, navigate])
+  // Removed auto-redirect to admin dashboard so the admin can view the task dashboard and use the button instead.
 
   const dueThisWeek = useQuery({
     queryKey: ['dashboard-due-this-week'],
@@ -111,34 +107,46 @@ export default function DashboardPage() {
           title="Projects"
           subtitle={headerSubtitle}
           actions={(
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
-                <Button className="h-10 gap-2 bg-emerald-600 text-white hover:bg-emerald-700">
-                  <Plus className="size-4" />
-                  New project
+            <div className="flex items-center gap-2">
+              {(session?.user as any)?.role === 'admin' && (
+                <Button 
+                  variant="outline" 
+                  className="h-10 gap-2 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"
+                  onClick={() => navigate('/admin/dashboard')}
+                >
+                  <ShieldAlert className="size-4" />
+                  Admin Dashboard
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create a new project</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleCreate} className="space-y-4 pt-2">
-                  <div className="relative">
-                    <FolderPlus className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Project name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="h-10 pl-10"
-                      autoFocus
-                    />
-                  </div>
-                  <Button type="submit" className="h-10 w-full" disabled={createProject.isPending}>
-                    {createProject.isPending ? 'Creating...' : 'Create project'}
+              )}
+              <Dialog open={open} onOpenChange={setOpen}>
+                <DialogTrigger asChild>
+                  <Button className="h-10 gap-2 bg-emerald-600 text-white hover:bg-emerald-700">
+                    <Plus className="size-4" />
+                    New project
                   </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create a new project</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCreate} className="space-y-4 pt-2">
+                    <div className="relative">
+                      <FolderPlus className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="Project name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="h-10 pl-10"
+                        autoFocus
+                      />
+                    </div>
+                    <Button type="submit" className="h-10 w-full" disabled={createProject.isPending}>
+                      {createProject.isPending ? 'Creating...' : 'Create project'}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
           )}
         />
 
