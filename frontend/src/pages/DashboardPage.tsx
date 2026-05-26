@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '@/components/layout/Sidebar'
 import { PageHeader } from '@/components/layout/PageHeader'
