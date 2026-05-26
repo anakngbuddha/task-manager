@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '@/components/layout/Sidebar'
 import { PageHeader } from '@/components/layout/PageHeader'
@@ -23,6 +23,7 @@ import ProjectCompletionChart from '@/components/dashboard/ProjectCompletionChar
 import ProjectListCard from '@/components/dashboard/ProjectListCard'
 import DashboardTasks from '@/components/dashboard/DashboardTasks'
 import DashboardTerminal from '@/components/terminal/DashboardTerminal'
+import { isSystemAdmin } from '@/lib/roles'
 
 function greetingLabel() {
   const h = new Date().getHours()
@@ -47,7 +48,13 @@ export default function DashboardPage() {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
 
-  // Removed auto-redirect to admin dashboard so the admin can view the task dashboard and use the button instead.
+  useEffect(() => {
+    if (!session) return
+    const role = (session.user as { role?: string }).role
+    if (isSystemAdmin(role)) {
+      navigate('/admin/dashboard', { replace: true })
+    }
+  }, [session, navigate])
 
   const dueThisWeek = useQuery({
     queryKey: ['dashboard-due-this-week'],
@@ -108,7 +115,7 @@ export default function DashboardPage() {
           subtitle={headerSubtitle}
           actions={(
             <div className="flex items-center gap-2">
-              {(session?.user as any)?.role === 'admin' && (
+              {isSystemAdmin((session?.user as { role?: string })?.role) && (
                 <Button 
                   variant="outline" 
                   className="h-10 gap-2 border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 dark:hover:bg-emerald-900"

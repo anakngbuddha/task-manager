@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useSession } from './lib/auth-client'
+import { isSystemAdmin } from './lib/roles'
 import { TerminalProvider } from './contexts/TerminalContext'
 import GlobalTerminal from './components/terminal/ProjectTerminal'
 import LoginPage from './pages/LoginPage'
@@ -76,7 +77,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   if (!session) return <Navigate to="/login" replace />
 
   // Authorization check
-  if (String((session.user as any).role).toLowerCase() !== 'admin') return <Navigate to="/dashboard" replace />
+  if (!isSystemAdmin((session.user as { role?: string }).role)) return <Navigate to="/dashboard" replace />
 
   return (
     <TerminalProvider>

@@ -30,6 +30,7 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isSystemAdmin } from '@/lib/roles'
 
 const STATUS_ORDER: UserStatus[] = ['ONLINE', 'WORKING', 'BUSY', 'AWAY', 'IN_MEETING', 'OFFLINE']
 
@@ -91,7 +92,7 @@ export default function Sidebar() {
   const statusCfg = STATUS_CONFIG[currentStatus]
   const userInitial = session?.user?.name?.charAt(0).toUpperCase() ?? 'U'
 
-  const isAdmin = (session?.user as any)?.role === 'admin'
+  const isAdmin = isSystemAdmin((session?.user as { role?: string })?.role)
 
   const StatusAvatar = ({
     sizeCls = 'h-7 w-7',
@@ -344,7 +345,7 @@ export default function Sidebar() {
         </div>
 
         {/* Admin System */}
-        {(session?.user as any)?.role === 'admin' && (
+        {isAdmin && (
           <div className="pt-1 space-y-1">
             <Link
               to="/admin/dashboard"

@@ -23,9 +23,19 @@ export async function userRoutes(app: FastifyInstance) {
   app.get('/users/me', { preHandler: authenticate }, async (req) => {
     const user = await prisma.user.findUnique({
       where: { id: req.authUser.id },
-      select: { id: true, name: true, email: true, status: true, lastSeenAt: true, consent: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        status: true,
+        lastSeenAt: true,
+        consent: true,
+      },
     })
-    return user
+    if (!user) return null
+    // Expose role as lowercase strings for the frontend (`admin` | `user` | `banned`).
+    return { ...user, role: user.role.toLowerCase() }
   })
 
   app.patch('/users/me/status', { preHandler: authenticate }, async (req, reply) => {

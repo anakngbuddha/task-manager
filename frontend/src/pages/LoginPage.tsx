@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { signIn, authClient } from '../lib/auth-client'
+import { postLoginPath } from '../lib/roles'
 import { api } from '../lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -119,11 +120,15 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-      // Force hard redirect to ensure session is picked up, but choose
-      // destination based on the authenticated user's role.
-      const me = await api.get('/users/me')
-      const role = String(me?.data?.role ?? '').toLowerCase()
-      window.location.href = role === 'admin' ? '/admin/dashboard' : '/dashboard'
+      // Force hard redirect to ensure session is picked up. Prefer the auth
+      // session role; fall back to /users/me (DB source of truth).
+      const sessionRes = await authClient.getSession()
+      let role = (sessionRes.data?.user as { role?: string } | undefined)?.role
+      if (!role) {
+        const me = await api.get<{ role?: string }>('/users/me')
+        role = me.data?.role
+      }
+      window.location.href = postLoginPath(role)
     } catch (err: any) {
       setError(err?.message ?? 'Login failed')
       setLoading(false)
