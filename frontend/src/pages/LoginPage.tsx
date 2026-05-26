@@ -119,8 +119,11 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-      // Force hard redirect to ensure session is picked up
-      window.location.href = '/dashboard'
+      // Force hard redirect to ensure session is picked up, but choose
+      // destination based on the authenticated user's role.
+      const me = await api.get('/users/me')
+      const role = String(me?.data?.role ?? '').toLowerCase()
+      window.location.href = role === 'admin' ? '/admin/dashboard' : '/dashboard'
     } catch (err: any) {
       setError(err?.message ?? 'Login failed')
       setLoading(false)
