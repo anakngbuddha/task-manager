@@ -20,6 +20,7 @@ export interface Schedule {
   endAt?: string | Date | null
   details?: string | null
   location?: string | null
+  isVirtual?: boolean
   projectId?: string | null
   creatorId: string
   createdAt?: string | Date
@@ -68,6 +69,7 @@ export function useCreateSchedule() {
       endAt?: string | null
       details?: string
       location?: string
+      isVirtual?: boolean
       projectId?: string
       attendees?: Array<{ email: string; name?: string; userId?: string }>
     }) => {

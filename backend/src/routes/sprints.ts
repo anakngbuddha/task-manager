@@ -144,8 +144,8 @@ export async function sprintRoutes(app: FastifyInstance) {
         })
 
         return updated
-      } catch (e: any) {
-        return reply.status(400).send({ error: e.message })
+      } catch (e: unknown) {
+        return reply.status(400).send({ error: e instanceof Error ? e.message : 'Sprint update failed' })
       }
     }
   )
@@ -195,8 +195,8 @@ export async function sprintRoutes(app: FastifyInstance) {
         }).catch((err) => logger.error({ err }, 'automation_sprint_started_hook_error'))
 
         return sprint
-      } catch (e: any) {
-        return reply.status(400).send({ error: e.message })
+      } catch (e: unknown) {
+        return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to start sprint' })
       }
     }
   )
@@ -244,8 +244,8 @@ export async function sprintRoutes(app: FastifyInstance) {
         }).catch((err) => logger.error({ err }, 'automation_sprint_completed_hook_error'))
 
         return result
-      } catch (e: any) {
-        return reply.status(400).send({ error: e.message })
+      } catch (e: unknown) {
+        return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to complete sprint' })
       }
     }
   )
@@ -283,8 +283,8 @@ export async function sprintRoutes(app: FastifyInstance) {
         })
 
         return reply.status(204).send()
-      } catch (e: any) {
-        return reply.status(400).send({ error: e.message })
+      } catch (e: unknown) {
+        return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to delete sprint' })
       }
     }
   )
@@ -309,8 +309,8 @@ export async function sprintRoutes(app: FastifyInstance) {
 
       try {
         return await sprintService.assignTasks(sprintId, projectId, taskIds)
-      } catch (e: any) {
-        return reply.status(400).send({ error: e.message })
+      } catch (e: unknown) {
+        return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to assign tasks' })
       }
     }
   )

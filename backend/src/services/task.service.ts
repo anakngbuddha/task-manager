@@ -1,7 +1,6 @@
 import { prisma } from '../lib/prisma.js'
 import { Priority, TaskType } from '@prisma/client'
-
-const DONE_STATUSES = ['DONE', 'READY']
+import { DONE_STATUSES } from '../config/constants.js'
 
 export const taskService = {
   async getAll(projectId: string) {

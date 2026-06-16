@@ -22,6 +22,10 @@ import { useProjects } from '@/hooks/useProjects'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '@/lib/auth-client'
 import { TASK_TYPE_CONFIG, type TaskType } from '@/lib/taskTypes'
+import { LocationMap } from '@/components/calendar/LocationMap'
+import { LocationPicker } from '@/components/calendar/LocationPicker'
+import { MapModal } from '@/components/calendar/MapModal'
+import { Map as MapIcon } from 'lucide-react'
 
 function toLocalDateInputValue(d: Date) {
   const offset = d.getTimezoneOffset()
@@ -232,6 +236,8 @@ export default function CalendarPage() {
   const [formEndTime, setFormEndTime] = useState(() => toLocalTimeInputValue(new Date(initialStart.getTime() + 30 * 60_000)))
   const [formDetails, setFormDetails] = useState('')
   const [formLocation, setFormLocation] = useState('')
+  const [formIsVirtual, setFormIsVirtual] = useState(false)
+  const [mapModalOpen, setMapModalOpen] = useState(false)
   const [formProjectId, setFormProjectId] = useState('__none__')
   const [formAttendees, setFormAttendees] = useState<string[]>([])
   const [attendeeInput, setAttendeeInput] = useState('')
@@ -247,6 +253,7 @@ export default function CalendarPage() {
     setFormEndTime(toLocalTimeInputValue(new Date(nextStart.getTime() + 30 * 60_000)))
     setFormDetails('')
     setFormLocation('')
+    setFormIsVirtual(false)
     setFormProjectId('__none__')
     setFormAttendees([])
     setAttendeeInput('')
@@ -327,6 +334,7 @@ export default function CalendarPage() {
         endAt: endAt.toISOString(),
         details: formDetails.trim() || undefined,
         location: formLocation.trim() || undefined,
+        isVirtual: formIsVirtual,
         projectId: formProjectId !== '__none__' ? formProjectId : undefined,
         attendees: formAttendees.length ? formAttendees.map(email => ({ email })) : undefined,
       })
@@ -671,8 +679,24 @@ export default function CalendarPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Location</Label>
-                  <Input value={formLocation} onChange={e => setFormLocation(e.target.value)} placeholder="e.g. Zoom link / Room 3B" className="rounded-md" />
+                  <div className="flex items-center justify-between">
+                    <Label>Location</Label>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                      <input type="checkbox" className="rounded border-input focus:ring-primary accent-primary" checked={formIsVirtual} onChange={e => setFormIsVirtual(e.target.checked)} />
+                      Virtual Meeting
+                    </label>
+                  </div>
+                  {formIsVirtual ? (
+                    <Input value={formLocation} onChange={e => setFormLocation(e.target.value)} placeholder="e.g. Zoom link" className="rounded-md" />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Input value={formLocation} onChange={e => setFormLocation(e.target.value)} placeholder="e.g. 123 Main St" className="rounded-md flex-1" />
+                      <Button type="button" variant="secondary" onClick={() => setMapModalOpen(true)} className="shrink-0 rounded-md px-3">
+                        <MapIcon className="size-4 mr-1.5" />
+                        Map
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -807,6 +831,12 @@ export default function CalendarPage() {
           </DialogContent>
         </Dialog>
 
+        <MapModal 
+          open={mapModalOpen} 
+          onOpenChange={setMapModalOpen} 
+          onConfirm={setFormLocation} 
+        />
+
         {/* View Details Dialog */}
         <Dialog open={!!viewItem} onOpenChange={(open) => !open && setViewItem(null)}>
           <DialogContent className="sm:max-w-md rounded-none">
@@ -848,7 +878,19 @@ export default function CalendarPage() {
                         {s.location && (
                           <div className="flex justify-between border-b pb-2">
                             <span className="text-muted-foreground font-medium">Location</span>
-                            <span>{s.location}</span>
+                            {!s.isVirtual ? (
+                              <a 
+                                href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(s.location)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-600 hover:underline flex items-center gap-1 text-right"
+                              >
+                                {s.location}
+                                <MapIcon className="size-3 shrink-0" />
+                              </a>
+                            ) : (
+                              <span>{s.location}</span>
+                            )}
                           </div>
                         )}
                         {s.details && (
@@ -865,6 +907,11 @@ export default function CalendarPage() {
                                 <Badge key={a.id} variant="outline" className="rounded-sm font-normal text-xs">{a.email}</Badge>
                               ))}
                             </div>
+                          </div>
+                        )}
+                        {s.location && !s.isVirtual && (
+                          <div className="pt-2">
+                            <LocationMap location={s.location} />
                           </div>
                         )}
                       </div>

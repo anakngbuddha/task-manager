@@ -5,14 +5,14 @@ import { idempotencyPreHandler } from '../middlewares/idempotency.js'
 import { z } from 'zod'
 import { activityService } from '../services/activity.service.js'
 import { notificationService } from '../services/notification.service.js'
+import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma.js'
 import { requireProjectRole } from '../services/projectAuth.service.js'
 import { getIO } from '../lib/socketManager.js'
 import { runAutomations } from '../services/automation.engine.js'
 import { auditLogService, computeChanges } from '../services/auditLog.service.js'
 import { logger } from '../app.js'
-
-const DEFAULT_BOARD_COLUMNS = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE', 'READY'] as const
+import { DEFAULT_BOARD_COLUMNS } from '../config/constants.js'
 
 function normalizeStatus(input: string) {
   return input.trim().toUpperCase().replace(/\s+/g, '_')
@@ -237,10 +237,8 @@ export async function taskRoutes(app: FastifyInstance) {
         type: type as any,
         hierarchyLevel,
       })
-    } catch (err: any) {
-      // Audit finding #14 — rely on the (projectId, title) unique constraint
-      // instead of a racy findFirst preflight.
-      if (err?.code === 'P2002') {
+    } catch (err: unknown) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         return reply.status(400).send({ error: 'A task with this title already exists in the project' })
       }
       throw err
@@ -279,11 +277,14 @@ export async function taskRoutes(app: FastifyInstance) {
         data: { taskId: task.id },
       })
     } else {
-      const members = await prisma.projectMember.findMany({
-        where: { projectId: task.projectId },
+      const managers = await prisma.projectMember.findMany({
+        where: {
+          projectId: task.projectId,
+          role: { in: ['MASTER_ADMIN', 'PROJECT_MANAGER'] },
+        },
         select: { userId: true },
       })
-      const recipients = members.map(m => m.userId).filter((id) => id !== req.authUser.id)
+      const recipients = managers.map(m => m.userId).filter((id) => id !== req.authUser.id)
       await Promise.all(recipients.map((userId) => notificationService.create({
         userId,
         projectId: task.projectId,
@@ -449,8 +450,8 @@ export async function taskRoutes(app: FastifyInstance) {
     let updated
     try {
       updated = await taskService.update(id, updateData)
-    } catch (err: any) {
-      if (err?.code === 'P2002') {
+    } catch (err: unknown) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         return reply.status(400).send({ error: 'A task with this title already exists in the project' })
       }
       throw err

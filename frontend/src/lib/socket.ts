@@ -4,10 +4,6 @@ function getSocketURL(): string {
   const explicit = import.meta.env.VITE_SOCKET_URL as string | undefined
   if (explicit) return explicit.replace(/\/$/, '')
 
-  if (import.meta.env.PROD) {
-    return 'https://task-manager-390h.onrender.com'
-  }
-
   const apiUrl = import.meta.env.VITE_API_URL as string | undefined
   if (apiUrl) {
     try {

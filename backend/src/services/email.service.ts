@@ -152,15 +152,27 @@ export async function sendScheduleInviteEmail(opts: {
   scheduledAt: Date
   details?: string | null
   location?: string | null
+  isVirtual?: boolean
   viewInAppUrl?: string | null
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
   const safeTitle = escapeHtml(opts.title)
   const safeScheduledBy = escapeHtml(opts.scheduledBy)
+  
+  let locationHtml = ''
+  if (opts.location) {
+    if (!opts.isVirtual) {
+      const gmapsUrl = escapeHtml(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(opts.location)}`)
+      locationHtml = `<a href="${gmapsUrl}" style="color:#0d9488;text-decoration:none;">${escapeHtml(opts.location)} 📍</a>`
+    } else {
+      locationHtml = escapeHtml(opts.location)
+    }
+  }
+
   const rows = [
     detailRow('Type', escapeHtml(typeLabel)),
     detailRow('When', escapeHtml(formatDate(opts.scheduledAt))),
-    opts.location ? detailRow('Location', escapeHtml(opts.location)) : '',
+    opts.location ? detailRow('Location', locationHtml) : '',
     detailRow('Organized by', safeScheduledBy),
   ].join('')
 
@@ -200,16 +212,28 @@ export async function sendScheduleReminderEmail(opts: {
   scheduledAt: Date
   details?: string | null
   location?: string | null
+  isVirtual?: boolean
   timeUntil: '1 day' | '15 minutes'
   viewInAppUrl?: string | null
 }) {
   const typeLabel = SCHEDULE_TYPE_LABELS[opts.type]
   const safeTitle = escapeHtml(opts.title)
   const safeScheduledBy = escapeHtml(opts.scheduledBy)
+  
+  let locationHtml = ''
+  if (opts.location) {
+    if (!opts.isVirtual) {
+      const gmapsUrl = escapeHtml(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(opts.location)}`)
+      locationHtml = `<a href="${gmapsUrl}" style="color:#0d9488;text-decoration:none;">${escapeHtml(opts.location)} 📍</a>`
+    } else {
+      locationHtml = escapeHtml(opts.location)
+    }
+  }
+
   const rows = [
     detailRow('Type', escapeHtml(typeLabel)),
     detailRow('When', escapeHtml(formatDate(opts.scheduledAt))),
-    opts.location ? detailRow('Location', escapeHtml(opts.location)) : '',
+    opts.location ? detailRow('Location', locationHtml) : '',
     detailRow('Organized by', safeScheduledBy),
   ].join('')
 

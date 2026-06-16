@@ -44,11 +44,19 @@ export async function queueOrRunMutation<T>(args: QueueMutationArgs): Promise<{ 
   }
 }
 
-export async function flushOfflineQueue() {
-  if (typeof window !== 'undefined' && !navigator.onLine) return
+export type FlushResult = {
+  succeeded: number
+  failed: Array<{ url: string; method: string; status?: number; message: string }>
+  networkError: boolean
+}
+
+export async function flushOfflineQueue(): Promise<FlushResult> {
+  const result: FlushResult = { succeeded: 0, failed: [], networkError: false }
+
+  if (typeof window !== 'undefined' && !navigator.onLine) return result
   
   const mutations = await offlineStore.getMutations()
-  if (!mutations.length) return
+  if (!mutations.length) return result
 
   for (const mut of mutations) {
     if (!mut.id) continue
@@ -59,12 +67,18 @@ export async function flushOfflineQueue() {
         data: mut.body
       })
       await offlineStore.deleteMutation(mut.id)
+      result.succeeded++
     } catch (error) {
       if (error instanceof Error && (error.message === 'Network Error' || (error as any).code === 'ERR_NETWORK')) {
+        result.networkError = true
         break
       }
-      // On permanent failure, drop it to not block the queue
+      const status = (error as any)?.response?.status as number | undefined
+      const message = (error as any)?.response?.data?.error ?? (error instanceof Error ? error.message : 'Unknown error')
+      result.failed.push({ url: mut.url, method: mut.method, status, message })
       await offlineStore.deleteMutation(mut.id)
     }
   }
+
+  return result
 }

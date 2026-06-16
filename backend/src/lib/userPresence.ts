@@ -1,7 +1,7 @@
 import type { Server } from 'socket.io'
 import { prisma } from './prisma.js'
 
-export type PresenceStatus = 'ONLINE' | 'IDLE' | 'OFFLINE'
+export type PresenceStatus = 'ONLINE' | 'AWAY' | 'OFFLINE'
 
 type SocketPresence = {
   socketId: string
@@ -17,6 +17,16 @@ type SocketPresence = {
 const socketsById = new Map<string, SocketPresence>()
 const socketIdsByUser = new Map<string, Set<string>>()
 
+// Per-user mutex to serialize DB writes and prevent MysqlError 1020 race conditions.
+const userLocks = new Map<string, Promise<void>>()
+
+function withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = userLocks.get(userId) ?? Promise.resolve()
+  const next = prev.then(fn, fn)
+  userLocks.set(userId, next.then(() => {}, () => {}))
+  return next
+}
+
 let io: Server | null = null
 
 function getUserStatus(userId: string): PresenceStatus {
@@ -28,7 +38,7 @@ function getUserStatus(userId: string): PresenceStatus {
     if (presence && !presence.isIdle) return 'ONLINE'
   }
 
-  return 'IDLE'
+  return 'AWAY'
 }
 
 function emitStatusUpdate(userId: string) {
@@ -92,84 +102,92 @@ export function getUserPresenceStatus(userId: string): PresenceStatus {
 }
 
 export async function identifySocketUser(socketId: string, userId: string) {
-  const existing = socketsById.get(socketId)
-  if (existing?.userId === userId) return
+  return withUserLock(userId, async () => {
+    const existing = socketsById.get(socketId)
+    if (existing?.userId === userId) return
 
-  if (existing) {
-    await disconnectSocket(socketId)
-  }
+    if (existing) {
+      await disconnectSocketInternal(socketId)
+    }
 
-  const session = await prisma.userSession.create({
-    data: { userId },
+    const session = await prisma.userSession.create({
+      data: { userId },
+    })
+
+    const presence: SocketPresence = {
+      socketId,
+      userId,
+      connectedAt: new Date(),
+      lastActivityAt: new Date(),
+      isIdle: false,
+      idleStartedAt: null,
+      idleTimeSeconds: 0,
+      sessionId: session.id,
+    }
+
+    socketsById.set(socketId, presence)
+    const userSockets = socketIdsByUser.get(userId) ?? new Set<string>()
+    userSockets.add(socketId)
+    socketIdsByUser.set(userId, userSockets)
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { status: 'ONLINE', lastSeenAt: new Date() },
+    })
+
+    emitStatusUpdate(userId)
   })
-
-  const presence: SocketPresence = {
-    socketId,
-    userId,
-    connectedAt: new Date(),
-    lastActivityAt: new Date(),
-    isIdle: false,
-    idleStartedAt: null,
-    idleTimeSeconds: 0,
-    sessionId: session.id,
-  }
-
-  socketsById.set(socketId, presence)
-  const userSockets = socketIdsByUser.get(userId) ?? new Set<string>()
-  userSockets.add(socketId)
-  socketIdsByUser.set(userId, userSockets)
-
-  await prisma.user.update({
-    where: { id: userId },
-    data: { status: 'ONLINE', lastSeenAt: new Date() },
-  })
-
-  emitStatusUpdate(userId)
 }
 
 export async function recordSocketHeartbeat(socketId: string) {
   const presence = socketsById.get(socketId)
   if (!presence) return
 
-  const now = new Date()
-  if (presence.isIdle) {
-    addIdleDuration(presence, now)
-    presence.isIdle = false
-  }
+  return withUserLock(presence.userId, async () => {
+    const now = new Date()
+    if (presence.isIdle) {
+      addIdleDuration(presence, now)
+      presence.isIdle = false
+    }
 
-  presence.lastActivityAt = now
-  await prisma.user.update({
-    where: { id: presence.userId },
-    data: { status: 'ONLINE', lastSeenAt: now },
+    presence.lastActivityAt = now
+    await prisma.user.update({
+      where: { id: presence.userId },
+      data: { status: 'ONLINE', lastSeenAt: now },
+    })
+    emitStatusUpdate(presence.userId)
   })
-  emitStatusUpdate(presence.userId)
 }
 
 export async function recordSocketIdle(socketId: string, isIdle: boolean) {
   const presence = socketsById.get(socketId)
   if (!presence) return
 
-  const now = new Date()
-  if (isIdle && !presence.isIdle) {
-    presence.isIdle = true
-    presence.idleStartedAt = now
-    await prisma.user.update({
-      where: { id: presence.userId },
-      data: { status: 'AWAY', lastSeenAt: now },
-    })
-  } else if (!isIdle && presence.isIdle) {
-    addIdleDuration(presence, now)
-    presence.isIdle = false
-    await prisma.user.update({
-      where: { id: presence.userId },
-      data: { status: 'ONLINE', lastSeenAt: now },
-    })
-  }
+  return withUserLock(presence.userId, async () => {
+    const now = new Date()
+    const dbStatus = isIdle ? 'AWAY' : 'ONLINE'
 
-  emitStatusUpdate(presence.userId)
+    if (isIdle && !presence.isIdle) {
+      presence.isIdle = true
+      presence.idleStartedAt = now
+      await prisma.user.update({
+        where: { id: presence.userId },
+        data: { status: dbStatus, lastSeenAt: now },
+      })
+    } else if (!isIdle && presence.isIdle) {
+      addIdleDuration(presence, now)
+      presence.isIdle = false
+      await prisma.user.update({
+        where: { id: presence.userId },
+        data: { status: dbStatus, lastSeenAt: now },
+      })
+    }
+
+    emitStatusUpdate(presence.userId)
+  })
 }
 
-export async function disconnectSocket(socketId: string) {
+async function disconnectSocketInternal(socketId: string) {
   const presence = socketsById.get(socketId)
   if (!presence) return
 
@@ -190,4 +208,11 @@ export async function disconnectSocket(socketId: string) {
   }
 
   emitStatusUpdate(presence.userId)
+}
+
+export async function disconnectSocket(socketId: string) {
+  const presence = socketsById.get(socketId)
+  if (!presence) return
+
+  return withUserLock(presence.userId, () => disconnectSocketInternal(socketId))
 }

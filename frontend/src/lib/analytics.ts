@@ -37,7 +37,7 @@ interface TrackOptions {
  * Fire-and-forget analytics event. Never throws — failures are silently
  * swallowed so tracking bugs never surface to the user.
  */
-export function trackEvent(type: AnalyticsEventType, options: TrackOptions = {}): void {
+export function trackEvent(type: AnalyticsEventType, options: TrackOptions = {}): Promise<void> {
   const payload = {
     eventType: type,
     pageUrl: options.pageUrl ?? window.location.pathname,
@@ -45,8 +45,7 @@ export function trackEvent(type: AnalyticsEventType, options: TrackOptions = {})
     metadata: options.metadata ?? null,
   }
 
-  // Fire-and-forget: don't await, don't block the user action
-  api.post('/analytics/event', payload).catch(() => {
+  return api.post('/analytics/event', payload).then(() => {}).catch(() => {
     // intentionally silent — analytics should never break the app
   })
 }
@@ -66,15 +65,29 @@ export function initSessionTracking(): void {
   })
 
   const handleUnload = () => {
-    // Use sendBeacon so the request survives page unload
-    const payload = JSON.stringify({
+    // Use the tracked API to send SESSION_END. On browsers that support
+    // keepalive fetch, this survives page unload while preserving cookies.
+    // Falls back to sendBeacon (which may lack cookie context) as a last resort.
+    const payload = {
       eventType: 'SESSION_END',
       pageUrl: window.location.pathname,
-    })
+    }
     const apiBase =
       (import.meta.env.VITE_API_URL as string | undefined) ??
       'http://localhost:3000/api'
-    navigator.sendBeacon(`${apiBase}/analytics/event`, new Blob([payload], { type: 'application/json' }))
+    const url = `${apiBase}/analytics/event`
+
+    try {
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+        keepalive: true,
+      })
+    } catch {
+      navigator.sendBeacon(url, new Blob([JSON.stringify(payload)], { type: 'application/json' }))
+    }
   }
 
   window.addEventListener('beforeunload', handleUnload)

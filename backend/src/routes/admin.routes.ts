@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 import { prisma } from '../lib/prisma.js'
 import { auth } from '../lib/auth.js'
 import { UAParser } from 'ua-parser-js'
@@ -103,25 +104,35 @@ export async function adminRoutes(app: FastifyInstance) {
     const notificationReadRate =
       totalNotifications === 0 ? 0 : Math.round((readNotifications / totalNotifications) * 100)
 
-    // ── NEW (medium priority): Projects with unread group chats ──────
-    // For each project, find the latest message and compare with all members' lastReadAt
+    // ── Projects with unread group chats (single-query approach) ──────
     const projectsWithMessages = await prisma.projectMessage.groupBy({
       by: ['projectId'],
       _max: { createdAt: true },
     })
 
+    const projectIdsWithMessages = projectsWithMessages
+      .filter((pm) => pm._max.createdAt)
+      .map((pm) => pm.projectId)
+
     let projectsWithUnreadChats = 0
-    for (const pm of projectsWithMessages) {
-      const latestMsgAt = pm._max.createdAt
-      if (!latestMsgAt) continue
-      // Check if any member's read state is behind the latest message
-      const staleMemberCount = await prisma.projectChatReadState.count({
-        where: {
-          projectId: pm.projectId,
-          lastReadAt: { lt: latestMsgAt },
-        }
+    if (projectIdsWithMessages.length > 0) {
+      const latestByProject = new Map(
+        projectsWithMessages
+          .filter((pm) => pm._max.createdAt)
+          .map((pm) => [pm.projectId, pm._max.createdAt!]),
+      )
+
+      const readStates = await prisma.projectChatReadState.findMany({
+        where: { projectId: { in: projectIdsWithMessages } },
+        select: { projectId: true, lastReadAt: true },
       })
-      if (staleMemberCount > 0) projectsWithUnreadChats++
+
+      const staleProjects = new Set<string>()
+      for (const rs of readStates) {
+        const latest = latestByProject.get(rs.projectId)
+        if (latest && rs.lastReadAt < latest) staleProjects.add(rs.projectId)
+      }
+      projectsWithUnreadChats = staleProjects.size
     }
 
     // ── Phase 4: Consent Overview ────────────────────────────────────
@@ -469,39 +480,50 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // ─── GET /api/admin/users ────────────────────────────────────────
   app.get('/admin/users', async (req, reply) => {
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        status: true,
-        bannedAt: true,
-        createdAt: true,
-        lastSeenAt: true,
-      }
-    })
+    const query = req.query as { page?: string; limit?: string }
+    const page = Math.max(Number(query.page) || 1, 1)
+    const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200)
+    const skip = (page - 1) * limit
+
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          status: true,
+          bannedAt: true,
+          createdAt: true,
+          lastSeenAt: true,
+        },
+        skip,
+        take: limit,
+      }),
+      prisma.user.count(),
+    ])
     // Frontend already keys off `status === 'banned'`; keep that contract by
     // synthesising the field from the new `bannedAt` flag instead of reading
     // it from the `role` column.
-    return reply.send(
-      users.map((u) => ({
+    return reply.send({
+      users: users.map((u) => ({
         ...u,
         accountStatus: u.bannedAt ? 'banned' : 'active',
       })),
-    )
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    })
+  })
+
+  const adminUpdateStatusSchema = z.object({
+    status: z.enum(['active', 'banned']),
   })
 
   // ─── PATCH /api/admin/users/:id/status ───────────────────────────
   // Ban or unban a user account (status: 'active' | 'banned')
   app.patch('/admin/users/:id/status', async (req, reply) => {
     const { id } = req.params as { id: string }
-    const { status } = req.body as { status: string }
-
-    if (!['active', 'banned'].includes(status)) {
-      return reply.status(400).send({ error: 'status must be "active" or "banned"' })
-    }
+    const { status } = adminUpdateStatusSchema.parse(req.body)
 
     const target = await prisma.user.findUnique({ where: { id } })
     if (!target) return reply.status(404).send({ error: 'User not found' })
@@ -522,15 +544,15 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ id, status })
   })
 
+  const adminUpdateRoleSchema = z.object({
+    role: z.enum(['ADMIN', 'USER']),
+  })
+
   // ─── PATCH /api/admin/users/:id/role ───────────────────────────
   // Update a user's role (admin | user)
   app.patch('/admin/users/:id/role', async (req, reply) => {
     const { id } = req.params as { id: string }
-    const { role } = req.body as { role: string }
-
-    if (!['ADMIN', 'USER'].includes(role)) {
-      return reply.status(400).send({ error: 'role must be "ADMIN" or "USER"' })
-    }
+    const { role } = adminUpdateRoleSchema.parse(req.body)
 
     const target = await prisma.user.findUnique({ where: { id } })
     if (!target) return reply.status(404).send({ error: 'User not found' })
@@ -548,13 +570,23 @@ export async function adminRoutes(app: FastifyInstance) {
     return reply.send({ id, role })
   })
 
+  const adminDeleteProjectSchema = z.object({
+    confirmName: z.string().min(1, 'Must confirm project name to delete'),
+  })
+
   // ─── DELETE /api/admin/projects/:id ─────────────────────────────
-  // Hard-delete a project and all related data (cascades via Prisma)
+  // Hard-delete a project and all related data (cascades via Prisma).
+  // Requires the project name in the request body as confirmation.
   app.delete('/admin/projects/:id', async (req, reply) => {
     const { id } = req.params as { id: string }
+    const { confirmName } = adminDeleteProjectSchema.parse(req.body)
 
     const project = await prisma.project.findUnique({ where: { id } })
     if (!project) return reply.status(404).send({ error: 'Project not found' })
+
+    if (project.name !== confirmName) {
+      return reply.status(400).send({ error: 'Project name does not match. Deletion aborted.' })
+    }
 
     // Delete in dependency order to satisfy FK constraints
     await prisma.$transaction(async (tx) => {

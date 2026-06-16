@@ -27,9 +27,6 @@ function getBackendOrigin(): string {
       // Relative URL (e.g. "/api") — can't extract origin
     }
   }
-  if (import.meta.env.PROD) {
-    return 'https://task-manager-390h.onrender.com'
-  }
   return 'http://localhost:3000'
 }
 
@@ -71,7 +68,9 @@ api.interceptors.response.use(
       }).catch(console.error)
     }
 
-    if (err.response?.status === 401 && window.location.pathname !== '/login') {
+    const authPaths = ['/login', '/register', '/invite']
+    const isAuthPage = authPaths.some(p => window.location.pathname.startsWith(p))
+    if (err.response?.status === 401 && !isAuthPage) {
       window.location.href = '/login'
     }
     return Promise.reject(err)

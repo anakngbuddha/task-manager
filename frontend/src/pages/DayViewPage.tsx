@@ -8,8 +8,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useSession } from '@/lib/auth-client'
 import { useRespondScheduleInvite, useScheduleById, useSchedules, type Schedule, type ScheduleType } from '@/hooks/useSchedules'
 import { usePendingDeadlines } from '@/hooks/usePendingDeadlines'
-import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ChevronLeft, ChevronRight, Map as MapIcon } from 'lucide-react'
 import { TASK_TYPE_CONFIG, type TaskType } from '@/lib/taskTypes'
+import { LocationMap } from '@/components/calendar/LocationMap'
 
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
@@ -590,8 +591,24 @@ export default function DayViewPage() {
                                   return `${startLabel}–${endLabel}`
                                 })()}
                               </div>
-                              <div className="text-xs text-muted-foreground mt-0.5">
-                                {selectedItem.kind === 'SCHEDULE' && selectedItem.location ? selectedItem.location : (selectedItem.kind === 'SCHEDULE' ? 'No location' : '')}
+                              <div className="text-xs mt-0.5">
+                                {selectedItem.kind === 'SCHEDULE' && selectedItem.location ? (
+                                  !selectedItem.isVirtual ? (
+                                    <a
+                                      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(selectedItem.location)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="text-blue-600 hover:underline flex items-center gap-1"
+                                    >
+                                      <MapIcon className="size-3 shrink-0" />
+                                      {selectedItem.location}
+                                    </a>
+                                  ) : (
+                                    <span className="text-muted-foreground">{selectedItem.location}</span>
+                                  )
+                                ) : (
+                                  <span className="text-muted-foreground">{selectedItem.kind === 'SCHEDULE' ? 'No location' : ''}</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -649,6 +666,12 @@ export default function DayViewPage() {
                                   })}
                                 </div>
                               )}
+                            </div>
+                          )}
+
+                          {selectedItem.kind === 'SCHEDULE' && selectedItem.location && !selectedItem.isVirtual && (
+                            <div className="mt-4">
+                              <LocationMap location={selectedItem.location} />
                             </div>
                           )}
                         </div>
