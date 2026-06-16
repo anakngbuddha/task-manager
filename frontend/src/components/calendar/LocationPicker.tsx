@@ -27,7 +27,7 @@ export function LocationPicker({ value, onChange }: { value: string, onChange: (
   const [coords, setCoords] = useState<[number, number] | null>(null)
   const [loading, setLoading] = useState(false)
   const [inputValue, setInputValue] = useState(value)
-  const debounceRef = useRef<NodeJS.Timeout | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     setInputValue(value)

@@ -22,9 +22,6 @@ import { useProjects } from '@/hooks/useProjects'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '@/lib/auth-client'
 import { TASK_TYPE_CONFIG, type TaskType } from '@/lib/taskTypes'
-import { LocationMap } from '@/components/calendar/LocationMap'
-import { LocationPicker } from '@/components/calendar/LocationPicker'
-import { MapModal } from '@/components/calendar/MapModal'
 import { Map as MapIcon } from 'lucide-react'
 
 function toLocalDateInputValue(d: Date) {
