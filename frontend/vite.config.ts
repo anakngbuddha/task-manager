@@ -36,19 +36,13 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
         runtimeCaching: [
           {
+            // Never cache API/auth/session responses. The cache is keyed by URL
+            // only (it cannot see HttpOnly session cookies), so caching here
+            // both served STALE auth state — causing spurious 401s after login
+            // when the backend cold-starts and NetworkFirst hit its timeout —
+            // and risked leaking one user's data to another on a shared device.
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 5,
-              expiration: {
-                maxEntries: 500,
-                maxAgeSeconds: 7 * 24 * 60 * 60,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
+            handler: 'NetworkOnly',
           },
           {
             urlPattern: ({ request }) => request.destination === 'image',

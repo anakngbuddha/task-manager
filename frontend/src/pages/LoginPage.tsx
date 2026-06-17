@@ -120,13 +120,21 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-      // Force hard redirect to ensure session is picked up. Prefer the auth
-      // session role; fall back to /users/me (DB source of truth).
-      const sessionRes = await authClient.getSession()
-      let role = (sessionRes.data?.user as { role?: string } | undefined)?.role
-      if (!role) {
-        const me = await api.get<{ role?: string }>('/users/me')
-        role = me.data?.role
+      // Sign-in already succeeded, so the session cookie is set. Resolve the
+      // role for routing, but never let this block the redirect: a transient
+      // hiccup on /users/me (e.g. backend cold start) must not strand the user
+      // on the login screen with a misleading "401" error.
+      let role: string | undefined
+      try {
+        const sessionRes = await authClient.getSession()
+        role = (sessionRes.data?.user as { role?: string } | undefined)?.role
+        if (!role) {
+          const me = await api.get<{ role?: string }>('/users/me')
+          role = me.data?.role
+        }
+      } catch {
+        // Fall through with an undefined role; postLoginPath() picks a sane
+        // default and the app re-validates the session after the redirect.
       }
       window.location.href = postLoginPath(role)
     } catch (err: any) {
