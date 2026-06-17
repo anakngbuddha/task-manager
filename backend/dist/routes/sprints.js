@@ -117,7 +117,7 @@ export async function sprintRoutes(app) {
             return updated;
         }
         catch (e) {
-            return reply.status(400).send({ error: e.message });
+            return reply.status(400).send({ error: e instanceof Error ? e.message : 'Sprint update failed' });
         }
     });
     app.post('/projects/:projectId/sprints/:sprintId/start', { preHandler: authenticate }, async (req, reply) => {
@@ -159,7 +159,7 @@ export async function sprintRoutes(app) {
             return sprint;
         }
         catch (e) {
-            return reply.status(400).send({ error: e.message });
+            return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to start sprint' });
         }
     });
     app.post('/projects/:projectId/sprints/:sprintId/complete', { preHandler: authenticate }, async (req, reply) => {
@@ -199,7 +199,7 @@ export async function sprintRoutes(app) {
             return result;
         }
         catch (e) {
-            return reply.status(400).send({ error: e.message });
+            return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to complete sprint' });
         }
     });
     app.delete('/projects/:projectId/sprints/:sprintId', { preHandler: authenticate }, async (req, reply) => {
@@ -231,7 +231,7 @@ export async function sprintRoutes(app) {
             return reply.status(204).send();
         }
         catch (e) {
-            return reply.status(400).send({ error: e.message });
+            return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to delete sprint' });
         }
     });
     app.patch('/projects/:projectId/sprints/:sprintId/assign-tasks', { preHandler: authenticate }, async (req, reply) => {
@@ -251,7 +251,7 @@ export async function sprintRoutes(app) {
             return await sprintService.assignTasks(sprintId, projectId, taskIds);
         }
         catch (e) {
-            return reply.status(400).send({ error: e.message });
+            return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to assign tasks' });
         }
     });
     app.get('/projects/:projectId/sprints/:sprintId/burndown', { preHandler: authenticate }, async (req, reply) => {

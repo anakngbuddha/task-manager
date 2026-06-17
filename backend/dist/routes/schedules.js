@@ -21,6 +21,7 @@ const createScheduleSchema = z.object({
     endAt: z.string().datetime().optional(),
     details: z.string().max(2000).optional(),
     location: z.string().optional(),
+    isVirtual: z.boolean().optional(),
     projectId: z.string().optional(),
     attendees: z.array(attendeeSchema).optional(),
 });
@@ -31,6 +32,7 @@ const updateScheduleSchema = z.object({
     endAt: z.string().datetime().nullable().optional(),
     details: z.string().max(2000).nullable().optional(),
     location: z.string().nullable().optional(),
+    isVirtual: z.boolean().optional(),
     projectId: z.string().nullable().optional(),
     attendees: z.array(attendeeSchema).optional(),
 });
@@ -89,6 +91,7 @@ export async function scheduleRoutes(app) {
                     scheduledAt,
                     details: body.details ?? null,
                     location: body.location ?? null,
+                    isVirtual: body.isVirtual ?? false,
                     projectId: body.projectId ?? null,
                     creatorId: user.id,
                     endAt: body.endAt ? new Date(body.endAt) : null,
@@ -144,6 +147,7 @@ export async function scheduleRoutes(app) {
                 scheduledAt: schedule.scheduledAt,
                 details: schedule.details,
                 location: schedule.location,
+                isVirtual: schedule.isVirtual,
             });
         }
         catch (err) {
@@ -291,6 +295,8 @@ export async function scheduleRoutes(app) {
             updateData.details = body.details;
         if (body.location !== undefined)
             updateData.location = body.location;
+        if (body.isVirtual !== undefined)
+            updateData.isVirtual = body.isVirtual;
         if (body.projectId !== undefined)
             updateData.projectId = body.projectId;
         let newAttendeeEmails = [];
@@ -357,6 +363,7 @@ export async function scheduleRoutes(app) {
                     scheduledAt: schedule.scheduledAt,
                     details: schedule.details,
                     location: schedule.location,
+                    isVirtual: schedule.isVirtual,
                     viewInAppUrl,
                 });
             }

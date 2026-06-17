@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-const DONE_STATUSES = ['DONE', 'READY'];
+import { DONE_STATUSES } from '../config/constants.js';
 export const taskService = {
     async getAll(projectId) {
         return prisma.task.findMany({

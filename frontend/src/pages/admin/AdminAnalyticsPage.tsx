@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { signOut } from '../../lib/auth-client'
 import { LogOut } from 'lucide-react'
 import { Button } from '../../components/ui/button'
-import { api } from '../../lib/api'
+import { api, getApiErrorMessage } from '../../lib/api'
 import {
   BarChart,
   Bar,
@@ -48,6 +48,15 @@ interface ExtendedAnalytics {
   topEmailDomains?: { name: string; value: number }[]
 }
 
+interface AnalyticsAiReport {
+  title: string
+  summary: string
+  insights: string[]
+  recommendations: string[]
+  risks: string[]
+  generatedAt: string
+}
+
 // ─── Colours ──────────────────────────────────────────────────────
 const PRIORITY_COLORS: Record<string, string> = {
   LOW: '#22c55e',
@@ -79,6 +88,10 @@ export default function AdminAnalyticsPage() {
     topEmailDomains: undefined,
   })
   const [loading, setLoading] = useState(true)
+  const [aiPrompt, setAiPrompt] = useState('Create a weekly executive summary and highlight key risks.')
+  const [aiReport, setAiReport] = useState<AnalyticsAiReport | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const handleSignOut = async () => {
@@ -103,6 +116,25 @@ export default function AdminAnalyticsPage() {
     }
     fetchAll()
   }, [])
+
+  const generateAiReport = async () => {
+    if (!aiPrompt.trim()) {
+      setAiError('Please enter what report you want to generate.')
+      return
+    }
+    setAiLoading(true)
+    setAiError(null)
+    try {
+      const res = await api.post<AnalyticsAiReport>('/admin/analytics/report', {
+        prompt: aiPrompt.trim(),
+      })
+      setAiReport(res.data)
+    } catch (err) {
+      setAiError(getApiErrorMessage(err, 'Failed to generate AI report.'))
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   const EmptyState = ({ label }: { label: string }) => (
     <div className="flex h-[250px] items-center justify-center text-muted-foreground border border-dashed rounded-lg text-sm">
@@ -148,6 +180,72 @@ export default function AdminAnalyticsPage() {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* ── Section: AI Analytics Report ─────────────────────────────── */}
+      <div className="mb-8">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">AI Analytics Assistant (Gemini)</p>
+        <Card>
+          <CardHeader>
+            <CardTitle>Generate AI Report</CardTitle>
+            <CardDescription>Ask for trend analysis, executive summaries, or action plans based on your analytics data.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <textarea
+              className="w-full min-h-[110px] rounded-md border bg-background px-3 py-2 text-sm"
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="Example: Analyze user engagement drop-offs and suggest 3 improvements."
+            />
+            <div className="flex items-center gap-3">
+              <Button onClick={generateAiReport} disabled={aiLoading}>
+                {aiLoading ? 'Generating report…' : 'Generate report'}
+              </Button>
+              {aiReport?.generatedAt ? (
+                <span className="text-xs text-muted-foreground">
+                  Last generated: {new Date(aiReport.generatedAt).toLocaleString()}
+                </span>
+              ) : null}
+            </div>
+            {aiError ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {aiError}
+              </div>
+            ) : null}
+            {aiReport ? (
+              <div className="rounded-md border p-4 space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold">{aiReport.title}</h3>
+                  <p className="text-sm text-muted-foreground mt-1">{aiReport.summary}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold mb-2">Key insights</p>
+                  <ul className="list-disc pl-5 text-sm space-y-1">
+                    {aiReport.insights.length > 0 ? aiReport.insights.map((item, idx) => (
+                      <li key={`insight-${idx}`}>{item}</li>
+                    )) : <li>No insights returned.</li>}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold mb-2">Recommendations</p>
+                  <ul className="list-disc pl-5 text-sm space-y-1">
+                    {aiReport.recommendations.length > 0 ? aiReport.recommendations.map((item, idx) => (
+                      <li key={`recommendation-${idx}`}>{item}</li>
+                    )) : <li>No recommendations returned.</li>}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold mb-2">Risks / caveats</p>
+                  <ul className="list-disc pl-5 text-sm space-y-1">
+                    {aiReport.risks.length > 0 ? aiReport.risks.map((item, idx) => (
+                      <li key={`risk-${idx}`}>{item}</li>
+                    )) : <li>No risks returned.</li>}
+                  </ul>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
       </div>
 
       {/* ── Section: Team & Collaboration Insights (medium priority) ─ */}

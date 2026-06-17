@@ -68,6 +68,7 @@ async function processScheduleWindow(now, type, minMinutes, maxMinutes, timeUnti
                     scheduledAt: schedule.scheduledAt,
                     details: schedule.details,
                     location: schedule.location,
+                    isVirtual: schedule.isVirtual,
                     timeUntil,
                     viewInAppUrl,
                 });

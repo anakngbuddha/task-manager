@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma.js';
-const DONE_STATUSES = ['DONE', 'READY'];
+import { DONE_STATUSES } from '../config/constants.js';
 const sprintTaskSelect = {
     id: true,
     title: true,
@@ -100,12 +100,8 @@ export const sprintService = {
         if (sprint.status !== 'ACTIVE') {
             throw new Error('Only ACTIVE sprints can be completed');
         }
-        const notReadyTasks = sprint.tasks.filter((t) => t.status !== 'READY');
-        if (notReadyTasks.length > 0) {
-            throw new Error('Cannot complete sprint until all tasks are in READY status');
-        }
-        const incompleteTasks = [];
-        const completedTasks = sprint.tasks;
+        const completedTasks = sprint.tasks.filter((t) => DONE_STATUSES.includes(t.status));
+        const incompleteTasks = sprint.tasks.filter((t) => !DONE_STATUSES.includes(t.status));
         let targetSprintId = null;
         if (moveIncompleteTasksTo !== 'BACKLOG') {
             const targetSprint = await prisma.sprint.findUnique({

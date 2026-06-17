@@ -37,14 +37,22 @@ export const auth = betterAuth({
         },
     },
     socialProviders: {
-        google: {
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        },
-        github: {
-            clientId: process.env.GITHUB_OAUTH_CLIENT_ID,
-            clientSecret: process.env.GITHUB_OAUTH_CLIENT_SECRET,
-        },
+        ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+            ? {
+                google: {
+                    clientId: process.env.GOOGLE_CLIENT_ID,
+                    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+                },
+            }
+            : {}),
+        ...(process.env.GITHUB_OAUTH_CLIENT_ID && process.env.GITHUB_OAUTH_CLIENT_SECRET
+            ? {
+                github: {
+                    clientId: process.env.GITHUB_OAUTH_CLIENT_ID,
+                    clientSecret: process.env.GITHUB_OAUTH_CLIENT_SECRET,
+                },
+            }
+            : {}),
     },
     trustedOrigins: [
         'http://localhost:5173',
@@ -63,8 +71,7 @@ export const auth = betterAuth({
         defaultCookieAttributes: {
             secure: isProd,
             httpOnly: true,
-            sameSite: isProd ? 'none' : 'lax',
-            ...(isProd ? { partitioned: true } : {}),
+            sameSite: isProd ? 'lax' : 'lax',
         },
     },
     plugins: [
