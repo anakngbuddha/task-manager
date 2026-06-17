@@ -23,7 +23,8 @@ export const SOCKET_OPTIONS = {
   autoConnect: false,
   transports: ['websocket', 'polling'] as ('websocket' | 'polling')[],
   reconnection: true,
-  reconnectionAttempts: Infinity,
+  // Prevent infinite retry spam when socket endpoint is misconfigured/unavailable.
+  reconnectionAttempts: 8,
   reconnectionDelay: 1000,
   reconnectionDelayMax: 8000,
   randomizationFactor: 0.4,

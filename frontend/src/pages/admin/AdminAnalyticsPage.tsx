@@ -57,6 +57,33 @@ interface AnalyticsAiReport {
   generatedAt: string
 }
 
+const toStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean)
+    .slice(0, 12)
+}
+
+const normalizeAiReport = (value: unknown): AnalyticsAiReport | null => {
+  if (!value || typeof value !== 'object') return null
+  const report = value as Record<string, unknown>
+  return {
+    title: typeof report.title === 'string' && report.title.trim()
+      ? report.title.trim()
+      : 'Analytics Report',
+    summary: typeof report.summary === 'string' && report.summary.trim()
+      ? report.summary.trim()
+      : 'No summary returned.',
+    insights: toStringArray(report.insights),
+    recommendations: toStringArray(report.recommendations),
+    risks: toStringArray(report.risks),
+    generatedAt: typeof report.generatedAt === 'string' && report.generatedAt
+      ? report.generatedAt
+      : new Date().toISOString(),
+  }
+}
+
 // ─── Colours ──────────────────────────────────────────────────────
 const PRIORITY_COLORS: Record<string, string> = {
   LOW: '#22c55e',
@@ -128,7 +155,13 @@ export default function AdminAnalyticsPage() {
       const res = await api.post<AnalyticsAiReport>('/admin/analytics/report', {
         prompt: aiPrompt.trim(),
       })
-      setAiReport(res.data)
+      const normalized = normalizeAiReport(res.data)
+      if (!normalized) {
+        setAiError('AI report format was invalid.')
+        setAiReport(null)
+        return
+      }
+      setAiReport(normalized)
     } catch (err) {
       setAiError(getApiErrorMessage(err, 'Failed to generate AI report.'))
     } finally {
