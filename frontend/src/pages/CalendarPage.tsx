@@ -608,7 +608,7 @@ export default function CalendarPage() {
 
         {/* Create schedule dialog */}
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent className="sm:max-w-xl rounded-2xl p-6">
+          <DialogContent className="sm:max-w-xl rounded-2xl p-6" aria-describedby={undefined}>
             <DialogHeader className="flex flex-row items-center justify-between pb-2">
               <DialogTitle className="text-lg font-semibold">Create Schedule</DialogTitle>
               {/* Radix Dialog close button is rendered automatically */}

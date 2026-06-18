@@ -226,7 +226,7 @@ export function MapModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl rounded-2xl p-0 overflow-hidden flex flex-col h-[80vh] max-h-[620px]">
+      <DialogContent className="sm:max-w-2xl rounded-2xl p-0 overflow-hidden flex flex-col h-[80vh] max-h-[620px]" aria-describedby={undefined}>
         <DialogHeader className="px-6 py-4 border-b shrink-0">
           <DialogTitle>Search Location</DialogTitle>
         </DialogHeader>

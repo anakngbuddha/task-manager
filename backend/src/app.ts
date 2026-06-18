@@ -156,7 +156,7 @@ function setSecurityHeaders(res: any, csp: string) {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN')
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+  res.setHeader('Permissions-Policy', 'geolocation=(self), microphone=(), camera=()')
 }
 
 function injectCORSHeaders(req: any, res: any) {
@@ -268,7 +268,7 @@ app.addHook('onSend', async (req, reply) => {
   reply.header('X-Frame-Options', 'SAMEORIGIN')
   reply.header('X-Content-Type-Options', 'nosniff')
   reply.header('Referrer-Policy', 'strict-origin-when-cross-origin')
-  reply.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=()')
+  reply.header('Permissions-Policy', 'geolocation=(self), microphone=(), camera=()')
 })
 
 app.register(taskRoutes, { prefix: '/api' })
