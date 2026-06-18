@@ -32,6 +32,7 @@ import { auditLogRoutes } from './routes/auditLogs.routes.js'
 import { analyticsRoutes } from './routes/analytics.routes.js'
 import { fileRoutes } from './routes/files.routes.js'
 import { automationRoutes } from './routes/automations.js'
+import { chatRoutes } from './routes/chat.js'
 import multipart from '@fastify/multipart'
 import 'dotenv/config'
 import { completeIdempotencyFromPayload } from './services/idempotency.service.js'
@@ -296,6 +297,7 @@ app.register(auditLogRoutes, { prefix: '/api' })
 app.register(analyticsRoutes, { prefix: '/api' })
 app.register(fileRoutes, { prefix: '/api' })
 app.register(automationRoutes, { prefix: '/api' })
+app.register(chatRoutes, { prefix: '/api' })
 
 app.addHook('onSend', async (request, reply, payload) => {
   return completeIdempotencyFromPayload(request, reply, payload)

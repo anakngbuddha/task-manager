@@ -17,6 +17,7 @@ export function startNotificationCron() {
     logger.info('cron_notification_tick')
     try {
       await purgeExpiredIdempotencyKeys()
+      await purgExpiredChatMessages()
       // Audit log retention is intentionally infinite (audit finding #9).
       // Move to an archival table if storage pressure ever becomes an issue.
       await checkScheduleReminders()
@@ -26,6 +27,21 @@ export function startNotificationCron() {
     }
   })
   logger.info('cron_notification_started')
+}
+
+// ─── Chat message purge (30-day TTL) ─────────────────────────────
+
+async function purgExpiredChatMessages() {
+  try {
+    const result = await prisma.chatMessage.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    })
+    if (result.count > 0) {
+      logger.info({ count: result.count }, 'cron_chat_messages_purged')
+    }
+  } catch (err) {
+    logger.error({ err }, 'cron_chat_purge_error')
+  }
 }
 
 // ─── Schedule reminders ───────────────────────────────────

@@ -43,6 +43,7 @@ import { OfflineToastProvider } from './components/ui/OfflineToast'
 import PrivacyPage from './pages/PrivacyPage'
 import CookieBanner from './components/ui/CookieBanner'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import ChatWidget from './components/chat/ChatWidget'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { data: session, isPending } = useSession()
@@ -60,6 +61,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
       <OfflineBanner />
       {children}
       <GlobalTerminal />
+      <ChatWidget />
     </TerminalProvider>
   )
 }
