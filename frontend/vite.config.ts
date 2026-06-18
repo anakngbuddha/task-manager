@@ -32,6 +32,11 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//],
         cleanupOutdatedCaches: true,
+        // Take control of the page as soon as the new SW activates so a freshly
+        // deployed version is used immediately instead of after a manual
+        // storage clear.
+        skipWaiting: true,
+        clientsClaim: true,
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,webmanifest}'],
         runtimeCaching: [
@@ -43,6 +48,26 @@ export default defineConfig({
             // and risked leaking one user's data to another on a shared device.
             urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
             handler: 'NetworkOnly',
+          },
+          {
+            // App shell / navigations: always try the network first so a new
+            // deploy (with new hashed JS chunks) is picked up right away. The
+            // old cache-first behavior served a stale index.html that pointed at
+            // JS chunks deleted by the latest deploy, breaking the app (incl.
+            // login) until the user manually cleared site storage. Falls back to
+            // the cached shell only when offline.
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'app-shell',
+              networkTimeoutSeconds: 5,
+              expiration: {
+                maxEntries: 10,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
           },
           {
             urlPattern: ({ request }) => request.destination === 'image',

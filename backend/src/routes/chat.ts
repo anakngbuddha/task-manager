@@ -6,14 +6,25 @@ import { logger } from '../app.js'
 
 // ─── Gemini REST helper ────────────────────────────────────────────────────
 
-const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent'
+// Sentinel error so the route can return a clear 503 when the server operator
+// hasn't configured the API key (vs. a transient upstream failure → 502/500).
+class GeminiNotConfiguredError extends Error {}
+
+const GEMINI_MODEL = 'gemini-2.5-flash'
+
+// Allow overriding the Gemini host with a proxy (e.g. Cloudflare Worker) to
+// bypass region restrictions on the deployed backend. Mirrors the admin AI
+// features (see adminIssues.ts / admin.routes.ts). Falls back to Google direct.
+function getGeminiUrl(apiKey: string): string {
+  const base = process.env.GEMINI_PROXY_URL || 'https://generativelanguage.googleapis.com'
+  return `${base}/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
+}
 
 async function callGemini(systemPrompt: string, contents: Array<{ role: string; parts: Array<{ text: string }> }>): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
+  if (!apiKey) throw new GeminiNotConfiguredError('GEMINI_API_KEY not configured')
 
-  const res = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+  const res = await fetch(getGeminiUrl(apiKey), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -358,6 +369,11 @@ export async function chatRoutes(app: FastifyInstance) {
       })
     } catch (err) {
       logger.error({ err, userId }, 'chat_route_error')
+      if (err instanceof GeminiNotConfiguredError) {
+        return reply.status(503).send({
+          error: 'The AI assistant is not configured on the server. Please set GEMINI_API_KEY.',
+        })
+      }
       return reply.status(500).send({ error: 'Failed to get AI response. Please try again.' })
     }
   })
