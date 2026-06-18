@@ -366,6 +366,10 @@ export async function chatRoutes(app: FastifyInstance) {
   app.get('/chat/history', {
     preHandler: authenticate,
   }, async (req, reply) => {
+    reply.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    reply.header('Pragma', 'no-cache')
+    reply.header('Expires', '0')
+    
     const userId = req.authUser.id
     const { limit } = req.query as { limit?: string }
     const take = Math.min(parseInt(limit || '50', 10), 100)

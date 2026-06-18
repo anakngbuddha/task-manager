@@ -97,7 +97,7 @@ export default function ChatWidget() {
   useEffect(() => {
     if (isOpen && !hasLoadedHistory && session?.user) {
       setIsHistoryLoading(true)
-      api.get<{ messages: Message[] }>('/chat/history?limit=50')
+      api.get<{ messages: Message[] }>(`/chat/history?limit=50&_t=${Date.now()}`)
         .then(res => {
           setMessages(res.data.messages || [])
           setHasLoadedHistory(true)
