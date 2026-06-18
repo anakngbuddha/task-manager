@@ -21,6 +21,19 @@ interface UserItem {
   lastSeenAt: string
 }
 
+interface AdminUsersResponse {
+  users: UserItem[]
+  pagination: { page: number; limit: number; total: number; totalPages: number }
+}
+
+function extractUsers(data: unknown): UserItem[] {
+  if (Array.isArray(data)) return data
+  if (data && typeof data === 'object' && Array.isArray((data as AdminUsersResponse).users)) {
+    return (data as AdminUsersResponse).users
+  }
+  return []
+}
+
 const isBanned = (u: UserItem) =>
   u.accountStatus === 'banned' || !!u.bannedAt || u.role === 'banned'
 
@@ -36,8 +49,8 @@ export default function AdminUsersPage() {
 
   async function fetchUsers() {
     try {
-      const res = await api.get('/admin/users')
-      setUsers(res.data)
+      const res = await api.get<AdminUsersResponse>('/admin/users')
+      setUsers(extractUsers(res.data))
     } catch (err) {
       console.error('Failed to fetch users', err)
     } finally {

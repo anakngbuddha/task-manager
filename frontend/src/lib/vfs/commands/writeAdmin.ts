@@ -45,7 +45,11 @@ export function createAdminHandlers(
 
       try {
         const { data } = await api.get('/admin/users')
-        const users: any[] = data ?? []
+        const users: any[] = Array.isArray(data)
+          ? data
+          : Array.isArray((data as { users?: unknown })?.users)
+            ? (data as { users: any[] }).users
+            : []
         if (users.length === 0) {
           return { lines: [{ type: 'system', content: 'No users found.' }] }
         }
@@ -175,8 +179,13 @@ export function createAdminHandlers(
 
       try {
         // Find the user by email first
-        const { data: users } = await api.get('/admin/users')
-        const user = (users as any[]).find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
+        const { data } = await api.get('/admin/users')
+        const users: any[] = Array.isArray(data)
+          ? data
+          : Array.isArray((data as { users?: unknown })?.users)
+            ? (data as { users: any[] }).users
+            : []
+        const user = users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
         if (!user) {
           return { lines: [{ type: 'stderr', content: `ban: user not found: "${email}"` }] }
         }
@@ -210,8 +219,13 @@ export function createAdminHandlers(
       }
 
       try {
-        const { data: users } = await api.get('/admin/users')
-        const user = (users as any[]).find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
+        const { data } = await api.get('/admin/users')
+        const users: any[] = Array.isArray(data)
+          ? data
+          : Array.isArray((data as { users?: unknown })?.users)
+            ? (data as { users: any[] }).users
+            : []
+        const user = users.find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
         if (!user) {
           return { lines: [{ type: 'stderr', content: `unban: user not found: "${email}"` }] }
         }
