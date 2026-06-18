@@ -13,7 +13,7 @@ function getSocketURL(): string {
       return apiUrl.replace(/\/api\/?$/, '') || 'http://localhost:3000'
     }
   }
-  return 'http://localhost:3000'
+  return import.meta.env.PROD && typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
 }
 
 export const SOCKET_URL = getSocketURL()

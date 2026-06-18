@@ -22,7 +22,7 @@ export async function trackEvent(eventType: string, data: { pageUrl?: string; el
        } catch (e) {}
     }
 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api'
+    const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '/api' : 'http://localhost:3000/api')
     await fetch(`${API_URL}/analytics/event`, {
       method: 'POST',
       headers,
