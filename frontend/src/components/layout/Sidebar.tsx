@@ -294,7 +294,7 @@ export default function Sidebar() {
               <p className="px-2 pt-0.5 pb-1 text-[0.65rem] font-semibold uppercase tracking-wide text-sidebar-foreground/45">
                 Projects
               </p>
-              {projects.length === 0 ? (
+              {(!Array.isArray(projects) || projects.length === 0) ? (
                 <p className="py-1.5 text-xs text-sidebar-foreground/50">No projects yet</p>
               ) : (
                 projects.map((project: any) => (

@@ -158,7 +158,7 @@ export default function DashboardPage() {
         />
 
         <section className="px-6 py-7 sm:px-8">
-          {isLoadingDashboard || !dashboard ? (
+          {isLoadingDashboard || !dashboard || !Array.isArray(dashboard.projects) ? (
             <div className="rounded-xl border bg-card p-4 text-sm text-muted-foreground">
               Loading dashboard…
             </div>
