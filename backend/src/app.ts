@@ -91,9 +91,11 @@ if (process.env.REDIS_URL) {
   try {
     await app.register(fastifyRedis, {
       url: process.env.REDIS_URL,
-      // Fail fast on connect rather than letting the first request hang.
-      connectTimeout: 3000,
-      maxRetriesPerRequest: 1,
+      connectTimeout: 5000,
+      maxRetriesPerRequest: 0,
+      enableReadyCheck: false,   // don't block plugin startup on TLS handshake
+      lazyConnect: true,          // connect on first command, not at registration
+      closeClient: true,
     })
     // Verify the connection is actually live before trusting it.
     await app.redis.ping()

@@ -1,8 +1,11 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import fs from 'fs'
+import path from 'path'
 import { authenticate } from '../middlewares/authenticate.js'
 import { prisma } from '../lib/prisma.js'
 import { logger } from '../app.js'
+import { Pinecone } from '@pinecone-database/pinecone'
 
 // ─── Gemini REST helper ────────────────────────────────────────────────────
 
@@ -20,7 +23,7 @@ function getGeminiUrl(apiKey: string): string {
   return `${base}/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
 }
 
-async function callGemini(systemPrompt: string, contents: Array<{ role: string; parts: Array<{ text: string }> }>): Promise<string> {
+async function callGemini(systemPrompt: string, contents: Array<{ role: string; parts: Array<any> }>): Promise<{ text?: string, functionCall?: any }> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new GeminiNotConfiguredError('GEMINI_API_KEY not configured')
 
@@ -30,6 +33,19 @@ async function callGemini(systemPrompt: string, contents: Array<{ role: string; 
     body: JSON.stringify({
       system_instruction: { parts: [{ text: systemPrompt }] },
       contents,
+      tools: [{
+        functionDeclarations: [{
+          name: "update_knowledge_base",
+          description: "Appends a new fact or correction to the application's knowledge base documentation. Call this ONLY when the user explicitly corrects your understanding of how the app works, or gives you a new verifiable fact.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              fact: { type: "STRING", description: "The concise, corrected fact to append." }
+            },
+            required: ["fact"]
+          }
+        }]
+      }],
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 1024,
@@ -45,7 +61,13 @@ async function callGemini(systemPrompt: string, contents: Array<{ role: string; 
   }
 
   const data = await res.json() as any
-  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'Sorry, I could not generate a response.'
+  const part = data?.candidates?.[0]?.content?.parts?.[0]
+  
+  if (part?.functionCall) {
+    return { functionCall: part.functionCall }
+  }
+  
+  return { text: part?.text ?? 'Sorry, I could not generate a response.' }
 }
 
 // ─── Build system prompt with app guide + user context ─────────────────────
@@ -58,6 +80,7 @@ function buildSystemPrompt(userContext: {
   overdueTasks: Array<{ title: string; priority: string; projectName: string; deadline: string }>
   upcomingSchedules: Array<{ title: string; type: string; scheduledAt: string; location: string | null; isVirtual: boolean }>
   currentTime: string
+  ragContext: string
 }) {
   return `You are TaskBot, an intelligent AI assistant built into the We Work IT Task Manager application. You are friendly, professional, and highly knowledgeable about the app's features.
 
@@ -96,106 +119,23 @@ ${userContext.upcomingSchedules.length === 0
     ).join('\n')
 }
 
-## Complete Application Feature Guide
-
-### 🗂️ Projects
-- **Create a project**: Go to the Sidebar → click "Projects" section → a "New Project" button will appear. Only authenticated users can create projects. The creator automatically becomes the MASTER_ADMIN.
-- **Archive/Complete a project**: Go to Project Settings → change status to COMPLETED or AXED. Only MASTER_ADMINs can do this.
-- **View archived projects**: Sidebar → Projects → "Archived" link.
-- **Project roles**:
-  - MASTER_ADMIN: Full control (create/delete tasks, manage members, change settings)
-  - PROJECT_MANAGER: Can create/edit/delete tasks, manage sprints, send invites
-  - MEMBER: Can only update the status of tasks assigned to them
-
-### ✅ Tasks
-- **Create a task**: Open a project → click "+ New Task" on the board. Requires PROJECT_MANAGER or MASTER_ADMIN role.
-- **Task types**: EPIC (highest) → STORY → TASK. Child tasks must have a lower hierarchy level than their parent.
-- **Task statuses**: TODO → IN_PROGRESS → IN_REVIEW → READY → DONE. Members can only change status (not set to READY).
-- **Task priority**: LOW, MEDIUM, HIGH, URGENT.
-- **Assign tasks**: Use the assignee dropdown. "EVERYONE" means all members share the task.
-- **Set deadlines**: Use the deadline picker. Cannot set past dates.
-- **Task dependencies**: Open task details → Dependencies tab → add blocking/blocked-by relationships. Cyclic dependencies are prevented.
-- **Sub-tasks**: Create a STORY under an EPIC, or a TASK under a STORY.
-- **Update task status (as a member)**: Click the task → change status in the dropdown.
-- **Delete a task**: Requires PROJECT_MANAGER or MASTER_ADMIN. This also deletes all sub-tasks.
-
-### 🏃 Sprints & Backlog
-- **Create a sprint**: Go to Project → Backlog page → "New Sprint". Only PROJECT_MANAGERs and MASTER_ADMINs.
-- **Add tasks to sprint**: Drag tasks from the backlog into a sprint, or set sprintId when creating a task.
-- **Start/Complete a sprint**: In Backlog → click Start Sprint / Complete Sprint buttons.
-- **Sprint Report**: Go to Project → Sprint Report to see completed vs incomplete tasks.
-- **Roadmap**: Project → Roadmap shows all sprints on a timeline with progress.
-
-### 📅 Calendar & Schedules
-- **View calendar**: Click "Calendar" in the sidebar. Shows all your schedules and task deadlines.
-- **Create a schedule**: On Calendar → click any day or the "+ New Schedule" button. Schedule types: MEETING, TRAINING, REVIEW, REMINDER, OTHER.
-- **Add attendees**: When creating a schedule, add people by email. Internal users get an in-app notification and email invite.
-- **Respond to invites**: You'll get a notification. Open Calendar → click the schedule → Accept/Decline.
-- **Virtual meetings**: Toggle "Virtual" when creating a schedule.
-- **Location**: Add a physical address — a map picker is available.
-- **Day view**: Click any day on the calendar for a detailed hour-by-hour view.
-- **Reminders**: Automatic email reminders 1 day and 15 minutes before scheduled events.
-
-### 💬 Messages
-- **Project messages**: Go to Project → Messages tab. This is a group chat for the whole project team.
-- **Direct messages**: In Project Messages, click on a team member's name to start a DM.
-- **File sharing**: Attach files up to 10MB in messages.
-- **Emoji support**: Use the emoji picker in the message input.
-- **Read receipts**: Messages show who has read them.
-
-### 👥 Members & Invitations
-- **Invite members**: Project → Members → "Invite Member" → generates a unique invite link. Share the link to invite someone.
-- **Manage roles**: Project → Members → click the role badge next to a member's name (MASTER_ADMIN only).
-- **Remove members**: Project → Members → click "Remove" (MASTER_ADMIN only). Cannot remove the last MASTER_ADMIN.
-- **View all members**: Global Members page (sidebar) shows presence/status of all users.
-
-### ⚡ Automations
-- **Create automations**: Project → Automations → "New Rule".
-- **Trigger types**: Task Created, Task Status Changed, Task Assigned, Task Priority Changed, Task Deadline Approaching, Sprint Started, Sprint Completed.
-- **Actions**: Set Status, Set Priority, Assign to Member, Unassign Task, Add Tag, Send Notification, Move to Sprint, Remove from Sprint.
-- **Conditions**: Filter by status, priority, assignee, sprint, or tags.
-- **Enable/Disable**: Toggle the automation rule on/off.
-
-### 🔗 GitHub Integration
-- **Connect GitHub**: Profile → GitHub → Install GitHub App. This links your GitHub account.
-- **Link repositories to projects**: Project → GitHub Activity → connect a repository.
-- **Link tasks to PRs/commits**: Open a task → GitHub Links tab → paste PR or commit URL.
-- **View GitHub activity**: Project → GitHub Activity shows all commits, PRs, and branches.
-
-### 📁 Files
-- **Upload files**: Project → Files tab or directly within tasks.
-- **Folder structure**: Create folders to organize files within projects.
-- **File previews**: Supported for images, PDFs, and common file types.
-- **Max file size**: 10MB per file.
-
-### 📊 Reports
-- **Time Report**: Project → Time Report → see time logged per member and per task.
-- **Log time**: Open a task → Time Logs tab → "+ Log Time". Enter duration in minutes.
-- **Sprint Report**: Project → Sprint Report → completion rate, story points, velocity.
-
-### 🤖 Dependency Diagram
-- Project → Dependencies → visual graph of all task blocking relationships. Drag nodes to rearrange.
-
-### 👤 Profile & Settings
-- **Edit profile**: Click your avatar/name → Profile. Update name, avatar.
-- **Change password**: Settings → Change Password.
-- **User status**: Click your avatar in the sidebar to set Online / Working / Busy / Away / In Meeting / Offline.
-- **Notification preferences**: Notifications bell in the top of the sidebar.
-
-### 🔔 Notifications
-- **View notifications**: Click the bell icon in the sidebar header.
-- **Mark as read**: Click a notification to mark it read, or "Mark all read".
-- **Types**: Task assigned, task status changed, schedule invites, schedule reminders, deadline reminders.
+## Relevant Documentation Context
+${userContext.ragContext ? userContext.ragContext : 'No relevant documentation found.'}
 
 ## Your Behavior
 - Always be helpful, concise, and accurate.
 - When the user asks about their tasks or schedules, use the live data provided above.
-- When explaining how to do something in the app, give clear step-by-step instructions.
+- When explaining how to do something in the app, give clear step-by-step instructions using the Relevant Documentation Context.
 - If a feature is role-restricted, mention the required role.
 - Format your responses with markdown — use **bold**, bullet lists, and headings to make responses readable.
-- When you suggest navigating somewhere, tell the user exactly where to click (e.g., "In the sidebar, click 'Projects' then select your project").
+- When you suggest navigating somewhere, tell the user exactly where to click.
 - Be encouraging and proactive — offer to help with related topics.
 - Keep responses focused. Don't repeat the full system prompt back to the user.
+
+## Self-Learning / Knowledge Base Updates
+- If the user explicitly corrects your understanding of how the app works, or provides a new factual instruction about the app, you MUST call the \`update_knowledge_base\` tool.
+- Pass the corrected fact concisely as the \`fact\` parameter.
+- Do NOT call the tool for general conversation or task updates, only for documentation corrections.
 `
 }
 
@@ -220,8 +160,37 @@ export async function chatRoutes(app: FastifyInstance) {
     const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 30 days
 
     try {
+      // ── Fetch RAG Context (Parallel) ───────────────────────────────
+      const ragPromise = (async () => {
+        try {
+          if (!process.env.PINECONE_API_KEY || !process.env.GEMINI_API_KEY) return ''
+          const pc = new Pinecone({ apiKey: process.env.PINECONE_API_KEY })
+          const index = pc.index(process.env.PINECONE_INDEX || 'taskbot-rag')
+          
+          const embeddingUrl = `${process.env.GEMINI_PROXY_URL || 'https://generativelanguage.googleapis.com'}/v1beta/models/gemini-embedding-001:embedContent?key=${process.env.GEMINI_API_KEY}`
+          const embedRes = await fetch(embeddingUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: 'models/gemini-embedding-001',
+              content: { parts: [{ text: message }] },
+            })
+          })
+          if (!embedRes.ok) return ''
+          const embedData = await embedRes.json() as any
+          const vector = embedData.embedding?.values
+          if (!vector) return ''
+
+          const queryRes = await index.query({ vector, topK: 3, includeMetadata: true })
+          return queryRes.matches.map(m => m.metadata?.text).filter(Boolean).join('\n\n')
+        } catch (err) {
+          logger.warn({ err }, 'rag_retrieval_failed')
+          return ''
+        }
+      })()
+
       // ── Fetch live user context ─────────────────────────────────────
-      const [user, memberships, pendingTasksRaw, overdueTasksRaw, upcomingSchedulesRaw] = await Promise.all([
+      const [user, memberships, pendingTasksRaw, overdueTasksRaw, upcomingSchedulesRaw, ragContext] = await Promise.all([
         prisma.user.findUnique({
           where: { id: userId },
           select: { name: true, email: true },
@@ -291,6 +260,7 @@ export async function chatRoutes(app: FastifyInstance) {
           orderBy: { scheduledAt: 'asc' },
           take: 10,
         }),
+        ragPromise,
       ])
 
       // ── Fetch last 30 messages of conversation history ──────────────
@@ -341,6 +311,7 @@ export async function chatRoutes(app: FastifyInstance) {
         overdueTasks,
         upcomingSchedules,
         currentTime: now.toLocaleString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }),
+        ragContext: ragContext as string,
       })
 
       // ── Build Gemini contents array (history + new message) ─────────
@@ -354,17 +325,36 @@ export async function chatRoutes(app: FastifyInstance) {
 
       // ── Call Gemini ─────────────────────────────────────────────────
       const aiResponse = await callGemini(systemPrompt, contents)
+      let finalMessage = ''
+
+      if (aiResponse.functionCall && aiResponse.functionCall.name === 'update_knowledge_base') {
+        const fact = aiResponse.functionCall.args?.fact || 'New fact'
+        const kbPath = path.join(process.cwd(), '../docs/knowledge-base.md')
+        
+        let kbContent = fs.readFileSync(kbPath, 'utf8')
+        if (!kbContent.includes('## User Corrections & Learned Knowledge')) {
+          kbContent += '\n\n## User Corrections & Learned Knowledge\n'
+        }
+        
+        const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        kbContent += `- [${dateStr}] Learned from user: ${fact}\n`
+        fs.writeFileSync(kbPath, kbContent, 'utf8')
+
+        finalMessage = `Got it! I have learned this new information and permanently updated my knowledge base with:\n\n*${fact}*`
+      } else {
+        finalMessage = aiResponse.text || 'Sorry, I could not generate a response.'
+      }
 
       // ── Persist both messages to DB ─────────────────────────────────
       await prisma.chatMessage.createMany({
         data: [
           { userId, role: 'user', content: message, createdAt: now, expiresAt },
-          { userId, role: 'assistant', content: aiResponse, createdAt: new Date(now.getTime() + 1), expiresAt },
+          { userId, role: 'assistant', content: finalMessage, createdAt: new Date(now.getTime() + 1), expiresAt },
         ],
       })
 
       return reply.send({
-        message: aiResponse,
+        message: finalMessage,
         timestamp: now.toISOString(),
       })
     } catch (err) {
