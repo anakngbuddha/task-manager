@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "postinstall": "node node_modules/prisma/build/index.js generate",
-    "dev": "concurrently \"tsx watch src/index.ts\" \"npx ts-node scripts/watch-rag.ts\"",
+    "dev": "concurrently \"tsx watch src/index.ts\" \"npx tsx scripts/watch-rag.ts\"",
     "build": "tsc",
     "start": "node dist/index.js",
     "db:migrate:deploy": "prisma migrate deploy",

@@ -20,8 +20,8 @@ function runIngest() {
   console.log('\n🔄 Detected change in knowledge-base.md. Running RAG ingestion...')
   
   // Use ts-node (or whatever executes typescript) to run the script
-  // In our case we can run it exactly as they normally do: npx ts-node
-  const child = spawn('npx', ['ts-node', scriptPath], {
+  // Use tsx to run the script (handles ESM properly)
+  const child = spawn('npx', ['tsx', scriptPath], {
     stdio: 'inherit',
     shell: true,
   })

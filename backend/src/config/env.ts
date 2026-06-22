@@ -74,6 +74,11 @@ const envSchema = z.object({
   // ── Gemini AI ──────────────────────────────────────────────
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_PROXY_URL: z.string().url().optional(),
+
+  // ── AI Fallback Keys ────────────────────────────────────────────
+  FALLBACK_GEMINI_API_KEY: z.string().optional(),
+  GROQ_API_KEY: z.string().optional(),
+  CEREBRAS_API_KEY: z.string().optional(),
 })
 
 const parsed = envSchema.safeParse(process.env)

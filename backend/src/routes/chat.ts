@@ -23,6 +23,7 @@ const GEMINI_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-2.5-flash'
 let geminiRateLimitedUntil = 0
 
 function isGeminiRateLimited(): boolean {
+  if (process.env.FALLBACK_GEMINI_API_KEY || process.env.GROQ_API_KEY || process.env.CEREBRAS_API_KEY) return false
   return Date.now() < geminiRateLimitedUntil
 }
 
@@ -179,8 +180,7 @@ function getGeminiUrl(apiKey: string): string {
   return `${base}/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`
 }
 
-async function callGemini(systemPrompt: string, contents: Array<{ role: string; parts: Array<any> }>): Promise<{ text?: string, functionCall?: any }> {
-  const apiKey = process.env.GEMINI_API_KEY
+async function callGemini(apiKey: string | undefined, systemPrompt: string, contents: Array<{ role: string; parts: Array<any> }>): Promise<{ text?: string, functionCall?: any }> {
   if (!apiKey) throw new GeminiNotConfiguredError('GEMINI_API_KEY not configured')
 
   const res = await fetch(getGeminiUrl(apiKey), {
@@ -241,6 +241,131 @@ async function callGemini(systemPrompt: string, contents: Array<{ role: string; 
   }
 
   return { text: part?.text ?? 'Sorry, I could not generate a response.' }
+}
+
+async function callOpenAICompatible(
+  apiUrl: string,
+  model: string,
+  apiKey: string | undefined,
+  systemPrompt: string,
+  contents: Array<{ role: string; parts: Array<any> }>
+): Promise<{ text?: string, functionCall?: any }> {
+  if (!apiKey) throw new Error(`API key not configured for ${apiUrl}`)
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...contents.map(c => ({
+      role: c.role === 'model' ? 'assistant' : 'user',
+      content: c.parts.map(p => p.text).join('\n')
+    }))
+  ]
+
+  const res = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'update_knowledge_base',
+          description: 'Proposes a fact or correction for the knowledge base. Call ONLY when the user explicitly corrects your understanding of how the app works, or gives you a new verifiable fact. The server validates and decides what gets stored.',
+          parameters: {
+            type: 'object',
+            properties: {
+              fact: { type: 'string', description: 'The concise, corrected fact to propose.' },
+            },
+            required: ['fact'],
+          },
+        }
+      }],
+      temperature: 0.7,
+      max_tokens: 1024,
+      top_p: 0.95,
+    }),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    if (res.status === 429) {
+      throw new GeminiRateLimitError(`Rate limited on ${apiUrl}`)
+    }
+    logger.error({ status: res.status, body: errText }, `openai_compatible_api_error_on_${apiUrl}`)
+    throw new Error(`API error on ${apiUrl}: ${res.status}`)
+  }
+
+  const data = await res.json() as any
+  const choice = data?.choices?.[0]?.message
+
+  if (choice?.tool_calls?.length > 0) {
+    const call = choice.tool_calls[0].function
+    let args = {}
+    try {
+      args = JSON.parse(call.arguments)
+    } catch {}
+    return { functionCall: { name: call.name, args } }
+  }
+
+  return { text: choice?.content ?? 'Sorry, I could not generate a response.' }
+}
+
+async function callAiWithFallbacks(systemPrompt: string, contents: Array<{ role: string; parts: Array<any> }>): Promise<{ text?: string, functionCall?: any }> {
+  // 1. Primary Gemini
+  try {
+    return await callGemini(process.env.GEMINI_API_KEY, systemPrompt, contents)
+  } catch (err) {
+    if (err instanceof GeminiNotConfiguredError && !process.env.FALLBACK_GEMINI_API_KEY && !process.env.GROQ_API_KEY && !process.env.CEREBRAS_API_KEY) {
+      throw err // No keys at all
+    }
+    logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Primary Gemini failed, falling back to secondary Gemini')
+    
+    // 2. Fallback Gemini
+    try {
+      if (process.env.FALLBACK_GEMINI_API_KEY) {
+        return await callGemini(process.env.FALLBACK_GEMINI_API_KEY, systemPrompt, contents)
+      }
+      throw new Error('Fallback Gemini key not provided')
+    } catch (err2) {
+      logger.warn({ err: err2 instanceof Error ? err2.message : String(err2) }, 'Fallback Gemini failed, falling back to Groq')
+      
+      // 3. Groq
+      try {
+        if (process.env.GROQ_API_KEY) {
+          return await callOpenAICompatible(
+            'https://api.groq.com/openai/v1/chat/completions',
+            'llama-3.3-70b-versatile',
+            process.env.GROQ_API_KEY,
+            systemPrompt,
+            contents
+          )
+        }
+        throw new Error('Groq key not provided')
+      } catch (err3) {
+        logger.warn({ err: err3 instanceof Error ? err3.message : String(err3) }, 'Groq failed, falling back to Cerebras')
+        
+        // 4. Cerebras
+        try {
+          if (process.env.CEREBRAS_API_KEY) {
+            return await callOpenAICompatible(
+              'https://api.cerebras.ai/v1/chat/completions',
+              'llama3.1-8b',
+              process.env.CEREBRAS_API_KEY,
+              systemPrompt,
+              contents
+            )
+          }
+          throw new Error('Cerebras key not provided')
+        } catch (err4) {
+          logger.error({ err: err4 instanceof Error ? err4.message : String(err4) }, 'All AI providers failed')
+          throw err // Bubble up the first error so the degraded response logic triggers properly
+        }
+      }
+    }
+  }
 }
 
 function buildSystemPrompt(userContext: {
@@ -485,7 +610,7 @@ export async function chatRoutes(app: FastifyInstance) {
           buildRateLimitMessage(liveCtx)
       } else {
         try {
-          const aiResponse = await callGemini(systemPrompt, contents)
+          const aiResponse = await callAiWithFallbacks(systemPrompt, contents)
 
           if (aiResponse.functionCall && aiResponse.functionCall.name === 'update_knowledge_base') {
             const fact = aiResponse.functionCall.args?.fact || ''
