@@ -27,6 +27,7 @@ import { uploadRoutes } from './routes/upload.js';
 import { tagRoutes } from './routes/tags.js';
 import { adminRoutes } from './routes/admin.routes.js';
 import { adminIssuesRoutes } from './routes/adminIssues.js';
+import { adminKnowledgeRoutes } from './routes/adminKnowledge.js';
 import { adminUserAnalyticsRoutes } from './routes/adminUserAnalytics.js';
 import { auditLogRoutes } from './routes/auditLogs.routes.js';
 import { analyticsRoutes } from './routes/analytics.routes.js';
@@ -82,9 +83,11 @@ if (process.env.REDIS_URL) {
     try {
         await app.register(fastifyRedis, {
             url: process.env.REDIS_URL,
-            // Fail fast on connect rather than letting the first request hang.
-            connectTimeout: 3000,
-            maxRetriesPerRequest: 1,
+            connectTimeout: 5000,
+            maxRetriesPerRequest: 0,
+            enableReadyCheck: false, // don't block plugin startup on TLS handshake
+            lazyConnect: true, // connect on first command, not at registration
+            closeClient: true,
         });
         // Verify the connection is actually live before trusting it.
         await app.redis.ping();
@@ -266,6 +269,7 @@ app.register(uploadRoutes, { prefix: '/api' });
 app.register(tagRoutes, { prefix: '/api' });
 app.register(adminRoutes, { prefix: '/api' });
 app.register(adminIssuesRoutes, { prefix: '/api' });
+app.register(adminKnowledgeRoutes, { prefix: '/api' });
 app.register(adminUserAnalyticsRoutes, { prefix: '/api' });
 app.register(auditLogRoutes, { prefix: '/api' });
 app.register(analyticsRoutes, { prefix: '/api' });

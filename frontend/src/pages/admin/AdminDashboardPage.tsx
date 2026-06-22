@@ -112,6 +112,9 @@ export default function AdminDashboardPage() {
               <Link to="/admin/issues">Issues</Link>
             </Button>
             <Button asChild variant="secondary">
+              <Link to="/admin/knowledge">Chatbot Knowledge</Link>
+            </Button>
+            <Button asChild variant="secondary">
               <Link to="/admin/audit-logs">Audit Logs</Link>
             </Button>
             <Button variant="destructive" onClick={handleSignOut} title="Sign Out">

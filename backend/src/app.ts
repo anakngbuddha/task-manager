@@ -27,6 +27,7 @@ import { uploadRoutes } from './routes/upload.js'
 import { tagRoutes } from './routes/tags.js'
 import { adminRoutes } from './routes/admin.routes.js'
 import { adminIssuesRoutes } from './routes/adminIssues.js'
+import { adminKnowledgeRoutes } from './routes/adminKnowledge.js'
 import { adminUserAnalyticsRoutes } from './routes/adminUserAnalytics.js'
 import { auditLogRoutes } from './routes/auditLogs.routes.js'
 import { analyticsRoutes } from './routes/analytics.routes.js'
@@ -294,6 +295,7 @@ app.register(uploadRoutes, { prefix: '/api' })
 app.register(tagRoutes, { prefix: '/api' })
 app.register(adminRoutes, { prefix: '/api' })
 app.register(adminIssuesRoutes, { prefix: '/api' })
+app.register(adminKnowledgeRoutes, { prefix: '/api' })
 app.register(adminUserAnalyticsRoutes, { prefix: '/api' })
 app.register(auditLogRoutes, { prefix: '/api' })
 app.register(analyticsRoutes, { prefix: '/api' })

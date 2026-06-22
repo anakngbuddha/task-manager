@@ -9,7 +9,9 @@
     "dev": "concurrently \"tsx watch src/index.ts\" \"npx ts-node scripts/watch-rag.ts\"",
     "build": "tsc",
     "start": "node dist/index.js",
-    "db:migrate:deploy": "prisma migrate deploy"
+    "db:migrate:deploy": "prisma migrate deploy",
+    "rag:ingest": "tsx scripts/ingest-rag.ts",
+    "knowledge:migrate": "tsx scripts/migrate-knowledge-to-db.ts"
   },
   "keywords": [],
   "author": "",

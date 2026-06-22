@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import axios from 'axios'
 import { api } from '@/lib/api'
 import { useSession } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
@@ -144,9 +145,18 @@ export default function ChatWidget() {
         createdAt: res.data.timestamp,
       }
       setMessages(prev => [...prev, aiMsg])
-    } catch {
-      setError('Failed to get a response. Please try again.')
-      setMessages(prev => prev.filter(m => m.id !== tempId))
+    } catch (err) {
+      let message = 'Failed to get a response. Please try again.'
+      if (axios.isAxiosError(err)) {
+        const serverMessage = err.response?.data?.error
+        if (typeof serverMessage === 'string' && serverMessage.trim()) {
+          message = serverMessage
+        } else if (err.response?.status === 503) {
+          message = 'The AI assistant is temporarily unavailable. Please try again shortly.'
+        }
+      }
+      setError(message)
+      // Keep the user's message visible — only clear the error on the next send.
     } finally {
       setIsLoading(false)
     }

@@ -58,7 +58,3 @@
 ## 👤 Profile & Settings
 - **User status**: Click your avatar at the bottom left of the main sidebar. You can set Online / Working / Busy / Away / In Meeting / Offline.
 - **Notification preferences**: Click the **Notifications bell** in the top left of the main sidebar.
-
-
-## User Corrections & Learned Knowledge
-- [Jun 19, 2026] Learned from user: Mark is the creator of this website.

@@ -35,6 +35,7 @@ import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
 import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage'
 import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminIssuesPage from './pages/admin/AdminIssuesPage'
+import AdminKnowledgePage from './pages/admin/AdminKnowledgePage'
 import AdminUserDetailPage from './pages/admin/AdminUserDetailPage'
 import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
 import { OfflineBanner } from './components/ui/OfflineBanner'
@@ -258,6 +259,11 @@ export default function App() {
         <Route path="/admin/issues" element={
           <AdminRoute>
             <AdminIssuesPage />
+          </AdminRoute>
+        } />
+        <Route path="/admin/knowledge" element={
+          <AdminRoute>
+            <AdminKnowledgePage />
           </AdminRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
