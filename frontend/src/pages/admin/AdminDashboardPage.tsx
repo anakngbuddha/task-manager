@@ -117,6 +117,9 @@ export default function AdminDashboardPage() {
             <Button asChild variant="secondary">
               <Link to="/admin/audit-logs">Audit Logs</Link>
             </Button>
+            <Button asChild variant="secondary">
+              <Link to="/admin/documentation">Documentation</Link>
+            </Button>
             <Button variant="destructive" onClick={handleSignOut} title="Sign Out">
               <LogOut className="w-4 h-4 mr-2" />
               Logout

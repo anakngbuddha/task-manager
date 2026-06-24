@@ -29,15 +29,15 @@ export function startNotificationCron() {
   logger.info('cron_notification_started')
 }
 
-// ─── Chat message purge (30-day TTL) ─────────────────────────────
+// ─── Chat session purge (30-day TTL; messages cascade on delete) ─
 
 async function purgExpiredChatMessages() {
   try {
-    const result = await prisma.chatMessage.deleteMany({
+    const result = await prisma.chatSession.deleteMany({
       where: { expiresAt: { lt: new Date() } },
     })
     if (result.count > 0) {
-      logger.info({ count: result.count }, 'cron_chat_messages_purged')
+      logger.info({ count: result.count }, 'cron_chat_sessions_purged')
     }
   } catch (err) {
     logger.error({ err }, 'cron_chat_purge_error')

@@ -79,6 +79,15 @@ const envSchema = z.object({
   FALLBACK_GEMINI_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   CEREBRAS_API_KEY: z.string().optional(),
+
+  // ── Feature flags ──────────────────────────────────────────────
+  FEATURE_AI_TESTER: z
+    .string()
+    .optional()
+    .transform((v) => {
+      if (v === undefined || v === '') return true
+      return v === 'true' || v === '1'
+    }),
 })
 
 const parsed = envSchema.safeParse(process.env)

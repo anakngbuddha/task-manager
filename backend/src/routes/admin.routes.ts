@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma.js'
 import { auth } from '../lib/auth.js'
 import { UAParser } from 'ua-parser-js'
 import { logger } from '../app.js'
+import { isAiTesterFeatureEnabled } from '../config/features.js'
+import { auditLogService } from '../services/auditLog.service.js'
 
 export async function adminRoutes(app: FastifyInstance) {
   const getGeminiConfig = () => {
@@ -790,6 +792,98 @@ Respond ONLY as JSON in this exact structure:
     })
   })
 
+  const createAiTesterSchema = z.object({
+    name: z.string().trim().min(1, 'Name is required').max(100),
+    email: z.string().trim().email('A valid email is required'),
+    password: z.string().min(8, 'Password must be at least 8 characters').max(128),
+  })
+
+  // ─── POST /api/admin/users/ai-tester ─────────────────────────────
+  // Create a new account with the AI_TESTER role (max 5 total).
+  app.post('/admin/users/ai-tester', async (req, reply) => {
+    if (!isAiTesterFeatureEnabled()) {
+      return reply.status(403).send({ error: 'AI Tester feature is not enabled on this server.' })
+    }
+
+    const { name, email, password } = createAiTesterSchema.parse(req.body)
+    const adminUser = (req as any).adminUser as { id: string; email: string; name: string | null }
+
+    const existing = await prisma.user.findUnique({ where: { email } })
+    if (existing) {
+      return reply.status(409).send({
+        error: 'A user with this email already exists. Change their role in the table instead.',
+      })
+    }
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const testers = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM User WHERE role = 'ai_tester' FOR UPDATE
+        `
+        if (testers.length >= 5) {
+          throw new Error('AI_TESTER_CAP_REACHED')
+        }
+      })
+
+      await auth.api.signUpEmail({
+        headers: new Headers(),
+        body: { email, password, name },
+      })
+
+      const created = await prisma.user.update({
+        where: { email },
+        data: {
+          role: 'AI_TESTER',
+          emailVerified: true,
+          name,
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          status: true,
+          bannedAt: true,
+          createdAt: true,
+          lastSeenAt: true,
+        },
+      })
+
+      await auditLogService.record({
+        userId: adminUser.id,
+        userEmail: adminUser.email,
+        userName: adminUser.name,
+        action: 'CREATE',
+        entityType: 'SETTINGS',
+        entityId: created.id,
+        entityName: created.email,
+        changes: { role: { from: null, to: 'AI_TESTER' } },
+        metadata: { createdByAdmin: true, accountType: 'ai_tester' },
+        req,
+      })
+
+      return reply.status(201).send({
+        user: {
+          ...created,
+          accountStatus: created.bannedAt ? 'banned' : 'active',
+        },
+      })
+    } catch (err: any) {
+      if (err.message === 'AI_TESTER_CAP_REACHED') {
+        return reply.status(409).send({ error: 'The maximum number of AI Tester accounts (5) has been reached.' })
+      }
+      if (err?.name === 'APIError' || err?.statusCode === 422) {
+        const message =
+          typeof err?.body?.message === 'string'
+            ? err.body.message
+            : 'Could not create account. Check the email and password.'
+        return reply.status(400).send({ error: message })
+      }
+      logger.error({ err, email }, 'admin_create_ai_tester_failed')
+      return reply.status(500).send({ error: 'Failed to create AI Tester account. Please try again.' })
+    }
+  })
+
   const adminUpdateStatusSchema = z.object({
     status: z.enum(['active', 'banned']),
   })
@@ -820,27 +914,73 @@ Respond ONLY as JSON in this exact structure:
   })
 
   const adminUpdateRoleSchema = z.object({
-    role: z.enum(['ADMIN', 'USER']),
+    role: z.enum(['ADMIN', 'USER', 'AI_TESTER']),
   })
 
   // ─── PATCH /api/admin/users/:id/role ───────────────────────────
-  // Update a user's role (admin | user)
+  // Update a user's system role (USER | AI_TESTER | ADMIN)
   app.patch('/admin/users/:id/role', async (req, reply) => {
     const { id } = req.params as { id: string }
     const { role } = adminUpdateRoleSchema.parse(req.body)
+    const adminUser = (req as any).adminUser as { id: string; email: string; name: string | null }
 
     const target = await prisma.user.findUnique({ where: { id } })
     if (!target) return reply.status(404).send({ error: 'User not found' })
 
+    if (role === 'AI_TESTER' && !isAiTesterFeatureEnabled()) {
+      return reply.status(403).send({ error: 'AI Tester feature is not enabled on this server.' })
+    }
+
     // Prevent demoting oneself if they are the last active admin
-    if (target.role === 'ADMIN' && role === 'USER') {
+    if (target.role === 'ADMIN' && role !== 'ADMIN') {
       const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } })
       if (adminCount <= 1) {
         return reply.status(400).send({ error: 'Cannot demote the last active admin' })
       }
     }
 
-    await prisma.user.update({ where: { id }, data: { role: role as any } })
+    const previousRole = target.role
+
+    if (role === 'AI_TESTER') {
+      try {
+        await prisma.$transaction(async (tx) => {
+          const testers = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM User WHERE role = 'ai_tester' FOR UPDATE
+          `
+          const freshTarget = await tx.user.findUnique({ where: { id } })
+          if (!freshTarget) throw new Error('USER_NOT_FOUND')
+          if (testers.length >= 5 && freshTarget.role !== 'AI_TESTER') {
+            throw new Error('AI_TESTER_CAP_REACHED')
+          }
+          await tx.user.update({ where: { id }, data: { role } })
+        })
+      } catch (err: any) {
+        if (err.message === 'AI_TESTER_CAP_REACHED') {
+          return reply.status(409).send({ error: 'The maximum number of AI Tester accounts (5) has been reached.' })
+        }
+        if (err.message === 'USER_NOT_FOUND') {
+          return reply.status(404).send({ error: 'User not found' })
+        }
+        throw err
+      }
+    } else {
+      await prisma.user.update({ where: { id }, data: { role: role as any } })
+    }
+
+    if (previousRole !== role) {
+      await auditLogService.record({
+        userId: adminUser.id,
+        userEmail: adminUser.email,
+        userName: adminUser.name,
+        action: 'UPDATE',
+        entityType: 'SETTINGS',
+        entityId: id,
+        entityName: target.email,
+        changes: { role: { from: previousRole, to: role } },
+        metadata: { targetUserId: id, targetEmail: target.email },
+        req,
+      })
+    }
 
     return reply.send({ id, role })
   })

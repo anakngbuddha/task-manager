@@ -37,6 +37,7 @@ import AdminUsersPage from './pages/admin/AdminUsersPage'
 import AdminIssuesPage from './pages/admin/AdminIssuesPage'
 import AdminKnowledgePage from './pages/admin/AdminKnowledgePage'
 import AdminUserDetailPage from './pages/admin/AdminUserDetailPage'
+import AdminDocumentationPage from './pages/admin/AdminDocumentationPage'
 import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
 import { OfflineBanner } from './components/ui/OfflineBanner'
 import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
@@ -264,6 +265,11 @@ export default function App() {
         <Route path="/admin/knowledge" element={
           <AdminRoute>
             <AdminKnowledgePage />
+          </AdminRoute>
+        } />
+        <Route path="/admin/documentation" element={
+          <AdminRoute>
+            <AdminDocumentationPage />
           </AdminRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />

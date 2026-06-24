@@ -4,7 +4,7 @@ import { api } from '@/lib/api'
 import { useSession } from '@/lib/auth-client'
 import { cn } from '@/lib/utils'
 import ReactMarkdown from 'react-markdown'
-import { MessageSquare, X, Send, Bot, CheckSquare, Calendar, UserPlus, Zap, AlertCircle, Sparkles, Trash2 } from 'lucide-react'
+import { MessageSquare, X, Send, Bot, CheckSquare, Calendar, UserPlus, Zap, AlertCircle, Sparkles, Trash2, Clock, Plus } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -82,6 +82,9 @@ export default function ChatWidget() {
   const [hasLoadedHistory, setHasLoadedHistory] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [view, setView] = useState<'chat' | 'history'>('chat')
+  const [sessions, setSessions] = useState<Array<{ id: string, topic: string, updatedAt: string }>>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -94,24 +97,54 @@ export default function ChatWidget() {
     scrollToBottom()
   }, [messages, isLoading, scrollToBottom])
 
-  // Load chat history when first opened
-  useEffect(() => {
-    if (isOpen && !hasLoadedHistory && session?.user) {
-      setIsHistoryLoading(true)
-      api.get<{ messages: Message[] }>(`/chat/history?limit=50&_t=${Date.now()}`)
-        .then(res => {
-          setMessages(res.data.messages || [])
-          setHasLoadedHistory(true)
-        })
-        .catch(() => {
-          // Silent fail — just start with empty history
-          setHasLoadedHistory(true)
-        })
-        .finally(() => setIsHistoryLoading(false))
+  // Load chat sessions
+  const fetchSessions = useCallback(async () => {
+    setIsHistoryLoading(true)
+    try {
+      const res = await api.get<{ sessions: any[] }>('/chat/sessions')
+      setSessions(res.data.sessions || [])
+    } catch (err) {
+      console.error('Failed to load sessions', err)
+    } finally {
+      setIsHistoryLoading(false)
     }
-  }, [isOpen, hasLoadedHistory, session])
+  }, [])
+
+  const handleNewChat = useCallback(() => {
+    setCurrentSessionId(null)
+    setMessages([])
+    setError(null)
+    setView('chat')
+  }, [])
+
+  const loadSession = useCallback(async (id: string) => {
+    try {
+      setIsHistoryLoading(true)
+      const res = await api.get<{ messages: Message[] }>(`/chat/sessions/${id}/messages`)
+      setMessages(res.data.messages || [])
+      setCurrentSessionId(id)
+      setView('chat')
+    } catch (err) {
+      setError('Failed to load session')
+    } finally {
+      setIsHistoryLoading(false)
+    }
+  }, [])
+
+  const deleteSession = useCallback(async (id: string) => {
+    try {
+      await api.delete(`/chat/sessions/${id}`)
+      setSessions(prev => prev.filter(s => s.id !== id))
+      if (currentSessionId === id) {
+        handleNewChat()
+      }
+    } catch (err) {
+      setError('Failed to delete session')
+    }
+  }, [currentSessionId, handleNewChat])
 
   // Focus input when opened
+
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 100)
@@ -135,9 +168,13 @@ export default function ChatWidget() {
     setIsLoading(true)
 
     try {
-      const res = await api.post<{ message: string; timestamp: string }>('/chat', {
+      const res = await api.post<{ sessionId?: string; message: string; timestamp: string }>('/chat', {
         message: trimmed,
+        sessionId: currentSessionId || undefined,
       })
+      if (!currentSessionId && res.data.sessionId) {
+        setCurrentSessionId(res.data.sessionId)
+      }
       const aiMsg: Message = {
         id: `ai-${Date.now()}`,
         role: 'assistant',
@@ -160,7 +197,7 @@ export default function ChatWidget() {
     } finally {
       setIsLoading(false)
     }
-  }, [isLoading])
+  }, [isLoading, currentSessionId])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -173,6 +210,8 @@ export default function ChatWidget() {
     try {
       await api.delete('/chat/history')
       setMessages([])
+      setSessions([])
+      setCurrentSessionId(null)
       setShowClearConfirm(false)
     } catch {
       setError('Failed to clear history.')
@@ -200,7 +239,7 @@ export default function ChatWidget() {
           <MessageSquare size={24} />
         )}
         {/* Notification pulse for new users */}
-        {!isOpen && messages.length === 0 && !hasLoadedHistory && (
+        {!isOpen && messages.length === 0 && !currentSessionId && (
           <span className="chat-fab-pulse" />
         )}
       </button>
@@ -224,9 +263,32 @@ export default function ChatWidget() {
           <div className="chat-header-actions">
             <button
               className="chat-icon-btn"
+              onClick={handleNewChat}
+              title="New Chat"
+              aria-label="New Chat"
+            >
+              <Plus size={18} />
+            </button>
+            <button
+              className={cn("chat-icon-btn", view === 'history' && "text-indigo-600 bg-indigo-50")}
+              onClick={() => {
+                if (view === 'history') {
+                  setView('chat')
+                } else {
+                  setView('history')
+                  fetchSessions()
+                }
+              }}
+              title="History"
+              aria-label="History"
+            >
+              <Clock size={16} />
+            </button>
+            <button
+              className="chat-icon-btn"
               onClick={() => setShowClearConfirm(true)}
-              title="Clear chat history"
-              aria-label="Clear chat history"
+              title="Clear all history"
+              aria-label="Clear all history"
             >
               <Trash2 size={16} />
             </button>
@@ -250,9 +312,38 @@ export default function ChatWidget() {
           </div>
         )}
 
-        {/* Messages */}
+        {/* Messages / History */}
         <div className="chat-messages" id="chat-messages-list">
-          {isHistoryLoading ? (
+          {view === 'history' ? (
+            <div className="chat-history-view">
+              <h3 className="chat-history-title">Chat History</h3>
+              {isHistoryLoading ? (
+                <div className="chat-loading-history">
+                  <div className="chat-spinner" />
+                  <span>Loading history...</span>
+                </div>
+              ) : sessions.length === 0 ? (
+                <p className="chat-history-empty">No past sessions found.</p>
+              ) : (
+                <div className="chat-sessions-list">
+                  {sessions.map(s => (
+                    <div key={s.id} className={cn("chat-session-item", currentSessionId === s.id && "chat-session-item--active")}>
+                      <button className="chat-session-btn" onClick={() => loadSession(s.id)}>
+                        <MessageSquare size={14} className="chat-session-icon" />
+                        <div className="chat-session-info">
+                          <span className="chat-session-topic">{s.topic || 'New Chat'}</span>
+                          <span className="chat-session-date">{new Date(s.updatedAt).toLocaleDateString()}</span>
+                        </div>
+                      </button>
+                      <button className="chat-session-delete" onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} title="Delete session">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : isHistoryLoading ? (
             <div className="chat-loading-history">
               <div className="chat-spinner" />
               <span>Loading your chat history…</span>
@@ -312,7 +403,8 @@ export default function ChatWidget() {
         </div>
 
         {/* Input */}
-        <div className="chat-input-area">
+        {view === 'chat' && (
+          <div className="chat-input-area">
           <textarea
             ref={inputRef}
             id="chat-input"
@@ -336,7 +428,12 @@ export default function ChatWidget() {
             <Send size={16} />
           </button>
         </div>
-        <p className="chat-footer-hint">Enter to send • Shift+Enter for newline • History kept 30 days</p>
+        )}
+        {view === 'chat' && (
+          <p className="chat-footer-hint">
+            Enter to send • Shift+Enter for newline • Type <code>/knowledge-help</code> for knowledge commands
+          </p>
+        )}
       </div>
     </>
   )

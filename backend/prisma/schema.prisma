@@ -45,9 +45,12 @@ model User {
   createdAutomationRules   AutomationRule[]
   consent                  Json?
   userSessions             UserSession[]
+  chatSessions             ChatSession[]
   chatMessages             ChatMessage[]
   chatKnowledgeEntries     ChatKnowledgeEntry[]
   reviewedKnowledgeEntries ChatKnowledgeEntry[] @relation("KnowledgeReviewer")
+
+  @@index([role])
 }
 
 model Account {
@@ -425,6 +428,7 @@ enum UserStatus {
 enum SystemRole {
   USER   @map("user")
   ADMIN  @map("admin")
+  AI_TESTER @map("ai_tester")
   BANNED @map("banned")
 }
 
@@ -821,18 +825,34 @@ model AuditLog {
 // Persists per-user conversation with the AI assistant. Messages are
 // automatically purged after 30 days via the nightly cleanup cron job.
 
+model ChatSession {
+  id        String   @id @default(cuid())
+  userId    String
+  topic     String?  @db.VarChar(200)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime // updated on activity, used for bulk purge
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+
+  @@index([userId, updatedAt])
+  @@index([expiresAt])
+}
+
 model ChatMessage {
   id        String   @id @default(cuid())
   userId    String
+  sessionId String
   role      String   // "user" | "assistant"
   content   String   @db.Text
   createdAt DateTime @default(now())
-  expiresAt DateTime // = createdAt + 30 days; used for bulk purge
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
-  @@index([expiresAt])
+  @@index([sessionId, createdAt])
 }
 
 // ─── AI Chatbot Knowledge (personal + global) ───────────────────────────────
@@ -842,6 +862,7 @@ model ChatMessage {
 model ChatKnowledgeEntry {
   id              String          @id @default(cuid())
   userId          String
+  name            String?         @db.VarChar(64)
   fact            String          @db.Text
   scope           KnowledgeScope
   status          KnowledgeStatus @default(PENDING)
@@ -857,6 +878,7 @@ model ChatKnowledgeEntry {
   user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviewedBy User? @relation("KnowledgeReviewer", fields: [reviewedById], references: [id])
 
+  @@unique([name, userId])
   @@index([userId, scope, status])
   @@index([scope, status, createdAt])
 }

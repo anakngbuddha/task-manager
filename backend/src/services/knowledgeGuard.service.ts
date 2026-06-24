@@ -29,6 +29,50 @@ const SECURITY_PATTERNS = [
   /\bmaster_admin\b.*\b(everyone|all users|any user)\b/i,
 ]
 
+export const DIRECT_FACT_MAX_LEN = 500
+
+export class DirectFactValidationError extends Error {
+  code: string
+  constructor(code: string, message: string) {
+    super(message)
+    this.name = 'DirectFactValidationError'
+    this.code = code
+  }
+}
+
+/**
+ * Validates and sanitizes facts submitted via /add and /update slash commands.
+ * Applies the same injection/security gates as implicit learning, without LLM review.
+ */
+export function validateDirectFact(
+  fact: string,
+  opts: { isAdmin: boolean; sourceMessage?: string },
+): string {
+  const sanitized = sanitizeFact(fact, DIRECT_FACT_MAX_LEN)
+  if (!sanitized || sanitized.length < 3) {
+    throw new DirectFactValidationError('INVALID_FACT', 'The fact was empty or too short to save.')
+  }
+
+  if (
+    matchesAnyPattern(sanitized, INJECTION_PATTERNS) ||
+    matchesAnyPattern(opts.sourceMessage ?? '', INJECTION_PATTERNS)
+  ) {
+    throw new DirectFactValidationError(
+      'INVALID_FACT',
+      'This message looks like an instruction injection attempt and cannot be saved.',
+    )
+  }
+
+  if (!opts.isAdmin && matchesAnyPattern(sanitized, SECURITY_PATTERNS)) {
+    throw new DirectFactValidationError(
+      'INVALID_FACT',
+      'Permission or security-related facts can only be added by an administrator.',
+    )
+  }
+
+  return sanitized
+}
+
 export function sanitizeFact(input: unknown, maxLen = 500): string {
   const s = typeof input === 'string' ? input : String(input ?? '')
   const cleaned = s.replace(/`+/g, "'").replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, ' ').trim()
@@ -134,6 +178,7 @@ export async function validateKnowledgeUpdate(params: {
   sourceMessage: string
   userId: string
   isAdmin: boolean
+  userRole?: string
 }): Promise<KnowledgeValidationResult> {
   const sanitizedFact = sanitizeFact(params.fact)
   if (!sanitizedFact || sanitizedFact.length < 3) {
@@ -187,6 +232,8 @@ export async function validateKnowledgeUpdate(params: {
     canonicalDocs,
   )
 
+  let finalResult: KnowledgeValidationResult | null = null
+
   if (llmResult) {
     if (llmResult.verdict === 'reject') return llmResult
     if (llmResult.category === 'injection' || llmResult.category === 'security') {
@@ -198,26 +245,35 @@ export async function validateKnowledgeUpdate(params: {
         }
       }
     }
-    return llmResult
-  }
-
-  // Fallback when Gemini validator unavailable
-  const looksGlobal = /\b(app|website|site|feature|everyone|all users|creator)\b/i.test(sanitizedFact)
-  if (looksGlobal) {
-    return {
-      verdict: 'queue_global',
-      category: 'app_feature',
-      reason: 'Submitted for admin review.',
-      sanitizedFact,
+    finalResult = llmResult
+  } else {
+    // Fallback when Gemini validator unavailable
+    const looksGlobal = /\b(app|website|site|feature|everyone|all users|creator)\b/i.test(sanitizedFact)
+    if (looksGlobal) {
+      finalResult = {
+        verdict: 'queue_global',
+        category: 'app_feature',
+        reason: 'Submitted for admin review.',
+        sanitizedFact,
+      }
+    } else {
+      finalResult = {
+        verdict: 'approve_user',
+        category: 'personal',
+        reason: 'Saved as personal memory.',
+        sanitizedFact,
+      }
     }
   }
 
-  return {
-    verdict: 'approve_user',
-    category: 'personal',
-    reason: 'Saved as personal memory.',
-    sanitizedFact,
+  // Downgrade queue_global for normal users
+  if (finalResult.verdict === 'queue_global' && !params.isAdmin && params.userRole !== 'AI_TESTER') {
+    finalResult.verdict = 'approve_user'
+    finalResult.category = 'personal'
+    finalResult.reason = 'Saved as personal memory.'
   }
+
+  return finalResult
 }
 
 export function buildConfirmationMessage(

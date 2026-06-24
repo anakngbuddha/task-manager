@@ -1,12 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { api } from '../../lib/api'
 import { Link, useNavigate } from 'react-router-dom'
-import { LogOut, ArrowLeft, Shield, User, Ban, CheckCircle } from 'lucide-react'
+import { LogOut, ArrowLeft, Ban, CheckCircle, UserPlus } from 'lucide-react'
 import { signOut } from '../../lib/auth-client'
 import { useOnlineUsers } from '../../hooks/useOnlineUsers'
 import { cn } from '../../lib/utils'
+import axios from 'axios'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog'
+import { Input } from '../../components/ui/input'
+import { Label } from '../../components/ui/label'
 
 interface UserItem {
   id: string
@@ -14,7 +25,6 @@ interface UserItem {
   email: string
   role: string
   status: string
-  // 'active' | 'banned' — derived server-side from `bannedAt`.
   accountStatus?: 'active' | 'banned'
   bannedAt?: string | null
   createdAt: string
@@ -26,6 +36,11 @@ interface AdminUsersResponse {
   pagination: { page: number; limit: number; total: number; totalPages: number }
 }
 
+type SystemRole = 'USER' | 'AI_TESTER' | 'ADMIN'
+
+const AI_TESTER_CAP = 5
+const SYSTEM_ROLES: SystemRole[] = ['USER', 'AI_TESTER', 'ADMIN']
+
 function extractUsers(data: unknown): UserItem[] {
   if (Array.isArray(data)) return data
   if (data && typeof data === 'object' && Array.isArray((data as AdminUsersResponse).users)) {
@@ -34,14 +49,39 @@ function extractUsers(data: unknown): UserItem[] {
   return []
 }
 
+function normalizeRole(role: string): SystemRole {
+  const upper = String(role ?? 'USER').toUpperCase()
+  if (upper === 'ADMIN' || upper === 'AI_TESTER') return upper
+  return 'USER'
+}
+
+function roleLabel(role: SystemRole): string {
+  if (role === 'AI_TESTER') return 'AI Tester'
+  if (role === 'ADMIN') return 'Admin'
+  return 'User'
+}
+
 const isBanned = (u: UserItem) =>
-  u.accountStatus === 'banned' || !!u.bannedAt || u.role === 'banned'
+  u.accountStatus === 'banned' ||
+  !!u.bannedAt ||
+  String(u.role).toLowerCase() === 'banned'
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [roleError, setRoleError] = useState<string | null>(null)
+  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null)
+  const [addTesterOpen, setAddTesterOpen] = useState(false)
+  const [testerName, setTesterName] = useState('')
+  const [testerEmail, setTesterEmail] = useState('')
+  const [testerPassword, setTesterPassword] = useState('')
+  const [addTesterError, setAddTesterError] = useState<string | null>(null)
+  const [isCreatingTester, setIsCreatingTester] = useState(false)
   const navigate = useNavigate()
   const onlineUsers = useOnlineUsers(true)
+
+  const aiTesterCount = users.filter((u) => normalizeRole(u.role) === 'AI_TESTER').length
+  const canAddAiTester = aiTesterCount < AI_TESTER_CAP
 
   useEffect(() => {
     fetchUsers()
@@ -64,7 +104,7 @@ export default function AdminUsersPage() {
   }
 
   const toggleBan = async (user: UserItem) => {
-    if (user.role === 'admin') {
+    if (normalizeRole(user.role) === 'ADMIN') {
       alert('Cannot ban an admin.')
       return
     }
@@ -77,17 +117,73 @@ export default function AdminUsersPage() {
     }
   }
 
-  const toggleRole = async (user: UserItem) => {
+  const changeRole = async (user: UserItem, newRole: SystemRole) => {
+    const currentRole = normalizeRole(user.role)
+    if (currentRole === newRole) return
+
     if (isBanned(user)) {
-      alert('Cannot change role of a banned user.')
+      setRoleError('Cannot change role of a banned user.')
       return
     }
-    const newRole = user.role === 'admin' ? 'user' : 'admin'
+
+    setRoleError(null)
+    setUpdatingUserId(user.id)
+
     try {
       await api.patch(`/admin/users/${user.id}/role`, { role: newRole })
-      fetchUsers()
+      await fetchUsers()
     } catch (err) {
-      console.error('Failed to toggle role', err)
+      let message = 'Failed to update role.'
+      if (axios.isAxiosError(err)) {
+        const serverMessage = err.response?.data?.error
+        if (typeof serverMessage === 'string' && serverMessage.trim()) {
+          message = serverMessage
+        }
+      }
+      setRoleError(message)
+    } finally {
+      setUpdatingUserId(null)
+    }
+  }
+
+  const resetAddTesterForm = () => {
+    setTesterName('')
+    setTesterEmail('')
+    setTesterPassword('')
+    setAddTesterError(null)
+  }
+
+  const handleAddTesterOpenChange = (open: boolean) => {
+    setAddTesterOpen(open)
+    if (!open) resetAddTesterForm()
+  }
+
+  const createAiTester = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!canAddAiTester || isCreatingTester) return
+
+    setAddTesterError(null)
+    setIsCreatingTester(true)
+
+    try {
+      await api.post('/admin/users/ai-tester', {
+        name: testerName.trim(),
+        email: testerEmail.trim(),
+        password: testerPassword,
+      })
+      handleAddTesterOpenChange(false)
+      await fetchUsers()
+    } catch (err) {
+      let message = 'Failed to create AI Tester account.'
+      if (axios.isAxiosError(err)) {
+        const serverMessage = err.response?.data?.error
+        if (typeof serverMessage === 'string' && serverMessage.trim()) {
+          message = serverMessage
+        }
+      }
+      setAddTesterError(message)
+    } finally {
+      setIsCreatingTester(false)
     }
   }
 
@@ -97,7 +193,9 @@ export default function AdminUsersPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-3xl font-bold tracking-tight">User Management</h2>
-            <p className="text-muted-foreground text-sm mt-1">Manage platform users, roles, and access.</p>
+            <p className="text-muted-foreground text-sm mt-1">
+              Manage platform users, roles, and access. AI Testers: {aiTesterCount}/{AI_TESTER_CAP}.
+            </p>
           </div>
           <div className="flex items-center space-x-2">
             <Button asChild variant="outline">
@@ -113,9 +211,28 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
+        {roleError && (
+          <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {roleError}
+          </div>
+        )}
+
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle>All Users</CardTitle>
+            <Button
+              size="sm"
+              disabled={!canAddAiTester}
+              title={
+                canAddAiTester
+                  ? 'Create a new AI Tester account'
+                  : `AI Tester cap reached (${AI_TESTER_CAP}/${AI_TESTER_CAP})`
+              }
+              onClick={() => setAddTesterOpen(true)}
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              Add AI Tester
+            </Button>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -134,71 +251,89 @@ export default function AdminUsersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map(user => {
+                    {users.map((user) => {
                       const liveStatus = onlineUsers[user.id]?.status ?? 'OFFLINE'
                       const banned = isBanned(user)
+                      const role = normalizeRole(user.role)
                       return (
-                      <tr key={user.id} className="border-b border-border/50">
-                        <td className="px-4 py-3 font-medium">
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-2 text-left hover:text-primary"
-                            onClick={() => navigate(`/admin/users/${user.id}`)}
-                          >
+                        <tr key={user.id} className="border-b border-border/50">
+                          <td className="px-4 py-3 font-medium">
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-2 text-left hover:text-primary"
+                              onClick={() => navigate(`/admin/users/${user.id}`)}
+                            >
+                              <span
+                                className={cn(
+                                  'size-2.5 rounded-full',
+                                  liveStatus === 'ONLINE' && 'bg-emerald-500',
+                                  liveStatus === 'IDLE' && 'bg-amber-400',
+                                  liveStatus === 'OFFLINE' && 'bg-muted-foreground/40',
+                                )}
+                                title={liveStatus}
+                              />
+                              {user.name || '—'}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              className="text-left hover:text-primary"
+                              onClick={() => navigate(`/admin/users/${user.id}`)}
+                            >
+                              {user.email}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3">
+                            {!banned ? (
+                              <select
+                                className="rounded-md border border-border bg-background px-2 py-1 text-xs"
+                                value={role}
+                                disabled={updatingUserId === user.id}
+                                onChange={(e) => changeRole(user, e.target.value as SystemRole)}
+                              >
+                                {SYSTEM_ROLES.map((r) => (
+                                  <option key={r} value={r}>
+                                    {roleLabel(r)}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                                {roleLabel(role)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
                             <span
                               className={cn(
-                                'size-2.5 rounded-full',
-                                liveStatus === 'ONLINE' && 'bg-emerald-500',
-                                liveStatus === 'IDLE' && 'bg-amber-400',
-                                liveStatus === 'OFFLINE' && 'bg-muted-foreground/40',
+                                'inline-flex items-center',
+                                banned
+                                  ? 'text-destructive'
+                                  : liveStatus === 'ONLINE'
+                                    ? 'text-emerald-500'
+                                    : liveStatus === 'IDLE'
+                                      ? 'text-amber-500'
+                                      : 'text-muted-foreground',
                               )}
-                              title={liveStatus}
-                            />
-                            {user.name || '—'}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            className="text-left hover:text-primary"
-                            onClick={() => navigate(`/admin/users/${user.id}`)}
-                          >
-                            {user.email}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${user.role === 'admin' ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex items-center ${banned ? 'text-destructive' : liveStatus === 'ONLINE' ? 'text-emerald-500' : liveStatus === 'IDLE' ? 'text-amber-500' : 'text-muted-foreground'}`}>
-                            {banned ? 'BANNED' : liveStatus}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {new Date(user.lastSeenAt).toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-right space-x-2">
-                          {!banned && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => toggleRole(user)}
                             >
-                              {user.role === 'admin' ? <User className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
+                              {banned ? 'BANNED' : liveStatus}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">
+                            {new Date(user.lastSeenAt).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right space-x-2">
+                            <Button
+                              variant={banned ? 'secondary' : 'destructive'}
+                              size="sm"
+                              onClick={() => toggleBan(user)}
+                              disabled={role === 'ADMIN'}
+                            >
+                              {banned ? <CheckCircle className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
                             </Button>
-                          )}
-                          <Button
-                            variant={banned ? 'secondary' : 'destructive'}
-                            size="sm"
-                            onClick={() => toggleBan(user)}
-                            disabled={user.role === 'admin'}
-                          >
-                            {banned ? <CheckCircle className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
-                          </Button>
-                        </td>
-                      </tr>
+                          </td>
+                        </tr>
                       )
                     })}
                   </tbody>
@@ -207,6 +342,79 @@ export default function AdminUsersPage() {
             )}
           </CardContent>
         </Card>
+
+        <Dialog open={addTesterOpen} onOpenChange={handleAddTesterOpenChange}>
+          <DialogContent>
+            <form onSubmit={createAiTester}>
+              <DialogHeader>
+                <DialogTitle>Add AI Tester</DialogTitle>
+                <DialogDescription>
+                  Create a dedicated account with the AI Tester role. These users can submit global
+                  knowledge for admin review. Slots remaining: {AI_TESTER_CAP - aiTesterCount} of{' '}
+                  {AI_TESTER_CAP}.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tester-name">Name</Label>
+                  <Input
+                    id="tester-name"
+                    value={testerName}
+                    onChange={(e) => setTesterName(e.target.value)}
+                    placeholder="Jane Tester"
+                    required
+                    maxLength={100}
+                    disabled={isCreatingTester}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tester-email">Email</Label>
+                  <Input
+                    id="tester-email"
+                    type="email"
+                    value={testerEmail}
+                    onChange={(e) => setTesterEmail(e.target.value)}
+                    placeholder="tester@example.com"
+                    required
+                    disabled={isCreatingTester}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="tester-password">Temporary password</Label>
+                  <Input
+                    id="tester-password"
+                    type="password"
+                    value={testerPassword}
+                    onChange={(e) => setTesterPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    required
+                    minLength={8}
+                    maxLength={128}
+                    disabled={isCreatingTester}
+                  />
+                </div>
+                {addTesterError && (
+                  <p className="text-sm text-destructive">{addTesterError}</p>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleAddTesterOpenChange(false)}
+                  disabled={isCreatingTester}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isCreatingTester || !canAddAiTester}>
+                  {isCreatingTester ? 'Creating…' : 'Create AI Tester'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

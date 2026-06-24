@@ -28,6 +28,7 @@ import {
   PanelLeft,
   Settings,
   ShieldAlert,
+  BookOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isSystemAdmin } from '@/lib/roles'
@@ -363,6 +364,15 @@ export default function Sidebar() {
             >
               <ShieldAlert className="size-4 shrink-0" />
               {expanded && <span className="font-medium">Audit Logs</span>}
+            </Link>
+
+            <Link
+              to="/admin/documentation"
+              title={!expanded ? 'Admin Documentation' : undefined}
+              className={navItemCls(location.pathname === '/admin/documentation', expanded)}
+            >
+              <BookOpen className="size-4 shrink-0" />
+              {expanded && <span className="font-medium">Documentation</span>}
             </Link>
           </div>
         )}
