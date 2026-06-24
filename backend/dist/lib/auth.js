@@ -14,9 +14,10 @@ export const auth = betterAuth({
         additionalFields: {
             role: {
                 type: 'string',
-                defaultValue: 'user'
-            }
-        }
+                // Prisma SystemRole enum values are uppercase (USER, ADMIN, …).
+                defaultValue: 'USER',
+            },
+        },
     },
     emailAndPassword: {
         enabled: true,

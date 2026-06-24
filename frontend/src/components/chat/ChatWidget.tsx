@@ -79,7 +79,6 @@ export default function ChatWidget() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isHistoryLoading, setIsHistoryLoading] = useState(false)
-  const [hasLoadedHistory, setHasLoadedHistory] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)

@@ -843,13 +843,13 @@ model ChatSession {
 model ChatMessage {
   id        String   @id @default(cuid())
   userId    String
-  sessionId String
+  sessionId String?
   role      String   // "user" | "assistant"
   content   String   @db.Text
   createdAt DateTime @default(now())
 
   user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([sessionId, createdAt])
