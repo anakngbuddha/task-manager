@@ -105,7 +105,7 @@ async function callValidatorGemini(
   if (!apiKey) return null
 
   const base = process.env.GEMINI_PROXY_URL || 'https://generativelanguage.googleapis.com'
-  const url = `${base}/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`
+  const url = `${base}/v1beta/models/gemini-3.7-flash:generateContent?key=${apiKey}`
 
   const prompt = `You are a security validator for a task-manager chatbot knowledge base.
 Classify the proposed fact and decide whether it may be stored.

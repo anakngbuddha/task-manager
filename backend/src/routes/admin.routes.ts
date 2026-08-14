@@ -680,7 +680,7 @@ Respond ONLY as JSON in this exact structure:
 }`
 
       const response = await fetch(
-        `${gemini.baseUrl}/v1beta/models/gemini-2.5-flash:generateContent?key=${gemini.apiKey}`,
+        `${gemini.baseUrl}/v1beta/models/gemini-3.7-flash:generateContent?key=${gemini.apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
