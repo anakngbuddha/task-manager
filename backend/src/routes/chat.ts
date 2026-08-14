@@ -19,7 +19,7 @@ class GeminiRateLimitError extends Error {
   }
 }
 
-const GEMINI_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-3.7-flash'
+const GEMINI_MODEL = process.env.GEMINI_CHAT_MODEL || 'gemini-3.5-flash-lite'
 
 // Skip Gemini calls briefly after a 429 to avoid hammering the API.
 let geminiRateLimitedUntil = 0
