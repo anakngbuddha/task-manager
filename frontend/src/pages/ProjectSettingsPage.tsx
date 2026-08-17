@@ -8,6 +8,7 @@ import {
   useGithubRepos,
   useGithubAvailableRepos,
   useAssignProjectRepo,
+  useAssignAllProjectRepos,
   useUnassignProjectRepo,
 } from '@/hooks/useGithub'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ import {
   Globe,
   Unplug,
   Plus,
+  Layers,
 } from 'lucide-react'
 
 export default function ProjectSettingsPage() {
@@ -48,6 +50,7 @@ export default function ProjectSettingsPage() {
     !!installation,
   )
   const assignRepo = useAssignProjectRepo()
+  const assignAllRepos = useAssignAllProjectRepos()
   const unassignRepo = useUnassignProjectRepo()
   const updateProject = useUpdateProject()
   const [boardColumns, setBoardColumns] = useState<string[]>([])
@@ -87,8 +90,10 @@ export default function ProjectSettingsPage() {
   }, [project?.githubStatusMap])
 
   const isConnected = !!installation && !installError
-  const assignedRepoIds = new Set((reposData?.repositories ?? []).map((r) => String(r.id ?? '')))
-  const assignableRepos = (availableReposData?.repositories ?? []).filter((r) => !assignedRepoIds.has(r.id))
+  const assignedReposList = reposData?.repositories ?? []
+  const assignedRepoIds = new Set(assignedReposList.map((r) => String(r.id ?? '')))
+  const allAvailableRepos = availableReposData?.repositories ?? []
+  const assignableRepos = allAvailableRepos.filter((r) => !assignedRepoIds.has(r.id))
 
   return (
     <div className="flex h-dvh">
@@ -138,15 +143,12 @@ export default function ProjectSettingsPage() {
                   </div>
                 </div>
                 {isConnected ? (
-                  <Badge className="gap-1.5 bg-emerald-500/15 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/15">
+                  <Badge className="gap-1.5 bg-emerald-500/15 text-emerald-700 border-emerald-500/30">
                     <CheckCircle2 className="size-3" />
                     Connected
                   </Badge>
                 ) : (
-                  <Badge
-                    variant="secondary"
-                    className="gap-1.5 text-muted-foreground"
-                  >
+                  <Badge variant="outline" className="gap-1.5 text-muted-foreground">
                     <AlertCircle className="size-3" />
                     Not connected
                   </Badge>
@@ -178,7 +180,7 @@ export default function ProjectSettingsPage() {
                     {/* Assigned repos */}
                     <div>
                       <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        Assigned Repositories
+                        Assigned Repositories ({assignedReposList.length})
                       </p>
                       {reposLoading ? (
                         <div className="flex items-center gap-2 text-muted-foreground py-3">
@@ -187,9 +189,9 @@ export default function ProjectSettingsPage() {
                             Loading repositories…
                           </span>
                         </div>
-                      ) : reposData?.repositories?.length ? (
+                      ) : assignedReposList.length ? (
                         <div className="space-y-1.5">
-                          {reposData.repositories.map((repo) => (
+                          {assignedReposList.map((repo) => (
                             <div
                               key={repo.repoId}
                               className="flex items-center gap-3 rounded-lg border border-border/40 px-4 py-2.5 text-sm transition-colors hover:bg-muted/40 group"
@@ -221,47 +223,133 @@ export default function ProjectSettingsPage() {
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground italic">
-                          No repositories found for this installation.
+                          No repositories assigned to this project yet.
                         </p>
                       )}
                     </div>
 
-                    {canManageGithub && (
-                      <div className="border-t border-border/40 pt-4 space-y-2">
-                        <p className="text-xs font-medium text-muted-foreground">Assign repository</p>
-                        {availableReposLoading ? (
-                          <div className="flex items-center gap-2 text-muted-foreground">
-                            <Loader2 className="size-3.5 animate-spin" />
-                            <span className="text-xs">Loading available repos…</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
-                              <SelectTrigger className="h-9">
-                                <SelectValue placeholder="Choose repository…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {assignableRepos.map((r) => (
-                                  <SelectItem key={r.id} value={r.id}>
-                                    {r.fullName}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Button
-                              size="sm"
-                              className="h-9"
-                              disabled={!selectedRepoId || assignRepo.isPending}
-                              onClick={async () => {
-                                await assignRepo.mutateAsync({ projectId: projectId!, repoId: selectedRepoId })
-                                setSelectedRepoId('')
-                              }}
-                            >
-                              <Plus className="size-3.5 mr-1" />
-                              Assign
-                            </Button>
-                          </div>
+                    {/* All Available Installation Repositories */}
+                    <div className="border-t border-border/40 pt-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                            Connected GitHub Repositories ({allAvailableRepos.length})
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            All repositories available under Installation #{installation.installationId}
+                          </p>
+                        </div>
+                        {canManageGithub && assignableRepos.length > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1.5 text-xs"
+                            disabled={assignAllRepos.isPending}
+                            onClick={async () => {
+                              await assignAllRepos.mutateAsync({ projectId: projectId! })
+                            }}
+                          >
+                            {assignAllRepos.isPending ? (
+                              <Loader2 className="size-3 animate-spin" />
+                            ) : (
+                              <Layers className="size-3" />
+                            )}
+                            Assign All ({assignableRepos.length})
+                          </Button>
                         )}
+                      </div>
+
+                      {availableReposLoading ? (
+                        <div className="flex items-center gap-2 text-muted-foreground py-2">
+                          <Loader2 className="size-3.5 animate-spin" />
+                          <span className="text-xs">Fetching repositories from GitHub installation…</span>
+                        </div>
+                      ) : allAvailableRepos.length > 0 ? (
+                        <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                          {allAvailableRepos.map((repo) => {
+                            const isAssigned = assignedRepoIds.has(repo.id)
+                            return (
+                              <div
+                                key={repo.id}
+                                className="flex items-center gap-3 rounded-lg border border-border/30 bg-card px-3.5 py-2 text-sm transition-colors hover:bg-muted/30"
+                              >
+                                {repo.private ? (
+                                  <Lock className="size-3.5 text-amber-500 shrink-0" />
+                                ) : (
+                                  <Globe className="size-3.5 text-muted-foreground shrink-0" />
+                                )}
+                                <span className="flex-1 truncate font-medium text-xs sm:text-sm">
+                                  {repo.fullName}
+                                </span>
+                                <a
+                                  href={repo.htmlUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-muted-foreground hover:text-foreground"
+                                >
+                                  <ExternalLink className="size-3.5 shrink-0" />
+                                </a>
+
+                                {canManageGithub && (
+                                  isAssigned ? (
+                                    <Badge variant="secondary" className="text-[11px] h-6 px-2 font-normal">
+                                      Assigned
+                                    </Badge>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 text-xs px-2 gap-1 text-primary hover:text-primary"
+                                      disabled={assignRepo.isPending}
+                                      onClick={async () => {
+                                        await assignRepo.mutateAsync({ projectId: projectId!, repoId: repo.id })
+                                      }}
+                                    >
+                                      <Plus className="size-3" />
+                                      Assign
+                                    </Button>
+                                  )
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground italic">
+                          No repositories available in this GitHub App installation. Ensure the GitHub App has repository access permissions.
+                        </p>
+                      )}
+                    </div>
+
+                    {canManageGithub && assignableRepos.length > 0 && (
+                      <div className="border-t border-border/40 pt-4 space-y-2">
+                        <p className="text-xs font-medium text-muted-foreground">Quick Select Repository</p>
+                        <div className="flex items-center gap-2">
+                          <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
+                            <SelectTrigger className="h-9">
+                              <SelectValue placeholder="Choose repository…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {assignableRepos.map((r) => (
+                                <SelectItem key={r.id} value={r.id}>
+                                  {r.fullName}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            size="sm"
+                            className="h-9"
+                            disabled={!selectedRepoId || assignRepo.isPending}
+                            onClick={async () => {
+                              await assignRepo.mutateAsync({ projectId: projectId!, repoId: selectedRepoId })
+                              setSelectedRepoId('')
+                            }}
+                          >
+                            <Plus className="size-3.5 mr-1" />
+                            Assign
+                          </Button>
+                        </div>
                       </div>
                     )}
 

@@ -190,6 +190,49 @@ export async function githubRoutes(app) {
             htmlUrl: `https://github.com/${assigned.repo.repoFullName}`,
         });
     });
+    // ── Assign all available repos to a project (admin only) ─────────────
+    app.post('/projects/:projectId/github/repos/assign-all', { preHandler: authenticate }, async (req, reply) => {
+        const { projectId } = req.params;
+        try {
+            await requireProjectRole(projectId, req.authUser.id, ['MASTER_ADMIN', 'PROJECT_MANAGER']);
+        }
+        catch {
+            return reply.status(403).send({ error: 'Forbidden' });
+        }
+        const members = await prisma.projectMember.findMany({
+            where: { projectId },
+            select: { userId: true },
+        });
+        const memberIds = Array.from(new Set([...members.map((m) => m.userId), req.authUser.id]));
+        const installations = await prisma.githubInstallation.findMany({
+            where: { userId: { in: memberIds } },
+            select: { id: true },
+        });
+        const instIds = installations.map((i) => i.id);
+        const repos = await prisma.githubRepository.findMany({
+            where: { installationId: { in: instIds }, isActive: true },
+        });
+        const assigned = [];
+        for (const r of repos) {
+            const item = await prisma.projectRepository.upsert({
+                where: { projectId_repoId: { projectId, repoId: r.id } },
+                update: {},
+                create: { projectId, repoId: r.id },
+                include: { repo: true },
+            });
+            assigned.push(item);
+        }
+        return reply.status(200).send({
+            assignedCount: assigned.length,
+            repositories: assigned.map((a) => ({
+                id: a.repo.id,
+                repoId: a.repo.repoId,
+                fullName: a.repo.repoFullName,
+                private: true,
+                htmlUrl: `https://github.com/${a.repo.repoFullName}`,
+            })),
+        });
+    });
     // ── Remove project repo assignment (admin only) ──────────────────────
     app.delete('/projects/:projectId/github/repos/:repoId', { preHandler: authenticate }, async (req, reply) => {
         const { projectId, repoId } = req.params;

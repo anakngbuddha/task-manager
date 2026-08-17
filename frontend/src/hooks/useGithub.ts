@@ -147,6 +147,21 @@ export function useAssignProjectRepo() {
   })
 }
 
+export function useAssignAllProjectRepos() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ projectId }: { projectId: string }) => {
+      const { data } = await api.post(`/projects/${projectId}/github/repos/assign-all`)
+      return data
+    },
+    onSuccess: (_, { projectId }) => {
+      queryClient.invalidateQueries({ queryKey: ['github-repos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['github-available-repos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['github-installation'] })
+    },
+  })
+}
+
 export function useUnassignProjectRepo() {
   const queryClient = useQueryClient()
   return useMutation({

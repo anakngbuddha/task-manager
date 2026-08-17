@@ -315,7 +315,7 @@ export async function taskGithubLinkRoutes(app) {
             where: { projectId },
             select: { userId: true },
         });
-        const memberIds = members.map((m) => m.userId);
+        const memberIds = Array.from(new Set([...members.map((m) => m.userId), req.authUser.id]));
         const installations = await prisma.githubInstallation.findMany({
             where: { userId: { in: memberIds } },
             include: { repositories: true },
@@ -323,52 +323,116 @@ export async function taskGithubLinkRoutes(app) {
         if (installations.length === 0) {
             return reply.status(404).send({ error: 'No GitHub installation linked' });
         }
-        try {
-            const repoMap = new Map();
-            for (const installation of installations) {
+        const repoMap = new Map();
+        for (const installation of installations) {
+            let fetchedViaApi = false;
+            try {
                 const token = await getInstallationToken(installation.installationId);
-                const res = await fetch('https://api.github.com/installation/repositories?per_page=100', {
-                    headers: {
-                        Authorization: `token ${token}`,
-                        Accept: 'application/vnd.github+json',
-                        'X-GitHub-Api-Version': '2022-11-28',
-                    },
-                });
-                if (!res.ok)
-                    continue;
-                const data = (await res.json());
-                for (const r of data.repositories) {
-                    const dbRepo = await prisma.githubRepository.upsert({
-                        where: {
-                            installationId_repoFullName: {
-                                installationId: installation.id,
-                                repoFullName: r.full_name,
-                            },
-                        },
-                        update: { repoId: r.id },
-                        create: {
-                            installationId: installation.id,
-                            repoFullName: r.full_name,
-                            repoId: r.id,
-                            isActive: true,
+                let page = 1;
+                let hasMore = true;
+                while (hasMore && page <= 10) {
+                    const res = await fetch(`https://api.github.com/installation/repositories?per_page=100&page=${page}`, {
+                        headers: {
+                            Authorization: `token ${token}`,
+                            Accept: 'application/vnd.github+json',
+                            'X-GitHub-Api-Version': '2022-11-28',
                         },
                     });
-                    if (!repoMap.has(r.full_name)) {
-                        repoMap.set(r.full_name, {
-                            id: dbRepo.id,
-                            repoId: r.id,
-                            fullName: r.full_name,
-                            private: r.private,
-                            htmlUrl: r.html_url,
-                            defaultBranch: r.default_branch,
+                    if (!res.ok)
+                        break;
+                    const data = (await res.json());
+                    if (!data.repositories || data.repositories.length === 0) {
+                        hasMore = false;
+                        break;
+                    }
+                    fetchedViaApi = true;
+                    for (const r of data.repositories) {
+                        const dbRepo = await prisma.githubRepository.upsert({
+                            where: {
+                                installationId_repoFullName: {
+                                    installationId: installation.id,
+                                    repoFullName: r.full_name,
+                                },
+                            },
+                            update: { repoId: r.id, isActive: true },
+                            create: {
+                                installationId: installation.id,
+                                repoFullName: r.full_name,
+                                repoId: r.id,
+                                isActive: true,
+                            },
                         });
+                        if (!repoMap.has(r.full_name)) {
+                            repoMap.set(r.full_name, {
+                                id: dbRepo.id,
+                                repoId: r.id,
+                                fullName: r.full_name,
+                                private: r.private,
+                                htmlUrl: r.html_url,
+                                defaultBranch: r.default_branch || 'main',
+                            });
+                        }
+                    }
+                    if (data.repositories.length < 100) {
+                        hasMore = false;
+                    }
+                    else {
+                        page++;
                     }
                 }
             }
-            return { repositories: Array.from(repoMap.values()) };
+            catch (err) {
+                app.log.warn({ installationId: installation.installationId, err: err.message }, 'Failed to fetch repos via GitHub API, falling back to DB');
+            }
+            // Fallback: Check existing DB repositories if API fetch failed or returned partial
+            if (!fetchedViaApi) {
+                const dbRepos = await prisma.githubRepository.findMany({
+                    where: { installationId: installation.id, isActive: true },
+                });
+                for (const dbR of dbRepos) {
+                    if (!repoMap.has(dbR.repoFullName)) {
+                        repoMap.set(dbR.repoFullName, {
+                            id: dbR.id,
+                            repoId: dbR.repoId,
+                            fullName: dbR.repoFullName,
+                            private: true,
+                            htmlUrl: `https://github.com/${dbR.repoFullName}`,
+                            defaultBranch: 'main',
+                        });
+                    }
+                }
+                // Fallback: Check installation.repos JSON field
+                if (Array.isArray(installation.repos)) {
+                    for (const repoFullName of installation.repos) {
+                        if (typeof repoFullName === 'string' && !repoMap.has(repoFullName)) {
+                            const dbRepo = await prisma.githubRepository.upsert({
+                                where: {
+                                    installationId_repoFullName: {
+                                        installationId: installation.id,
+                                        repoFullName,
+                                    },
+                                },
+                                update: { isActive: true },
+                                create: {
+                                    installationId: installation.id,
+                                    repoFullName,
+                                    repoId: 0,
+                                    isActive: true,
+                                },
+                            });
+                            repoMap.set(repoFullName, {
+                                id: dbRepo.id,
+                                repoId: dbRepo.repoId || 0,
+                                fullName: repoFullName,
+                                private: true,
+                                htmlUrl: `https://github.com/${repoFullName}`,
+                                defaultBranch: 'main',
+                            });
+                        }
+                    }
+                }
+            }
         }
-        catch (err) {
-            return reply.status(502).send({ error: 'Failed to fetch repos', detail: err.message });
-        }
+        return { repositories: Array.from(repoMap.values()) };
     });
 }

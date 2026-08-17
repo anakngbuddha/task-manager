@@ -255,6 +255,29 @@ export default function ProfilePage() {
                     </span>
                   </div>
 
+                  {Array.isArray(installation.repos) && installation.repos.length > 0 && (
+                    <div className="rounded-lg border border-border/40 bg-muted/20 px-3.5 py-3 space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Installation Repositories ({installation.repos.length})
+                      </p>
+                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                        {(installation.repos as string[]).map((repoName) => (
+                          <div key={repoName} className="flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-muted/40">
+                            <span className="font-mono text-muted-foreground">{repoName}</span>
+                            <a
+                              href={`https://github.com/${repoName}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline text-[11px]"
+                            >
+                              View on GitHub ↗
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="pt-2 border-t border-border/40">
                     <Button
                       variant="destructive"
