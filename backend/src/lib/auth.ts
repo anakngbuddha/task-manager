@@ -8,7 +8,11 @@ import { logger } from '../app.js'
 
 const isProd = process.env.NODE_ENV === 'production' || process.env.BETTER_AUTH_URL?.startsWith('https://')
 
+const githubClientId = process.env.GITHUB_OAUTH_CLIENT_ID || process.env.GITHUB_CLIENT_ID
+const githubClientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET || process.env.GITHUB_CLIENT_SECRET
+
 export const auth = betterAuth({
+  baseURL: process.env.BETTER_AUTH_URL,
   database: prismaAdapter(prisma, {
     provider: 'mysql',
   }),
@@ -48,11 +52,11 @@ export const auth = betterAuth({
           },
         }
       : {}),
-    ...(process.env.GITHUB_OAUTH_CLIENT_ID && process.env.GITHUB_OAUTH_CLIENT_SECRET
+    ...(githubClientId && githubClientSecret
       ? {
           github: {
-            clientId: process.env.GITHUB_OAUTH_CLIENT_ID,
-            clientSecret: process.env.GITHUB_OAUTH_CLIENT_SECRET,
+            clientId: githubClientId,
+            clientSecret: githubClientSecret,
           },
         }
       : {}),
@@ -63,6 +67,7 @@ export const auth = betterAuth({
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'https://task-manager-mauve-eta.vercel.app',
+    ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
     ...(FRONTEND_URL ? [FRONTEND_URL] : []),
   ],
   advanced: {

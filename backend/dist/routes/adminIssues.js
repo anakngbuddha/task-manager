@@ -91,7 +91,7 @@ Respond ONLY with a JSON object in this exact shape (no markdown wrapping):
             // to bypass region restrictions on Render. Set GEMINI_PROXY_URL env var
             // to the proxy base URL (without trailing slash). Falls back to Google's direct endpoint.
             const geminiBase = process.env.GEMINI_PROXY_URL || 'https://generativelanguage.googleapis.com';
-            const response = await fetch(`${geminiBase}/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+            const response = await fetch(`${geminiBase}/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

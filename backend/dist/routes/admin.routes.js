@@ -578,7 +578,7 @@ Respond ONLY as JSON in this exact structure:
   "recommendations": ["Action 1", "Action 2", "Action 3"],
   "risks": ["Risk or caveat 1", "Risk or caveat 2"]
 }`;
-            const response = await fetch(`${gemini.baseUrl}/v1beta/models/gemini-2.5-flash:generateContent?key=${gemini.apiKey}`, {
+            const response = await fetch(`${gemini.baseUrl}/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${gemini.apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

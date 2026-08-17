@@ -20,9 +20,9 @@ Thumbs.db
 # Environment files (never commit secrets)
 .env
 .env.*
-!.env.example
-!backend/.env.example
-!frontend/.env.example
+.env.example
+backend/.env.example
+frontend/.env.example
 
 # Uploads (local dev only)
 backend/uploads/
