@@ -25,7 +25,14 @@ export async function githubRoutes(app: FastifyInstance) {
     async (req) => {
       app.log.info({ userId: req.authUser.id }, 'GitHub connect requested — registering expecting user')
       registerExpectingUser(req.authUser.id)
-      return { url: INSTALLATION_URL }
+      const existing = await prisma.githubInstallation.findFirst({
+        where: { userId: req.authUser.id },
+        orderBy: { createdAt: 'desc' },
+      })
+      const settingsUrl = existing
+        ? `https://github.com/settings/installations/${existing.installationId}`
+        : null
+      return { url: INSTALLATION_URL, settingsUrl }
     },
   )
 

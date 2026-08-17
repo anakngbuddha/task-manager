@@ -114,17 +114,5 @@
   "112": "eslint.config.js",
   "113": "{ signIn, signOut, signUp, useSession }",
   "114": "vite-env.d.ts",
-  "115": "vite.config.ts",
-  "116": "OfflineToast.tsx",
-  "117": "writeAutomations.ts",
-  "118": "useTaskGithubLinks.ts",
-  "119": "socket.ts",
-  "120": "RecentActivityWidget.tsx",
-  "121": "AuthLayout.tsx",
-  "122": "@fastify/static",
-  "123": "googleapis",
-  "124": "node-cron",
-  "125": "@types/jsonwebtoken",
-  "126": "ua-parser-js",
-  "127": "class-variance-authority"
+  "115": "vite.config.ts"
 }

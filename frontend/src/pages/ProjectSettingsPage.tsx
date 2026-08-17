@@ -315,9 +315,37 @@ export default function ProjectSettingsPage() {
                           })}
                         </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground italic">
-                          No repositories available in this GitHub App installation. Ensure the GitHub App has repository access permissions.
-                        </p>
+                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+                          <div className="flex items-start gap-2.5">
+                            <AlertCircle className="size-4 text-amber-600 dark:text-amber-500 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-xs font-semibold text-amber-900 dark:text-amber-300">
+                                GitHub App Needs Repository Access Permissions
+                              </p>
+                              <p className="text-xs text-amber-800/90 dark:text-amber-400 mt-1 leading-relaxed">
+                                As shown in your GitHub settings for Installation #{installation?.installationId}, this App currently has <strong>"No repositories / No permissions"</strong> configured on GitHub.
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-muted-foreground space-y-1 bg-background/50 rounded p-3 border border-border/40">
+                            <p className="font-medium text-foreground mb-1">To enable access to your 19 repositories:</p>
+                            <ol className="list-decimal list-inside space-y-1 leading-relaxed">
+                              <li>Go to <strong>GitHub Developer Settings → GitHub Apps → Permissions & events</strong>.</li>
+                              <li>Set <strong>Metadata</strong> (Read-only), <strong>Contents</strong> (Read-only), and <strong>Pull Requests</strong> (Read & Write).</li>
+                              <li>Open <a href={`https://github.com/settings/installations/${installation?.installationId}`} target="_blank" rel="noopener noreferrer" className="text-primary underline font-medium">Installation #{installation?.installationId}</a> and select <strong>All repositories</strong>.</li>
+                            </ol>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-1">
+                            <Button asChild size="sm" variant="outline" className="h-8 text-xs gap-1.5 bg-background">
+                              <a href={`https://github.com/settings/installations/${installation?.installationId}`} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="size-3" />
+                                Grant Repository Access on GitHub
+                              </a>
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </div>
 

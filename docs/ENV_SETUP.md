@@ -106,6 +106,18 @@ Display name for the sender. Example: Task Manager
 
 ## GitHub App (Optional -- for repo integration features)
 
+### Required GitHub App Permissions (Mandatory for Repository Access)
+When creating or editing your GitHub App on GitHub (`https://github.com/settings/apps`):
+1. Go to **Permissions & events** in the left sidebar.
+2. Under **Repository permissions**:
+   - **Contents**: Set to `Read-only` (or `Read & Write`)
+   - **Metadata**: Set to `Read-only` (Mandatory)
+   - **Pull requests**: Set to `Read & Write` (for PR syncing)
+3. Under **Subscribe to events**: Check `Pull request`, `Push`, and `Installation repositories`.
+4. Click **Save changes**.
+
+> **Note**: If **Repository permissions** are set to "No access", GitHub will **NOT** prompt the user to select repositories during installation. Setting at least `Contents: Read-only` makes GitHub automatically prompt the user for repository access (`All repositories` or `Only select repositories`) during the installation flow.
+
 ### GITHUB_APP_ID
 Numeric ID from your GitHub App settings page.
 

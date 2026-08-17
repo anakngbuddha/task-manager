@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "backend/src/lib/auth.ts": {
-    "mtime": 1786949209.6095006,
-    "ast_hash": "44b6f4212d7a4d4f9b930bbc5477c42d",
+    "mtime": 1785378829.0384293,
+    "ast_hash": "0d20078e11353f24ef651027276e1c2b",
     "semantic_hash": ""
   },
   "backend/src/lib/githubApp.ts": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "backend/src/routes/github.ts": {
-    "mtime": 1786951576.85335,
-    "ast_hash": "d8a7448adc19e5e26e113d7d0c5c05f6",
+    "mtime": 1785378828.9192452,
+    "ast_hash": "020a241ee03595c2db780e78a26c9a35",
     "semantic_hash": ""
   },
   "backend/src/routes/invites.ts": {
@@ -360,8 +360,8 @@
     "semantic_hash": ""
   },
   "backend/src/routes/taskGithubLinks.ts": {
-    "mtime": 1786951568.1893885,
-    "ast_hash": "8e88d354bf8dc5f36c43cc1221cc065e",
+    "mtime": 1785378828.7351458,
+    "ast_hash": "fe2f784a903efc6a1580364e2aff9a25",
     "semantic_hash": ""
   },
   "backend/src/routes/tasks.ts": {
@@ -875,8 +875,8 @@
     "semantic_hash": ""
   },
   "frontend/src/hooks/useGithub.ts": {
-    "mtime": 1786951584.561769,
-    "ast_hash": "559412d52748197055811dbd169f744b",
+    "mtime": 1785378828.9363644,
+    "ast_hash": "69cd6c236f5b07df67e7ab2b5b1b979e",
     "semantic_hash": ""
   },
   "frontend/src/hooks/useGithubActivity.ts": {
@@ -1245,8 +1245,8 @@
     "semantic_hash": ""
   },
   "frontend/src/pages/ProfilePage.tsx": {
-    "mtime": 1786951623.5446415,
-    "ast_hash": "d4032e0333aa3727f45f4e1ce272ce61",
+    "mtime": 1785378828.6386633,
+    "ast_hash": "12c17f5b0463289a17dadeefea11ae84",
     "semantic_hash": ""
   },
   "frontend/src/pages/ProjectActivityPage.tsx": {
@@ -1290,8 +1290,8 @@
     "semantic_hash": ""
   },
   "frontend/src/pages/ProjectSettingsPage.tsx": {
-    "mtime": 1786952181.8174522,
-    "ast_hash": "034b4a52c037a650e79943180014391a",
+    "mtime": 1785378828.8701627,
+    "ast_hash": "81db315ce37c0e01ef6cd7086899e520",
     "semantic_hash": ""
   },
   "frontend/src/pages/ProjectSprintReportPage.tsx": {
@@ -1472,11 +1472,6 @@
   "frontend/src/assets/vite.svg": {
     "mtime": 1774922044.198219,
     "ast_hash": "6d5180a782d64c8cf51ba01c2a2184d8",
-    "semantic_hash": ""
-  },
-  "backend/scripts/test-repo-display.ts": {
-    "mtime": 1786951711.2520843,
-    "ast_hash": "7c8281f962d2bb63c5e165746b65fced",
     "semantic_hash": ""
   }
 }
