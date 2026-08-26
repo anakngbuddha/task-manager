@@ -1,141 +1,240 @@
-# QA Report — task-manager
+# QA Report: task-manager
 
-**Date:** 2026-08-26
-**Scope:** Full-project static analysis (backend, frontend, root scripts) using the graphify knowledge graph (`graphify-out/`) plus manual code review and compiler checks.
-**Constraint honored:** No source files were modified. This report is the only artifact created.
+**Reviewed:** 2026-08-26  
+**Repository revision:** `e248841e992cc5112914b8409cf1ccbef0b3773e`  
+**Method:** Independent static review of the source and the previous QA report. No source files were changed. Build and runtime claims are separated from what can be proven by static inspection.
 
----
+## Verdict
 
-## Executive Summary
+The previous report found several real defects, but it was not fully accurate. It assigned critical severity to a low-impact analytics bug, incorrectly connected 403 responses and backend cold starts to a 401 redirect, claimed graceful shutdown was absent even though it exists, and declared the repository free of secrets despite committed debug output and user uploads. It also missed the broadest security issue: private GitHub repository data is shared across project members without owner consent.
 
-| Area | Critical | High | Medium | Low |
-|---|---|---|---|---|
-| Backend | 0 | 6 | 9 | 6 |
-| Frontend | 2 | 3 | 6 | 4 |
-| **Total** | **2** | **9** | **15** | **10** |
+## Corrected top risks
 
-**Compiler status:** `tsc --noEmit` passes cleanly on both `backend/` and `frontend/` (the historical errors recorded in `frontend/errors.txt` appear fixed). The bugs below are logic, security, concurrency, and design defects that the compiler cannot catch.
+### C1. Cross-user private GitHub repository exposure
 
----
+**Severity: Critical**  
+**Locations:** `backend/src/routes/github.ts`, `backend/src/routes/taskGithubLinks.ts`
 
-## 🔴 Critical
+The GitHub integration treats every project member's installation as project-wide inventory:
 
-### C1. Broken regex in analytics DOM path builder — `frontend/src/hooks/useAnalytics.ts` (~L100)
-The class-splitting regex is double-escaped inside a regex literal, so it splits on the literal string `\s+` instead of whitespace:
-```js
-nodeName += '.' + el.className.trim().split(/\\s+/).join('.');
+- `GET /projects/:projectId/github/available-repos` is available to any project member and enumerates repositories from every member's GitHub installation.
+- `findInstallationTokenForRepo()` tries tokens from every project member when resolving a task GitHub link. A member can therefore cause the backend to fetch private PR, issue, branch, or commit metadata through another member's installation.
+- `POST /projects/:projectId/github/repos` accepts a global `githubRepository.id` without checking that the repository belongs to the caller or to an installation explicitly shared with the project.
+- `assign-all` attaches every active repository from every member installation to the project.
+
+**Fix:** Make installations private to their owner by default. Add an explicit per-repository sharing grant, require owner consent, scope every repository lookup to an authorized installation, and stop cycling through other members' tokens.
+
+### H1. Single-use invite redemption is not atomic
+
+**Severity: High**  
+**Location:** `backend/src/routes/invites.ts`
+
+The code reads `acceptedById`, adds a member, then updates the invite in separate operations. Concurrent requests can redeem the same invite for different users.
+
+**Fix:** Use a transaction and atomically claim the invite with `updateMany({ where: { id, acceptedById: null, expiresAt: { gt: now } } })`. Only add the member if the claim count is one.
+
+### H2. Task assignees are not validated against project membership
+
+**Severity: High**  
+**Location:** `backend/src/routes/tasks.ts`
+
+Create and update accept arbitrary `assigneeId` values. This permits cross-project assignments or generic foreign-key failures.
+
+**Fix:** Before create/update, require a matching `projectMember` row for the target project, except for the explicit unassigned/everyone case.
+
+### H3. File and folder parent scope is not validated
+
+**Severity: High**  
+**Location:** `backend/src/routes/files.routes.ts`
+
+Both folder creation and upload accept `parentId` after checking only the supplied `projectId`. The parent can belong to another project or another user's personal tree.
+
+**Fix:** Load the parent and require the same `projectId`, or the same personal owner when `projectId` is null. Also require `type === 'FOLDER'`.
+
+### H4. SVG uploads can become stored script content
+
+**Severity: High**  
+**Locations:** `backend/src/routes/upload.ts`, `backend/src/routes/files.routes.ts`
+
+`image/svg+xml` is allowed and uploaded without application-level sanitization. Direct navigation to a hosted SVG can execute active content depending on delivery headers and transformation settings.
+
+**Fix:** Reject SVG, or sanitize it with a proven SVG sanitizer and force safe download/content-disposition headers. Do not trust the client MIME header alone.
+
+### H5. Webhook deduplication records success before processing succeeds
+
+**Severity: High**  
+**Location:** `backend/src/routes/webhooks/github.ts`
+
+The delivery ID is inserted before event handling. Handler errors are caught and a 200 is returned, so GitHub will not retry and a retry would be rejected as a duplicate anyway.
+
+**Fix:** Track processing state, mark complete only after success, and return 5xx on processing failure.
+
+### H6. Sensitive and generated artifacts are committed
+
+**Severity: High**  
+**Locations:** `backend/email-debug.log`, `backend/uploads/`, `backend/node_modules/`, `backend/dist/`, `backend/tsconfig.tsbuildinfo`
+
+The repository tracks files that the root `.gitignore` already excludes. `email-debug.log` exposes a Brevo-style API key prefix, sender email, and a local workstation path. `backend/uploads/` contains committed PNG, XLSX, and DOCX files that may contain user data.
+
+**Fix:** Rotate the affected email credential as a precaution, inspect the uploaded documents for personal data, remove generated/user files from Git history, then run `git rm -r --cached` for ignored artifacts. Add secret scanning in CI.
+
+## Confirmed functional and reliability defects
+
+### M1. Chat APIs return the oldest messages instead of the newest
+
+**Severity: Medium**  
+**Location:** `backend/src/routes/chat.ts`
+
+This affects both AI context and the session message API:
+
+- AI context uses `orderBy: { createdAt: 'asc' }, take: 30`.
+- `GET /chat/sessions/:sessionId/messages` uses ascending order with `take`, so a limited request returns the oldest records.
+
+Fetch descending, take the limit, then reverse before returning or sending to the model.
+
+### M2. Blanket 401 navigation is disruptive, but the previous explanation was wrong
+
+**Severity: Medium**  
+**Location:** `frontend/src/lib/api.ts`
+
+Any actual 401 outside auth pages hard-navigates to `/login`, which can discard UI state. However, a backend cold start normally produces latency/network/5xx behavior, not 401, and `/admin/users/online` returns 403 for non-admins, which does not trigger this redirect.
+
+Use a centralized session-expired flow, exclude public/background requests, preserve the intended route, and avoid hard navigation unless the session is confirmed invalid.
+
+### M3. Non-admin clients call an admin-only presence endpoint
+
+**Severity: Medium**  
+**Locations:** `frontend/src/hooks/useOnlineUsers.ts`, `backend/src/routes/adminUserAnalytics.ts`
+
+The hook calls `/admin/users/online` whenever enabled. Non-admins receive 403 and log noise. This does not trigger the 401 redirect described by the old report.
+
+Gate the query by role or expose a separate project-scoped presence endpoint.
+
+### M4. GitHub installation polling is unbounded while enabled
+
+**Severity: Medium**  
+**Location:** `frontend/src/hooks/useGithub.ts`
+
+The pending-installation query polls every 2.5 seconds without a maximum duration. Both backend discovery endpoints currently return 204, making the polling especially wasteful.
+
+Stop polling after a bounded timeout or after the callback state is resolved.
+
+### M5. Route-level providers remount during navigation
+
+**Severity: Medium**  
+**Location:** `frontend/src/App.tsx`
+
+Every protected route creates a new `TerminalProvider`, `GlobalTerminal`, and `ChatWidget`. Navigation between protected routes tears down and recreates that state.
+
+Use one protected layout route and mount shared providers once around an `<Outlet />`.
+
+### M6. Offline task creation generates two different optimistic IDs
+
+**Severity: Medium**  
+**Location:** `frontend/src/hooks/useTasks.ts`
+
+`offline_${Date.now()}` is generated once for the cached row and again for the returned result. Follow-up operations can target an ID that is not in cache.
+
+Generate one ID before queueing and reuse it everywhere.
+
+### M7. Project message polling duplicates the socket layer
+
+**Severity: Medium**  
+**Location:** `frontend/src/hooks/useProjectMessages.ts`
+
+The full message list refetches every three seconds despite Socket.IO delivery, increasing load and causing optimistic-row churn.
+
+Use socket events for updates and a slower reconciliation fetch only on reconnect/focus.
+
+### M8. Auth Redis rate-limit TTL setup is not atomic
+
+**Severity: Medium**  
+**Location:** `backend/src/app.ts`
+
+`INCR` and `EXPIRE` are separate calls. A crash between them can leave a counter without expiry.
+
+Use a Lua script, transaction, or `SET`/`INCR` pattern that creates the counter and TTL atomically.
+
+### M9. Socket project events are not authorized per emission
+
+**Severity: Medium**  
+**Location:** `backend/src/index.ts`
+
+`join:project` checks membership, but `typing:project` and `read:project` emit to any caller-supplied room without confirming membership. Socket.IO can emit to a room even when the sender never joined it.
+
+Validate project membership for each event or track authorized joined projects in socket state.
+
+## Lower-severity corrections and findings
+
+### L1. Analytics DOM-path regex is broken, but it is not critical
+
+**Severity: Low**  
+**Location:** `frontend/src/hooks/useAnalytics.ts`
+
+`split(/\\s+/)` matches a literal backslash plus `s` characters, not whitespace. Multi-class selectors are malformed. The previous report's code diagnosis was right, but critical severity was not credible because the impact is analytics quality, not availability, integrity, or security.
+
+Use `split(/\s+/)`.
+
+### L2. Project page state synchronization is fragile
+
+**Severity: Low**  
+**Location:** `frontend/src/pages/ProjectPage.tsx`
+
+One effect maps `tasks` with `timeReport` but depends only on `tasks`; a second effect patches totals later. Combine this into one memo/effect with complete dependencies.
+
+### L3. Arbitrary user presence lookup
+
+**Severity: Low**  
+**Location:** `backend/src/routes/users.ts`
+
+Any authenticated user can request status and `lastSeenAt` for arbitrary user IDs. Scope lookups to shared projects or remove `lastSeenAt` for unrelated users.
+
+### L4. Global analytics listeners are installed at module scope
+
+**Severity: Low**  
+**Location:** `frontend/src/hooks/useAnalytics.ts`
+
+Click, error, rejection, and load listeners are added when the module evaluates and are never removed. Hot reload or unusual multi-bundle loading can duplicate telemetry. Register them inside an effect with cleanup.
+
+## Corrections to the previous report
+
+- **Original C1:** Real regex bug, wrong severity. Reclassified from Critical to Low.
+- **Original C2:** The hard redirect exists, but the stated cold-start and 403 causes are incorrect. Reclassified from Critical to Medium.
+- **Original M12:** The non-admin request is real, but it returns 403 and therefore does not activate the 401 handler.
+- **Original L3:** False. `backend/src/index.ts` already handles SIGTERM and SIGINT, closes Socket.IO/Fastify, disconnects Prisma, and has a hard timeout.
+- **Original "Secrets: verified clean":** False. Committed debug output contains credential material and personal/operational data, and committed uploads require review.
+- **Original compiler claim:** Not reproducible from repository automation. There is no root CI workflow and neither package defines a test script. A local compiler pass may have occurred, but the repository does not prove or continuously enforce it.
+- **Original M13 terminal XSS:** The sink is real (`dangerouslySetInnerHTML`), but exploitability was not demonstrated in the previous report. Keep it as a hardening item until every table producer is traced and escaped.
+
+## QA process gaps missed by the previous report
+
+- No automated test framework or `test` script in either package.
+- No repository CI workflow for build, type-check, lint, tests, dependency review, or secret scanning.
+- Frontend has an ESLint config but no lint script in `package.json`.
+- Generated dependencies and build outputs are tracked, making searches noisy and reviews unreliable.
+- The report claimed compiler success without recording commands, versions, output, or a commit-scoped CI run.
+
+## Remediation order
+
+1. Isolate GitHub installations and repositories by owner; add explicit sharing grants.
+2. Remove sensitive/generated files from Git and history, inspect committed uploads, and rotate the exposed email credential.
+3. Fix invite atomicity, file parent authorization, assignee membership validation, and webhook retry semantics.
+4. Reject or sanitize SVG uploads.
+5. Fix chat ordering, socket event authorization, and 401 handling.
+6. Add CI with clean installs, type-check, lint, unit/integration tests, dependency audit, and secret scanning.
+
+## Validation required after fixes
+
+Run from a clean checkout with no committed `node_modules` or `dist` directories:
+
+```bash
+cd backend
+npm ci
+npm run build
+
+cd ../frontend
+npm ci
+npm run build
 ```
-Every multi-class element becomes one giant class token (`a.btn.primary`), producing wrong analytics selectors for all tracked events.
 
-### C2. 401 handler causes redirect loops / spurious logouts — `frontend/src/lib/api.ts` (L60–73)
-Any 401 from any endpoint — including transient backend cold-starts or background polls like `useNotifications` (every 10s) and non-admin calls to `/admin/users/online` — hard-navigates via `window.location.href = '/login'`, destroying app state with no retry/backoff.
-
----
-
-## 🟠 High Severity
-
-### Backend
-
-**H1. Race condition in invite acceptance (double-spend of single-use invites)** — `backend/src/routes/invites.ts` (~L108–135)
-The `acceptedById` check and update are two separate non-atomic operations; two concurrent redemptions both pass the check and both users become members. Fix: conditional `updateMany({ where: { id, acceptedById: null } })`.
-
-**H2. Task assignee never validated against project membership** — `backend/src/routes/tasks.ts` (~L296–305)
-`assigneeId` accepts any string; assigning an arbitrary or cross-project user either succeeds (integrity violation) or surfaces as a generic 500 FK error.
-
-**H3. Chat history sends the *oldest* 30 messages, not the latest** — `backend/src/routes/chat.ts` (~L1180)
-```ts
-orderBy: { createdAt: 'asc' }, take: 30
-```
-Once a session exceeds 30 messages, the model loses all recent context. Should be `desc` + reverse.
-
-**H4. IDOR on file upload `parentId`** — `backend/src/routes/files.routes.ts` (~L99–120, also ~L60–75)
-`projectId` membership is checked but `parentId` from form fields is used verbatim — a member of project A can nest files under another project's/user's folders.
-
-**H5. `assign-all` exposes all members' private GitHub repos to the project** — `backend/src/routes/github.ts` (~L361–405)
-A PROJECT_MANAGER can attach every repo installed by *any* member (including unrelated personal repos) to their project.
-
-**H6. SVG uploads allowed — stored XSS vector** — `backend/src/routes/upload.ts` (L9–21), `files.routes.ts` (L22–33)
-`image/svg+xml` is in `ALLOWED_MIME_TYPES`; SVGs can contain `<script>` and are served back unsanitized.
-
-### Frontend
-
-**H7. Unbounded 2.5s polling** — `frontend/src/hooks/useGithub.ts` (L76–96)
-`useGithubPendingInstallation` polls 2 endpoints every 2.5 s indefinitely while enabled — no timeout/max attempts (~48 req/min per open tab).
-
-**H8. Fragile cascading state sync in ProjectPage** — `frontend/src/pages/ProjectPage.tsx` (L87–107)
-First effect maps tasks→hours using `timeReport?.byTask` but its deps are only `[tasks]`; patched by a second effect keyed on `taskTimeTotalHours`. Works only by accident of effect ordering; risk of double `setLocalTasks`.
-
-**H9. Terminal/chat providers remount on every navigation** — `frontend/src/App.tsx` (L66–100)
-Each route wraps its own `<ProtectedRoute>` → fresh `<TerminalProvider>`, `<GlobalTerminal>`, `<ChatWidget>` per route element, tearing down sockets and context state on every navigation.
-
----
-
-## 🟡 Medium Severity
-
-### Backend
-
-| # | Finding | Location |
-|---|---|---|
-| M1 | Redis rate-limit counter can become a permanent block: if crash between `INCR` and `EXPIRE`, key lives forever | `src/app.ts` ~L216–232 |
-| M2 | Transient GitHub API failure permanently deletes installation records (destructive action on network blip) | `src/routes/github.ts` ~L141–160 |
-| M3 | Webhook handler errors swallowed → returns 200, dedup already recorded → GitHub never retries lost events | `src/routes/webhooks/github.ts` ~L60–76 |
-| M4 | Unbounded parent-chain walk in cycle detection — hangs event loop on corrupt/cyclic data (no visited-set/depth cap) | `src/routes/tasks.ts` ~L110–125, ~L682–697 |
-| M5 | Webhook actor attribution fabricates activity authors: unassigned PR events credited to a random first-found member | `src/routes/webhooks/github.ts` ~L320–330, ~L610 |
-| M6 | Open CORS proxy (`*` origin/headers) blindly relays Gemini traffic incl. API keys — free relay abuse + key probing | `gemini-proxy-worker.js` L17–40 |
-| M7 | Inconsistent CORS headers between `injectCORSHeaders` and `@fastify/cors` registration (`set-cookie`, unconditional credentials) | `src/app.ts` ~L57–64 vs ~L140–152 |
-| M8 | `toNodeHandler(auth)` constructed inside the `onRequest` hook on every auth request instead of hoisted once | `src/app.ts` ~L268 |
-| M9 | Timezone inconsistency: admin "today" metrics & hourly histograms use server-local time vs UTC epoch math elsewhere | `src/routes/admin.routes.ts` ~L191, `adminUserAnalytics.ts` ~L90 |
-
-### Frontend
-
-| # | Finding | Location |
-|---|---|---|
-| M10 | Offline optimistic ID mismatch: `offline_${Date.now()}` generated twice — returned ID never matches cached optimistic row, follow-up updates silently no-op | `src/hooks/useTasks.ts` L30–45 |
-| M11 | Socket double-connect churn in dev/StrictMode; brief event loss during session-load race | `src/hooks/useTaskSync.ts` L20–26, L90–95 |
-| M12 | Non-admins unconditionally call admin-only `/admin/users/online` → 403 every mount → triggers C2 full-page redirect | `src/hooks/useOnlineUsers.ts` L17–55 |
-| M13 | `dangerouslySetInnerHTML` with `html: true` in table lines — injection point if any caller builds table HTML from unsanitized server data | `src/components/terminal/TerminalOutput.tsx` L76, L90 |
-| M14 | 3-second full-message-list polling despite existing Socket.IO layer — wasteful, flickers optimistic messages | `src/hooks/useProjectMessages.ts` L12 |
-| M15 | Idempotency-Key stamped on *every* POST including login/analytics — retried auth/analytics POSTs could be deduped unexpectedly | `src/lib/api.ts` L14–23 |
-
----
-
-## 🟢 Low Severity
-
-### Backend
-
-| # | Finding | Location |
-|---|---|---|
-| L1 | 403-vs-404 distinction leaks task-ID existence to non-members (full row fetched before role check); same pattern in tags/timeLogs/comments | `src/routes/tasks.ts` ~L146–163 |
-| L2 | Typo'd/dead code: `purgExpiredChatMessages`; unused `popPendingInstallation` after polling endpoint disabled | `src/jobs/notificationCron.ts` ~L37, `src/lib/pendingInstallations.ts` |
-| L3 | No SIGTERM/SIGINT graceful shutdown — Prisma, Redis, Socket.IO, cron jobs cut hard on deploy | `src/index.ts` |
-| L4 | Check-then-update race in `markRead` (benign; should be one conditional `updateMany`) | `src/services/notification.service.ts` ~L39–48 |
-| L5 | Mention regex `@(\w+)` matches email substrings ("@gmail") — spurious mention notifications | `src/routes/projectMessages.ts` ~L100–115 |
-| L6 | `FEATURE_AI_TESTER` defaults to **enabled** when unset — knowledge slash-command endpoints on by default in prod | `src/config/env.ts` ~L96–101 |
-
-### Frontend
-
-| # | Finding | Location |
-|---|---|---|
-| L7 | No Vite dev proxy — dev relies on direct CORS-with-credentials to `localhost:3000` | `vite.config.ts` |
-| L8 | Index-keyed editable rows in rule builder — deleting/reordering conditions binds input state to wrong row | `RuleBuilderModal.tsx` L270 (also CalendarPage L716, AdminAnalyticsPage L860) |
-| L9 | Dead Bearer-token path reading `localStorage['__better-auth-session']` — better-auth uses cookies; fragile/dead code | `src/hooks/useAnalytics.ts` L15–27 |
-| L10 | Cache purge before render not awaited — stale chunk could execute before deletion completes | `src/main.tsx` L9–25 |
-
----
-
-## ✅ Verified Clean
-
-- **TypeScript:** `tsc --noEmit` passes on both backend and frontend; all errors previously logged in `frontend/errors.txt` are resolved.
-- **SQL injection:** none found — the sole `$queryRaw` usage (`activity.service.ts` ~L60) uses tagged-template parameters correctly.
-- **Secrets:** no hardcoded secrets found (seed credentials removed per audit note in `seed-admin.ts`).
-- **Socket cleanup:** `useTaskSync` and `usePresenceTracking` correctly remove listeners/disconnect.
-- **PWA config:** workbox `NetworkOnly` for `/api/` with correct denylist.
-- **XSS in terminal JSON output:** strings properly escaped.
-
-## Top Remediation Priorities
-
-1. **C2 / M12** — Replace blanket 401 redirect with per-request handling + retry/backoff; gate admin calls by role.
-2. **H1** — Make invite acceptance atomic (`updateMany` with `acceptedById: null` guard).
-3. **H3** — Flip chat history ordering to fetch latest messages.
-4. **H4/H5/H6** — Validate `parentId` ownership, scope repo assignment, sanitize/deny SVG uploads.
-5. **M2/M3** — Stop deleting installations on transient errors; return 500 on webhook processing failure so GitHub retries.
+Then add and run automated tests covering concurrent invite redemption, cross-project assignees/parents, private GitHub installation isolation, webhook retry behavior, latest-message pagination, SVG rejection, and unauthorized socket events.
