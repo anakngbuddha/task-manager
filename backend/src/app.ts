@@ -44,7 +44,7 @@ if (!process.env.JWT_SECRET) {
 
 const app = Fastify({ logger: true, trustProxy: true })
 
-await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024 } })
+await app.register(multipart, { limits: { fileSize: 50 * 1024 * 1024 } })
 
 // Basic latency logging for slow requests (helps diagnose cold starts / DB slowness in production).
 app.addHook('onRequest', async (req, reply) => {

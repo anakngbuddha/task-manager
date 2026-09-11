@@ -178,13 +178,13 @@ const start = async () => {
         }
       })
 
-      socket.on('typing:project', (payload: { projectId: string; userId?: string; name: string; isTyping: boolean }) => {
+      socket.on('typing:project', (payload: { projectId: string; userId?: string; name: string; isTyping: boolean; action?: 'typing' | 'sending_image' | 'sending_video' | 'sending_file' | string }) => {
         if (!payload?.projectId) return
         // Re-emit with the verified userId so peers can't be impersonated.
         socket.to(payload.projectId).emit('typing:project', { ...payload, userId })
       })
 
-      socket.on('typing:direct', (payload: { projectId: string; userId?: string; otherUserId: string; name: string; isTyping: boolean }) => {
+      socket.on('typing:direct', (payload: { projectId: string; userId?: string; otherUserId: string; name: string; isTyping: boolean; action?: 'typing' | 'sending_image' | 'sending_video' | 'sending_file' | string }) => {
         if (!payload?.projectId || !payload?.otherUserId) return
         const room = directRoom(payload.projectId, userId, payload.otherUserId)
         socket.to(room).emit('typing:direct', { ...payload, userId })

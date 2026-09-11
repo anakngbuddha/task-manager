@@ -8,9 +8,9 @@ import { useProjectDirectInbox } from '@/hooks/useProjectDirectInbox'
 import { useProjectDirectMessages, useSendProjectDirectMessage } from '@/hooks/useProjectDirectMessages'
 import { useDirectSeen, useMarkDirectRead, useMarkProjectRead, useProjectSeen } from '@/hooks/useReadReceipts'
 import { useSession } from '@/lib/auth-client'
-import { api } from '@/lib/api'
+import { api, getApiErrorMessage } from '@/lib/api'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Hash, MessageCircle } from 'lucide-react'
+import { Hash, MessageCircle, Camera, Video, FileText, AlertCircle, X } from 'lucide-react'
 import type { Socket } from 'socket.io-client'
 import { createSocket } from '@/lib/socket'
 import { useUserStatuses } from '@/hooks/useUserStatus'
@@ -21,6 +21,7 @@ import MessageBubble, {
   DateDivider,
   TypingIndicator,
   EmptyState,
+  type ChatAction,
 } from '@/components/messages/MessageBubble'
 import MessageInputBar from '@/components/messages/MessageInputBar'
 import ConversationSidebar from '@/components/messages/ConversationSidebar'
@@ -65,8 +66,10 @@ export default function ProjectMessagesPage() {
   // ── Socket ──────────────────────────────────────────────────────────────────
   const socketRef = useRef<Socket | null>(null)
   const typingTimerRef = useRef<number | null>(null)
-  const [projectTyping, setProjectTyping] = useState<Record<string, string>>({})
-  const [directTyping, setDirectTyping] = useState<Record<string, string>>({})
+  const [projectTyping, setProjectTyping] = useState<Record<string, { name: string; action: ChatAction }>>({})
+  const [directTyping, setDirectTyping] = useState<Record<string, { name: string; action: ChatAction }>>({})
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
 
   const membersById = useMemo(() => {
@@ -127,20 +130,32 @@ export default function ProjectMessagesPage() {
       setSocketConnected(false)
     })
 
-    socket.on('typing:project', (payload: { userId: string; name: string; isTyping: boolean }) => {
+    socket.on('typing:project', (payload: { userId: string; name: string; isTyping: boolean; action?: ChatAction }) => {
       setProjectTyping((curr) => {
         const next = { ...curr }
-        if (payload.isTyping) next[payload.userId] = payload.name
-        else delete next[payload.userId]
+        if (payload.isTyping) {
+          next[payload.userId] = {
+            name: payload.name,
+            action: payload.action || 'typing',
+          }
+        } else {
+          delete next[payload.userId]
+        }
         return next
       })
     })
 
-    socket.on('typing:direct', (payload: { userId: string; name: string; isTyping: boolean }) => {
+    socket.on('typing:direct', (payload: { userId: string; name: string; isTyping: boolean; action?: ChatAction }) => {
       setDirectTyping((curr) => {
         const next = { ...curr }
-        if (payload.isTyping) next[payload.userId] = payload.name
-        else delete next[payload.userId]
+        if (payload.isTyping) {
+          next[payload.userId] = {
+            name: payload.name,
+            action: payload.action || 'typing',
+          }
+        } else {
+          delete next[payload.userId]
+        }
         return next
       })
     })
@@ -201,32 +216,71 @@ export default function ProjectMessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [directTargetId, mode, projectId, session?.user?.id])
 
-  // ── Typing ─────────────────────────────────────────────────────────────────
+  // ── Typing & Action Indicators (Telegram Style) ────────────────────────────
 
-  const typingText = useMemo(() => {
-    if (mode === 'project') {
-      const names = Object.entries(projectTyping)
-        .filter(([id]) => id !== session?.user?.id)
-        .map(([, name]) => name)
-      if (names.length === 0) return null
-      if (names.length === 1) return `${names[0]} is typing…`
-      if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`
-      return `${names[0]} and ${names.length - 1} others are typing…`
+  const getFileAction = (file?: File | null): ChatAction => {
+    if (!file) return 'typing'
+    if (file.type.startsWith('image/')) return 'sending_image'
+    if (file.type.startsWith('video/')) return 'sending_video'
+    return 'sending_file'
+  }
+
+  const getActionVerb = (action: ChatAction): string => {
+    switch (action) {
+      case 'sending_image': return 'sending image'
+      case 'sending_video': return 'sending video'
+      case 'sending_file': return 'sending file'
+      case 'typing':
+      default:
+        return 'typing'
     }
-    const names = Object.entries(directTyping)
-      .filter(([id]) => id !== session?.user?.id)
-      .map(([, name]) => name)
-    if (names.length === 0) return null
-    return `${names[0]} is typing…`
+  }
+
+  const activeTyping = useMemo(() => {
+    const list = mode === 'project'
+      ? Object.entries(projectTyping).filter(([id]) => id !== session?.user?.id).map(([, data]) => data)
+      : Object.entries(directTyping).filter(([id]) => id !== session?.user?.id).map(([, data]) => data)
+
+    if (list.length === 0) return null
+
+    const primary = list[0]
+    const action = primary.action
+    const verb = getActionVerb(action)
+
+    let text: string
+    let headerText: string
+
+    if (mode === 'project') {
+      if (list.length === 1) {
+        text = `${primary.name} is ${verb}…`
+        headerText = `${primary.name} is ${verb}…`
+      } else if (list.length === 2) {
+        text = `${list[0].name} and ${list[1].name} are typing…`
+        headerText = `${list[0].name} & ${list[1].name} typing…`
+      } else {
+        text = `${list[0].name} and ${list.length - 1} others are typing…`
+        headerText = `${list[0].name} +${list.length - 1} typing…`
+      }
+    } else {
+      text = `${primary.name} is ${verb}…`
+      headerText = `${verb}…`
+    }
+
+    return {
+      text,
+      headerText,
+      action,
+    }
   }, [directTyping, mode, projectTyping, session?.user?.id])
 
-  const emitTyping = (isTyping: boolean) => {
+  const emitTyping = (isTyping: boolean, action?: ChatAction) => {
     if (!projectId || !session?.user?.id) return
     const name = session.user.name ?? session.user.email ?? 'Someone'
+    const act = action || (attachedFile ? getFileAction(attachedFile) : 'typing')
     if (mode === 'project') {
-      socketRef.current?.emit('typing:project', { projectId, userId: session.user.id, name, isTyping })
+      socketRef.current?.emit('typing:project', { projectId, userId: session.user.id, name, isTyping, action: act })
     } else if (mode === 'direct' && directTargetId) {
-      socketRef.current?.emit('typing:direct', { projectId, userId: session.user.id, otherUserId: directTargetId, name, isTyping })
+      socketRef.current?.emit('typing:direct', { projectId, userId: session.user.id, otherUserId: directTargetId, name, isTyping, action: act })
     }
   }
 
@@ -234,14 +288,16 @@ export default function ProjectMessagesPage() {
     if (!projectId || !session?.user?.id) return
     if (mode === 'direct' && !directTargetId) return
     if (typingTimerRef.current) window.clearTimeout(typingTimerRef.current)
-    if (input.trim().length > 0) {
-      emitTyping(true)
-      typingTimerRef.current = window.setTimeout(() => emitTyping(false), 2500)
+
+    if (input.trim().length > 0 || attachedFile) {
+      const act = attachedFile ? getFileAction(attachedFile) : 'typing'
+      emitTyping(true, act)
+      typingTimerRef.current = window.setTimeout(() => emitTyping(false), 3000)
     } else {
       emitTyping(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [input, mode, directTargetId, projectId, session?.user?.id])
+  }, [input, attachedFile, mode, directTargetId, projectId, session?.user?.id])
 
   useEffect(() => {
     return () => {
@@ -256,10 +312,11 @@ export default function ProjectMessagesPage() {
     if (!input.trim() && !attachedFile) return
     if (!projectId || !session?.user?.id) return
 
-    emitTyping(false)
+    setUploadError(null)
 
     const contentToSend = input.trim()
     const fileToSend = attachedFile
+    const sendAction = fileToSend ? getFileAction(fileToSend) : 'typing'
 
     setInput('')
     setAttachedFile(null)
@@ -268,17 +325,29 @@ export default function ProjectMessagesPage() {
     let fileName: string | undefined = undefined
 
     if (fileToSend) {
+      setIsUploading(true)
+      emitTyping(true, sendAction)
+
       const formData = new FormData()
       formData.append('file', fileToSend)
       try {
         const res = await api.post('/upload', formData)
         fileUrl = res.data.fileUrl
         fileName = res.data.fileName
-      } catch (err) {
+      } catch (err: unknown) {
         console.error('Failed to upload file', err)
+        emitTyping(false)
+        setIsUploading(false)
+        setUploadError(getApiErrorMessage(err, 'Failed to upload file. Please try again.'))
+        setAttachedFile(fileToSend)
+        setInput(contentToSend)
         return
+      } finally {
+        setIsUploading(false)
       }
     }
+
+    emitTyping(false)
 
     if (mode === 'project') {
       sendProjectMessage.mutate({ 
@@ -428,7 +497,27 @@ export default function ProjectMessagesPage() {
     return elements
   }
 
-  // ── Active conversation header ─────────────────────────────────────────────
+  // ── Active conversation header (Telegram style with action indicator) ──────
+
+  const renderHeaderActionIcon = (action: ChatAction) => {
+    switch (action) {
+      case 'sending_image':
+        return <Camera className="size-3 text-primary animate-pulse shrink-0" />
+      case 'sending_video':
+        return <Video className="size-3 text-primary animate-pulse shrink-0" />
+      case 'sending_file':
+        return <FileText className="size-3 text-primary animate-pulse shrink-0" />
+      case 'typing':
+      default:
+        return (
+          <span className="inline-flex items-center gap-0.5 shrink-0 py-0.5">
+            <span className="size-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+            <span className="size-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+            <span className="size-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+          </span>
+        )
+    }
+  }
 
   const chatHeader =
     mode === 'project' ? (
@@ -438,9 +527,16 @@ export default function ProjectMessagesPage() {
         </div>
         <div>
           <p className="text-sm font-semibold">Project chat</p>
-          <p className="text-[0.7rem] text-muted-foreground">
-            {project?.members?.length ?? 0} members
-          </p>
+          {activeTyping ? (
+            <div className="flex items-center gap-1.5 text-[0.7rem] font-medium text-primary">
+              {renderHeaderActionIcon(activeTyping.action)}
+              <span className="animate-pulse">{activeTyping.headerText}</span>
+            </div>
+          ) : (
+            <p className="text-[0.7rem] text-muted-foreground">
+              {project?.members?.length ?? 0} members
+            </p>
+          )}
         </div>
       </div>
     ) : directTargetId ? (
@@ -455,7 +551,14 @@ export default function ProjectMessagesPage() {
         </Avatar>
         <div>
           <p className="text-sm font-semibold">{activeDirectLabel ?? 'Direct message'}</p>
-          <p className="text-[0.7rem] text-muted-foreground">Private conversation</p>
+          {activeTyping ? (
+            <div className="flex items-center gap-1.5 text-[0.7rem] font-medium text-primary">
+              {renderHeaderActionIcon(activeTyping.action)}
+              <span className="animate-pulse">{activeTyping.headerText}</span>
+            </div>
+          ) : (
+            <p className="text-[0.7rem] text-muted-foreground">Private conversation</p>
+          )}
         </div>
       </div>
     ) : (
@@ -536,7 +639,26 @@ export default function ProjectMessagesPage() {
             <div ref={listEndRef} />
           </div>
 
-          {typingText && <TypingIndicator text={typingText} />}
+          {activeTyping && (
+            <TypingIndicator text={activeTyping.text} action={activeTyping.action} />
+          )}
+
+          {uploadError && (
+            <div className="mx-4 mb-2 flex items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2 text-xs text-destructive animate-in fade-in slide-in-from-bottom-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="size-4 shrink-0" />
+                <span>{uploadError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUploadError(null)}
+                className="text-destructive/70 hover:text-destructive cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          )}
 
           <MessageInputBar
             value={input}
@@ -550,7 +672,7 @@ export default function ProjectMessagesPage() {
                 ? `Message ${activeDirectLabel ?? 'privately'}…`
                 : 'Select a conversation first…'
             }
-            isPending={false}
+            isPending={isUploading}
             allowMentions={mode === 'project'}
             attachedFile={attachedFile}
             onAttachFile={setAttachedFile}

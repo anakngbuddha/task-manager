@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "backend/src/app.ts": {
-    "mtime": 1785378828.5832498,
-    "ast_hash": "a6c7bb9438fcdd6ad4df71bfa2643637",
+    "mtime": 1789110192.4199533,
+    "ast_hash": "7b1378c3ad2c92e25d927b286eeaf4e7",
     "semantic_hash": ""
   },
   "backend/src/config/cloudinary.ts": {
@@ -195,8 +195,8 @@
     "semantic_hash": ""
   },
   "backend/src/index.ts": {
-    "mtime": 1789107583.0750682,
-    "ast_hash": "7a896a657d7b0ba78338de4cdfd30928",
+    "mtime": 1789110268.7728355,
+    "ast_hash": "b90610c43fcd12745649816d3d9a6c04",
     "semantic_hash": ""
   },
   "backend/src/jobs/notificationCron.ts": {
@@ -300,8 +300,8 @@
     "semantic_hash": ""
   },
   "backend/src/routes/files.routes.ts": {
-    "mtime": 1785378828.9658954,
-    "ast_hash": "cb61d9c32d9bd45310be4f3cf2da4b17",
+    "mtime": 1789110257.619758,
+    "ast_hash": "9bd64d0410032d6510ad9c5a9e504981",
     "semantic_hash": ""
   },
   "backend/src/routes/github.ts": {
@@ -375,8 +375,8 @@
     "semantic_hash": ""
   },
   "backend/src/routes/upload.ts": {
-    "mtime": 1785378829.0110059,
-    "ast_hash": "443ab73faf297b99fca8dc984c53be92",
+    "mtime": 1789110211.733931,
+    "ast_hash": "9d5b486191fe4ef6ad1abebfeebbee0f",
     "semantic_hash": ""
   },
   "backend/src/routes/users.ts": {
@@ -730,8 +730,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/messages/MessageBubble.tsx": {
-    "mtime": 1789107631.5950427,
-    "ast_hash": "30be1dcd08eebb4c393f081449acc8ab",
+    "mtime": 1789110330.0671284,
+    "ast_hash": "c1edb67a42cd293530c52ace07b3d295",
     "semantic_hash": ""
   },
   "frontend/src/components/messages/MessageInputBar.tsx": {
@@ -1280,8 +1280,8 @@
     "semantic_hash": ""
   },
   "frontend/src/pages/ProjectMessagesPage.tsx": {
-    "mtime": 1789107621.7181153,
-    "ast_hash": "bf07fc4a56bc6921bdc5d8fb1cd19ec9",
+    "mtime": 1789110402.6536176,
+    "ast_hash": "8c5883f401bd379a2dca90aeca8831dd",
     "semantic_hash": ""
   },
   "frontend/src/pages/ProjectPage.tsx": {
@@ -1480,8 +1480,8 @@
     "semantic_hash": ""
   },
   "backend/scripts/verify-socket-and-typing.ts": {
-    "mtime": 1789107850.1393003,
-    "ast_hash": "4e00647cf9ac83bdb435c6c277c0afb1",
+    "mtime": 1789110535.6565373,
+    "ast_hash": "39d39d2528b8be92ce34b7ce1443344d",
     "semantic_hash": ""
   },
   "QA_REPORT.md": {

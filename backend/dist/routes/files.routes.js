@@ -9,16 +9,7 @@ import streamifier from 'streamifier';
 import { auditLogService } from '../services/auditLog.service.js';
 import { requireProjectRole } from '../services/projectAuth.service.js';
 import { logger } from '../app.js';
-const ALLOWED_MIME_TYPES = new Set([
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/avif',
-    'application/pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-excel',
-    'text/plain',
-    'text/csv'
-]);
+import { ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS } from './upload.js';
 export async function fileRoutes(app) {
     // ─── GET /api/files ──────────────────────────────────────────
     app.get('/files', { preHandler: authenticate }, async (req, reply) => {
@@ -86,9 +77,14 @@ export async function fileRoutes(app) {
         const data = await req.file();
         if (!data)
             return reply.status(400).send({ error: 'No file uploaded' });
-        const mimeType = data.mimetype;
-        if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-            return reply.status(400).send({ error: 'File type not allowed' });
+        const filename = data.filename || 'attachment';
+        const ext = filename.includes('.') ? filename.substring(filename.lastIndexOf('.')).toLowerCase() : '';
+        const mimeType = (data.mimetype || '').toLowerCase();
+        const isAllowedMime = ALLOWED_MIME_TYPES.has(mimeType);
+        const isAllowedExt = ALLOWED_EXTENSIONS.has(ext);
+        if (!isAllowedMime && !isAllowedExt) {
+            logger.warn({ mimetype: data.mimetype, filename }, 'file_upload_rejected_mime');
+            return reply.status(400).send({ error: `File type not allowed (${data.mimetype || ext || 'unknown'})` });
         }
         const parentId = data.fields.parentId?.value || null;
         const projectId = data.fields.projectId?.value || null;

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { MessageSquareDashed, FileText, Download } from 'lucide-react'
+import { MessageSquareDashed, FileText, Download, Camera, Video } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { cn } from '@/lib/utils'
@@ -62,29 +62,46 @@ export function DateDivider({ label }: { label: string }) {
   )
 }
 
-export function TypingIndicator({ text }: { text: string }) {
+export type ChatAction = 'typing' | 'sending_image' | 'sending_video' | 'sending_file'
+
+export function TypingIndicator({ text, action = 'typing' }: { text: string; action?: ChatAction }) {
+  const renderIcon = () => {
+    switch (action) {
+      case 'sending_image':
+        return <Camera className="size-3.5 text-indigo-500 shrink-0 animate-pulse" />
+      case 'sending_video':
+        return <Video className="size-3.5 text-indigo-500 shrink-0 animate-pulse" />
+      case 'sending_file':
+        return <FileText className="size-3.5 text-indigo-500 shrink-0 animate-pulse" />
+      case 'typing':
+      default:
+        return null
+    }
+  }
+
   return (
     <div className="flex items-end gap-2 px-4 pb-2">
-      <div className="rounded-2xl bg-muted px-3 py-2 text-xs text-muted-foreground shadow-sm">
+      <div className="rounded-2xl bg-muted/80 backdrop-blur-sm border border-border/50 px-3.5 py-2 text-xs text-muted-foreground shadow-sm">
         <div className="flex items-center gap-2">
+          {renderIcon()}
           <span className="truncate">{text}</span>
           <span className="inline-flex items-center gap-1 py-0.5">
             <span
-              className="size-1.5 rounded-full bg-muted-foreground"
+              className="size-1.5 rounded-full bg-primary/70"
               style={{
                 animation: 'typingDotBounce 1.2s infinite ease-in-out',
                 animationDelay: '0ms',
               }}
             />
             <span
-              className="size-1.5 rounded-full bg-muted-foreground"
+              className="size-1.5 rounded-full bg-primary/70"
               style={{
                 animation: 'typingDotBounce 1.2s infinite ease-in-out',
                 animationDelay: '180ms',
               }}
             />
             <span
-              className="size-1.5 rounded-full bg-muted-foreground"
+              className="size-1.5 rounded-full bg-primary/70"
               style={{
                 animation: 'typingDotBounce 1.2s infinite ease-in-out',
                 animationDelay: '360ms',
