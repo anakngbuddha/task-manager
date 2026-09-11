@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useSession } from '@/lib/auth-client'
-import { socket } from '@/lib/socket'
+import { socket, setSocketAuthToken, getSocketAuthToken } from '@/lib/socket'
 
 const HEARTBEAT_INTERVAL_MS = 30_000
 const IDLE_TIMEOUT_MS = 2 * 60_000
@@ -14,6 +14,11 @@ export function usePresenceTracking() {
     const userId = session?.user?.id
     if (!userId) return
 
+    const sessionToken = (session as any)?.session?.token
+    if (sessionToken) {
+      setSocketAuthToken(sessionToken)
+    }
+
     const markActive = () => {
       lastActivityRef.current = Date.now()
       if (idleRef.current) {
@@ -23,6 +28,10 @@ export function usePresenceTracking() {
     }
 
     const connectSocket = () => {
+      const activeToken = sessionToken || getSocketAuthToken()
+      if (activeToken) {
+        socket.auth = { token: activeToken }
+      }
       if (!socket.connected) {
         socket.connect()
       }

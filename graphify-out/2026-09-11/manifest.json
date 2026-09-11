@@ -195,8 +195,8 @@
     "semantic_hash": ""
   },
   "backend/src/index.ts": {
-    "mtime": 1789107583.0750682,
-    "ast_hash": "7a896a657d7b0ba78338de4cdfd30928",
+    "mtime": 1785378829.0374289,
+    "ast_hash": "309b3a339704caa842c9c7fe8260bf7f",
     "semantic_hash": ""
   },
   "backend/src/jobs/notificationCron.ts": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "backend/src/routes/github.ts": {
-    "mtime": 1786952398.512941,
-    "ast_hash": "562a6e57b8861e70329f65b09ee413a1",
+    "mtime": 1786951576.85335,
+    "ast_hash": "d8a7448adc19e5e26e113d7d0c5c05f6",
     "semantic_hash": ""
   },
   "backend/src/routes/invites.ts": {
@@ -730,8 +730,8 @@
     "semantic_hash": ""
   },
   "frontend/src/components/messages/MessageBubble.tsx": {
-    "mtime": 1789107631.5950427,
-    "ast_hash": "30be1dcd08eebb4c393f081449acc8ab",
+    "mtime": 1774922044.257889,
+    "ast_hash": "12c6b302f5016a11a35ef8010e274bbb",
     "semantic_hash": ""
   },
   "frontend/src/components/messages/MessageInputBar.tsx": {
@@ -915,8 +915,8 @@
     "semantic_hash": ""
   },
   "frontend/src/hooks/usePresenceTracking.ts": {
-    "mtime": 1789107604.3311715,
-    "ast_hash": "6387adc651905a516a0c352e4afd7d85",
+    "mtime": 1785378828.9222615,
+    "ast_hash": "3ae940d86a0d58de73651b64677addf2",
     "semantic_hash": ""
   },
   "frontend/src/hooks/useProject.ts": {
@@ -985,8 +985,8 @@
     "semantic_hash": ""
   },
   "frontend/src/hooks/useTaskSync.ts": {
-    "mtime": 1789107610.9743893,
-    "ast_hash": "48a70e4021268502e91f13bfe5eb29cf",
+    "mtime": 1779760987.253606,
+    "ast_hash": "6c0ce19da1d83b8313722a29b68e78e9",
     "semantic_hash": ""
   },
   "frontend/src/hooks/useTaskTags.ts": {
@@ -1060,8 +1060,8 @@
     "semantic_hash": ""
   },
   "frontend/src/lib/socket.ts": {
-    "mtime": 1789107679.7992558,
-    "ast_hash": "8a84c18085ade344d759d4c604857777",
+    "mtime": 1785378828.9700885,
+    "ast_hash": "e0d63e21f319cb0d3cadc7a8b2d8c7dc",
     "semantic_hash": ""
   },
   "frontend/src/lib/taskTypes.ts": {
@@ -1280,8 +1280,8 @@
     "semantic_hash": ""
   },
   "frontend/src/pages/ProjectMessagesPage.tsx": {
-    "mtime": 1789107621.7181153,
-    "ast_hash": "bf07fc4a56bc6921bdc5d8fb1cd19ec9",
+    "mtime": 1776218956.2446158,
+    "ast_hash": "ecdf770b1f50eeee764c7c1ac70aedf8",
     "semantic_hash": ""
   },
   "frontend/src/pages/ProjectPage.tsx": {
@@ -1420,8 +1420,8 @@
     "semantic_hash": ""
   },
   "docs/ENV_SETUP.md": {
-    "mtime": 1786952389.6433363,
-    "ast_hash": "8523274bf607ddb13236e342c57dd5e0",
+    "mtime": 1786685719.281866,
+    "ast_hash": "0bb08b4640ef2c2d6b749f96dee670d5",
     "semantic_hash": ""
   },
   "docs/knowledge-base.md": {
@@ -1477,16 +1477,6 @@
   "backend/scripts/test-repo-display.ts": {
     "mtime": 1786951711.2520843,
     "ast_hash": "7c8281f962d2bb63c5e165746b65fced",
-    "semantic_hash": ""
-  },
-  "backend/scripts/verify-socket-and-typing.ts": {
-    "mtime": 1789107850.1393003,
-    "ast_hash": "4e00647cf9ac83bdb435c6c277c0afb1",
-    "semantic_hash": ""
-  },
-  "QA_REPORT.md": {
-    "mtime": 1788395393.8200262,
-    "ast_hash": "6ca14c46319aba97f9da14bf1ebd983d",
     "semantic_hash": ""
   }
 }

@@ -59,19 +59,44 @@ const start = async () => {
     setIO(io)
     setPresenceIO(io)
 
-    // ── Authenticate every Socket.IO connection via the same session cookie
-    //    used by the REST API. Without this, any client can impersonate any
-    //    userId via auth:identify (audit finding #4).
+    // ── Authenticate every Socket.IO connection via session cookie or handshake auth token
+    //    Fixes cross-origin WebSocket Unauthorized error (audit finding #4 preserved).
     io.use(async (socket, next) => {
       try {
-        const headers = socket.handshake.headers as any
-        const session = await auth.api.getSession({ headers })
-        if (!session?.user?.id) {
+        let userId: string | null = null
+
+        // 1. Try session cookie via headers (same-origin / cookie forwarding)
+        try {
+          const headers = socket.handshake.headers as any
+          const session = await auth.api.getSession({ headers })
+          if (session?.user?.id) {
+            userId = session.user.id
+          }
+        } catch {
+          // Ignore cookie session resolution failure
+        }
+
+        // 2. Fallback: check token in socket.handshake.auth (cross-origin WebSocket)
+        if (!userId && socket.handshake.auth?.token) {
+          const token = String(socket.handshake.auth.token)
+          const dbSession = await prisma.session.findUnique({
+            where: { token },
+            include: { user: true },
+          })
+          if (dbSession && dbSession.expiresAt > new Date() && !dbSession.user.bannedAt) {
+            userId = dbSession.userId
+          }
+        }
+
+        if (!userId) {
+          logger.warn({ socketId: socket.id }, 'socket_unauthorized')
           return next(new Error('Unauthorized'))
         }
-        socket.data.userId = session.user.id
+
+        socket.data.userId = userId
         next()
       } catch (err) {
+        logger.error({ err, socketId: socket.id }, 'socket_auth_middleware_error')
         next(new Error('Unauthorized'))
       }
     })

@@ -96,7 +96,8 @@ export default function ProjectMessagesPage() {
       socketRef.current = null
     }
 
-    const socket = createSocket()
+    const sessionToken = (session as any)?.session?.token
+    const socket = createSocket(sessionToken)
     socketRef.current = socket
 
     const joinRooms = () => {

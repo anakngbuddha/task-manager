@@ -68,13 +68,37 @@ export function TypingIndicator({ text }: { text: string }) {
       <div className="rounded-2xl bg-muted px-3 py-2 text-xs text-muted-foreground shadow-sm">
         <div className="flex items-center gap-2">
           <span className="truncate">{text}</span>
-          <span className="inline-flex items-center gap-0.5">
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+          <span className="inline-flex items-center gap-1 py-0.5">
+            <span
+              className="size-1.5 rounded-full bg-muted-foreground"
+              style={{
+                animation: 'typingDotBounce 1.2s infinite ease-in-out',
+                animationDelay: '0ms',
+              }}
+            />
+            <span
+              className="size-1.5 rounded-full bg-muted-foreground"
+              style={{
+                animation: 'typingDotBounce 1.2s infinite ease-in-out',
+                animationDelay: '180ms',
+              }}
+            />
+            <span
+              className="size-1.5 rounded-full bg-muted-foreground"
+              style={{
+                animation: 'typingDotBounce 1.2s infinite ease-in-out',
+                animationDelay: '360ms',
+              }}
+            />
           </span>
         </div>
       </div>
+      <style>{`
+        @keyframes typingDotBounce {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+          40% { transform: translateY(-4px); opacity: 1; }
+        }
+      `}</style>
     </div>
   )
 }

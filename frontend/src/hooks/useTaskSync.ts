@@ -26,9 +26,10 @@ export function useTaskSync(projectId: string | undefined) {
     if (!projectId || !session?.user?.id) return
 
     const currentUserId = session.user.id
+    const sessionToken = (session as any)?.session?.token
 
     // Create a dedicated socket for task sync.
-    const socket = createSocket()
+    const socket = createSocket(sessionToken)
     socketRef.current = socket
 
     socket.on('connect', () => {
