@@ -1,5 +1,5 @@
 import { FastifyInstance } from 'fastify'
-import { taskService } from '../services/task.service.js'
+import { taskService, TASK_PAGE_DEFAULT_LIMIT, TASK_PAGE_MAX_LIMIT } from '../services/task.service.js'
 import { authenticate } from '../middlewares/authenticate.js'
 import { idempotencyPreHandler } from '../middlewares/idempotency.js'
 import { z } from 'zod'
@@ -44,6 +44,16 @@ async function ensureProjectHasStatus(projectId: string, status: string) {
   }
   return { project, statusList: currentColumns, invalid: true as const }
 }
+
+/**
+ * Query parameters for listing a project's tasks.
+ *
+ * Both are optional and pagination is strictly opt-in: see the route handler.
+ */
+const listTasksSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(TASK_PAGE_MAX_LIMIT).optional(),
+  cursor: z.string().min(1).optional(),
+})
 
 const createTaskSchema = z.object({
   title: z.string().min(1).max(100),
@@ -131,6 +141,21 @@ async function validateTaskParent({
 }
 
 export async function taskRoutes(app: FastifyInstance) {
+  /**
+   * List a project's tasks.
+   *
+   * Pagination is OPT-IN and backwards compatible on purpose:
+   *
+   *   GET /projects/:id/tasks              -> plain array, every task (legacy)
+   *   GET /projects/:id/tasks?limit=50     -> { items, nextCursor, hasMore }
+   *   GET /projects/:id/tasks?cursor=<id>  -> next page from that cursor
+   *
+   * The legacy shape is retained because the board currently consumes the array
+   * directly. Keeping both lets the front end migrate to paging incrementally
+   * instead of requiring a lockstep deploy. Once every caller passes `limit`,
+   * drop the unbounded branch: it loads an entire project (with six nested
+   * relations per row) on every board mount.
+   */
   app.get('/projects/:projectId/tasks', {
     preHandler: authenticate,
   }, async (req, reply) => {
@@ -140,7 +165,31 @@ export async function taskRoutes(app: FastifyInstance) {
     } catch {
       return reply.status(403).send({ error: 'Forbidden' })
     }
-    return taskService.getAll(projectId)
+
+    // Return a 400 for a malformed query rather than letting Zod throw into the
+    // generic error handler as a 500.
+    const parsedQuery = listTasksSchema.safeParse((req.query ?? {}) as any)
+    if (!parsedQuery.success) {
+      return reply.status(400).send({
+        error: 'Invalid query parameters',
+        details: parsedQuery.error.issues.map((issue) => ({
+          path: issue.path.join('.'),
+          message: issue.message,
+        })),
+      })
+    }
+
+    const { limit, cursor } = parsedQuery.data
+
+    // No pagination parameters at all -> legacy unbounded array.
+    if (limit === undefined && cursor === undefined) {
+      return taskService.getAll(projectId)
+    }
+
+    return taskService.getPage(projectId, {
+      limit: limit ?? TASK_PAGE_DEFAULT_LIMIT,
+      cursor,
+    })
   })
 
   app.get('/tasks/:id', {
