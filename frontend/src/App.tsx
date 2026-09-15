@@ -1,98 +1,70 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useSession } from './lib/auth-client'
 import { isSystemAdmin } from './lib/roles'
 import { TerminalProvider } from './contexts/TerminalContext'
-import GlobalTerminal from './components/terminal/ProjectTerminal'
-import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
-import AuthLayout from './components/layout/AuthLayout'
-import DashboardPage from './pages/DashboardPage'
-import ArchivedProjectsPage from './pages/ArchivedProjectsPage'
-import ProjectPage from './pages/ProjectPage'
-import ProjectMessagesPage from './pages/ProjectMessagesPage'
-import ProjectTimeReportPage from './pages/ProjectTimeReportPage'
-import ProjectSprintReportPage from './pages/ProjectSprintReportPage'
-import SprintBacklogPage from './pages/SprintBacklogPage'
-import RoadmapPage from './pages/RoadmapPage'
-import CalendarPage from './pages/CalendarPage'
-import DayViewPage from './pages/DayViewPage'
-import ActivityPage from './pages/ActivityPage'
-import SettingsPage from './pages/SettingsPage'
-import ChangePasswordPage from './pages/ChangePasswordPage'
-import MembersPage from './pages/MembersPage'
-import InvitePage from './pages/InvitePage'
-import ProjectMembersPage from './pages/ProjectMembersPage'
-import ProfilePage from './pages/ProfilePage'
-import ProjectSettingsPage from './pages/ProjectSettingsPage'
-import ProjectActivityPage from './pages/ProjectActivityPage'
-import ProjectGithubActivityPage from './pages/ProjectGithubActivityPage'
-import ProjectDependencyDiagramPage from './pages/ProjectDependencyDiagramPage'
-import ProjectFilesPage from './pages/ProjectFilesPage'
-import DocumentationPage from './pages/DocumentationPage'
-import LandingPage from './pages/LandingPage'
-import AdminDashboardPage from './pages/admin/AdminDashboardPage'
-import AdminAnalyticsPage from './pages/admin/AdminAnalyticsPage'
-import AdminAuditLogsPage from './pages/admin/AdminAuditLogsPage'
-import AdminUsersPage from './pages/admin/AdminUsersPage'
-import AdminIssuesPage from './pages/admin/AdminIssuesPage'
-import AdminKnowledgePage from './pages/admin/AdminKnowledgePage'
-import AdminUserDetailPage from './pages/admin/AdminUserDetailPage'
-import AdminDocumentationPage from './pages/admin/AdminDocumentationPage'
-import ProjectAutomationsPage from './pages/ProjectAutomationsPage'
 import { OfflineBanner } from './components/ui/OfflineBanner'
 import { PWAUpdatePrompt } from './components/ui/PWAUpdatePrompt'
 import { OfflineToastProvider } from './components/ui/OfflineToast'
-import PrivacyPage from './pages/PrivacyPage'
 import CookieBanner from './components/ui/CookieBanner'
 import { ErrorBoundary } from './components/ErrorBoundary'
-import ChatWidget from './components/chat/ChatWidget'
-
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { data: session, isPending } = useSession()
-
-  if (isPending) return (
-    <div className="flex h-dvh items-center justify-center">
-      <p className="text-muted-foreground">Loading...</p>
-    </div>
-  )
-
-  if (!session) return <Navigate to="/login" replace />
-
-  return (
-    <TerminalProvider>
-      <OfflineBanner />
-      {children}
-      <GlobalTerminal />
-      <ChatWidget />
-    </TerminalProvider>
-  )
-}
-
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { data: session, isPending } = useSession()
-
-  if (isPending) return (
-    <div className="flex h-dvh items-center justify-center">
-      <p className="text-muted-foreground">Loading...</p>
-    </div>
-  )
-
-  // Authentication check
-  if (!session) return <Navigate to="/login" replace />
-
-  // Authorization check
-  if (!isSystemAdmin((session.user as { role?: string }).role)) return <Navigate to="/dashboard" replace />
-
-  return (
-    <TerminalProvider>
-      {children}
-      <GlobalTerminal />
-    </TerminalProvider>
-  )
-}
-
+import { RouteFallback } from './components/ui/RouteFallback'
+import AuthLayout from './components/layout/AuthLayout'
 import { useAnalytics } from './hooks/useAnalytics'
 import { usePresenceTracking } from './hooks/usePresenceTracking'
+
+// LandingPage is the public entry point at "/", so it stays eagerly imported.
+// Deferring it behind a dynamic import would add a round trip in front of the
+// first contentful paint for anonymous visitors, which is the opposite of the
+// goal here. Everything else is code-split: a visitor on the login screen has
+// no reason to download the dependency diagram, the calendar, the map stack,
+// the chart stack or the entire admin area.
+import LandingPage from './pages/LandingPage'
+
+// ─── Public routes ──────────────────────────────────────────────
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const RegisterPage = lazy(() => import('./pages/RegisterPage'))
+const InvitePage = lazy(() => import('./pages/InvitePage'))
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'))
+const DocumentationPage = lazy(() => import('./pages/DocumentationPage'))
+
+// ─── Protected routes ───────────────────────────────────────────
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const ArchivedProjectsPage = lazy(() => import('./pages/ArchivedProjectsPage'))
+const ActivityPage = lazy(() => import('./pages/ActivityPage'))
+const ProjectPage = lazy(() => import('./pages/ProjectPage'))
+const ProjectMessagesPage = lazy(() => import('./pages/ProjectMessagesPage'))
+const ProjectMembersPage = lazy(() => import('./pages/ProjectMembersPage'))
+const ProjectSettingsPage = lazy(() => import('./pages/ProjectSettingsPage'))
+const ProjectActivityPage = lazy(() => import('./pages/ProjectActivityPage'))
+const ProjectGithubActivityPage = lazy(() => import('./pages/ProjectGithubActivityPage'))
+const ProjectDependencyDiagramPage = lazy(() => import('./pages/ProjectDependencyDiagramPage'))
+const ProjectFilesPage = lazy(() => import('./pages/ProjectFilesPage'))
+const ProjectTimeReportPage = lazy(() => import('./pages/ProjectTimeReportPage'))
+const ProjectSprintReportPage = lazy(() => import('./pages/ProjectSprintReportPage'))
+const SprintBacklogPage = lazy(() => import('./pages/SprintBacklogPage'))
+const RoadmapPage = lazy(() => import('./pages/RoadmapPage'))
+const ProjectAutomationsPage = lazy(() => import('./pages/ProjectAutomationsPage'))
+const CalendarPage = lazy(() => import('./pages/CalendarPage'))
+const DayViewPage = lazy(() => import('./pages/DayViewPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage'))
+const MembersPage = lazy(() => import('./pages/MembersPage'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
+
+// ─── Admin routes ───────────────────────────────────────────────
+const AdminDashboardPage = lazy(() => import('./pages/admin/AdminDashboardPage'))
+const AdminAnalyticsPage = lazy(() => import('./pages/admin/AdminAnalyticsPage'))
+const AdminAuditLogsPage = lazy(() => import('./pages/admin/AdminAuditLogsPage'))
+const AdminUsersPage = lazy(() => import('./pages/admin/AdminUsersPage'))
+const AdminUserDetailPage = lazy(() => import('./pages/admin/AdminUserDetailPage'))
+const AdminIssuesPage = lazy(() => import('./pages/admin/AdminIssuesPage'))
+const AdminKnowledgePage = lazy(() => import('./pages/admin/AdminKnowledgePage'))
+const AdminDocumentationPage = lazy(() => import('./pages/admin/AdminDocumentationPage'))
+
+// Overlays: not needed for first paint, and never needed by anonymous visitors.
+const GlobalTerminal = lazy(() => import('./components/terminal/ProjectTerminal'))
+const ChatWidget = lazy(() => import('./components/chat/ChatWidget'))
 
 function AnalyticsWrapper() {
   useAnalytics()
@@ -104,178 +76,142 @@ function PresenceWrapper() {
   return null
 }
 
+/**
+ * Suspense boundary for public pages.
+ */
+function PublicLayout() {
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <Outlet />
+    </Suspense>
+  )
+}
+
+/**
+ * Authenticated shell.
+ *
+ * Previously every protected route rendered its own <ProtectedRoute> wrapper,
+ * which meant TerminalProvider, GlobalTerminal and ChatWidget were torn down
+ * and recreated on every navigation between protected routes (QA_REPORT M5).
+ * Mounting them once around an <Outlet /> keeps that state alive.
+ *
+ * The Suspense boundary deliberately wraps only <Outlet />, so a lazy route
+ * chunk loading in never unmounts the surrounding chrome.
+ */
+function ProtectedLayout() {
+  const { data: session, isPending } = useSession()
+
+  if (isPending) return <RouteFallback label="Loading your workspace" />
+  if (!session) return <Navigate to="/login" replace />
+
+  return (
+    <TerminalProvider>
+      <OfflineBanner />
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
+      <Suspense fallback={null}>
+        <GlobalTerminal />
+        <ChatWidget />
+      </Suspense>
+    </TerminalProvider>
+  )
+}
+
+/**
+ * Admin shell. Same authentication check as ProtectedLayout, plus the system
+ * role authorization check. Kept as a separate layout rather than a nested
+ * route so the redirect target for an authenticated non-admin stays /dashboard.
+ */
+function AdminLayout() {
+  const { data: session, isPending } = useSession()
+
+  if (isPending) return <RouteFallback label="Checking permissions" />
+
+  // Authentication check
+  if (!session) return <Navigate to="/login" replace />
+
+  // Authorization check
+  if (!isSystemAdmin((session.user as { role?: string }).role)) return <Navigate to="/dashboard" replace />
+
+  return (
+    <TerminalProvider>
+      <Suspense fallback={<RouteFallback />}>
+        <Outlet />
+      </Suspense>
+      <Suspense fallback={null}>
+        <GlobalTerminal />
+      </Suspense>
+    </TerminalProvider>
+  )
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
-    <OfflineToastProvider>
-    <BrowserRouter>
-      <AnalyticsWrapper />
-      <PresenceWrapper />
-      <PWAUpdatePrompt />
-      <CookieBanner />
-      <Routes>
-        <Route element={<AuthLayout />}>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-        </Route>
-        <Route path="/invite/:code" element={<InvitePage />} />
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <DashboardPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/archive" element={
-          <ProtectedRoute>
-            <ArchivedProjectsPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/activity" element={
-          <ProtectedRoute>
-            <ActivityPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/privacy" element={<PrivacyPage />} />
-        <Route path="/docs" element={<DocumentationPage />} />
-        <Route path="/projects/:id" element={
-          <ProtectedRoute>
-            <ProjectPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/messages" element={
-          <ProtectedRoute>
-            <ProjectMessagesPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/members" element={
-          <ProtectedRoute>
-            <ProjectMembersPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/settings" element={
-          <ProtectedRoute>
-            <ProjectSettingsPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/activity" element={
-          <ProtectedRoute>
-            <ProjectActivityPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/github" element={
-          <ProtectedRoute>
-            <ProjectGithubActivityPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/dependencies" element={
-          <ProtectedRoute>
-            <ProjectDependencyDiagramPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/files" element={
-          <ProtectedRoute>
-            <ProjectFilesPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/time-report" element={
-          <ProtectedRoute>
-            <ProjectTimeReportPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/sprint-report" element={
-          <ProtectedRoute>
-            <ProjectSprintReportPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/backlog" element={
-          <ProtectedRoute>
-            <SprintBacklogPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/roadmap" element={
-          <ProtectedRoute>
-            <RoadmapPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/projects/:id/automations" element={
-          <ProtectedRoute>
-            <ProjectAutomationsPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/calendar" element={
-          <ProtectedRoute>
-            <CalendarPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/calendar/day/:date" element={
-          <ProtectedRoute>
-            <DayViewPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/settings" element={
-          <ProtectedRoute>
-            <SettingsPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/change-password" element={
-          <ProtectedRoute>
-            <ChangePasswordPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/members" element={
-          <ProtectedRoute>
-            <MembersPage />
-          </ProtectedRoute>
-        } />
-        <Route path="/profile" element={
-          <ProtectedRoute>
-            <ProfilePage />
-          </ProtectedRoute>
-        } />
-        <Route path="/admin/dashboard" element={
-          <AdminRoute>
-            <AdminDashboardPage />
-          </AdminRoute>
-        } />
-        <Route path="/admin/analytics" element={
-          <AdminRoute>
-            <AdminAnalyticsPage />
-          </AdminRoute>
-        } />
-        <Route path="/admin/audit-logs" element={
-          <AdminRoute>
-            <AdminAuditLogsPage />
-          </AdminRoute>
-        } />
-        <Route path="/admin/users" element={
-          <AdminRoute>
-            <AdminUsersPage />
-          </AdminRoute>
-        } />
-        <Route path="/admin/users/:id" element={
-          <AdminRoute>
-            <AdminUserDetailPage />
-          </AdminRoute>
-        } />
-        <Route path="/admin/issues" element={
-          <AdminRoute>
-            <AdminIssuesPage />
-          </AdminRoute>
-        } />
-        <Route path="/admin/knowledge" element={
-          <AdminRoute>
-            <AdminKnowledgePage />
-          </AdminRoute>
-        } />
-        <Route path="/admin/documentation" element={
-          <AdminRoute>
-            <AdminDocumentationPage />
-          </AdminRoute>
-        } />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-    </OfflineToastProvider>
+      <OfflineToastProvider>
+        <BrowserRouter>
+          <AnalyticsWrapper />
+          <PresenceWrapper />
+          <PWAUpdatePrompt />
+          <CookieBanner />
+          <Routes>
+            {/* Public entry point, eagerly bundled. */}
+            <Route path="/" element={<LandingPage />} />
+
+            {/* Public, code-split. */}
+            <Route element={<PublicLayout />}>
+              <Route element={<AuthLayout />}>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+              </Route>
+              <Route path="/invite/:code" element={<InvitePage />} />
+              <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/docs" element={<DocumentationPage />} />
+            </Route>
+
+            {/* Authenticated. */}
+            <Route element={<ProtectedLayout />}>
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/projects/archive" element={<ArchivedProjectsPage />} />
+              <Route path="/activity" element={<ActivityPage />} />
+              <Route path="/projects/:id" element={<ProjectPage />} />
+              <Route path="/projects/:id/messages" element={<ProjectMessagesPage />} />
+              <Route path="/projects/:id/members" element={<ProjectMembersPage />} />
+              <Route path="/projects/:id/settings" element={<ProjectSettingsPage />} />
+              <Route path="/projects/:id/activity" element={<ProjectActivityPage />} />
+              <Route path="/projects/:id/github" element={<ProjectGithubActivityPage />} />
+              <Route path="/projects/:id/dependencies" element={<ProjectDependencyDiagramPage />} />
+              <Route path="/projects/:id/files" element={<ProjectFilesPage />} />
+              <Route path="/projects/:id/time-report" element={<ProjectTimeReportPage />} />
+              <Route path="/projects/:id/sprint-report" element={<ProjectSprintReportPage />} />
+              <Route path="/projects/:id/backlog" element={<SprintBacklogPage />} />
+              <Route path="/projects/:id/roadmap" element={<RoadmapPage />} />
+              <Route path="/projects/:id/automations" element={<ProjectAutomationsPage />} />
+              <Route path="/calendar" element={<CalendarPage />} />
+              <Route path="/calendar/day/:date" element={<DayViewPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/change-password" element={<ChangePasswordPage />} />
+              <Route path="/members" element={<MembersPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+            </Route>
+
+            {/* Admin. */}
+            <Route element={<AdminLayout />}>
+              <Route path="/admin/dashboard" element={<AdminDashboardPage />} />
+              <Route path="/admin/analytics" element={<AdminAnalyticsPage />} />
+              <Route path="/admin/audit-logs" element={<AdminAuditLogsPage />} />
+              <Route path="/admin/users" element={<AdminUsersPage />} />
+              <Route path="/admin/users/:id" element={<AdminUserDetailPage />} />
+              <Route path="/admin/issues" element={<AdminIssuesPage />} />
+              <Route path="/admin/knowledge" element={<AdminKnowledgePage />} />
+              <Route path="/admin/documentation" element={<AdminDocumentationPage />} />
+            </Route>
+
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </OfflineToastProvider>
     </ErrorBoundary>
   )
 }
