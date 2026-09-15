@@ -201,6 +201,18 @@ model Task {
   @@unique([projectId, title], map: "Task_projectId_title_key")
   @@index([projectId])
   @@index([assigneeId])
+  // Composite indexes matching the query shapes the application actually runs.
+  // Single-column indexes on the foreign keys (sprintId, parentId) are already
+  // maintained implicitly by InnoDB for each FK constraint, so they are not
+  // redeclared here.
+  //
+  // Board column grouping and every DONE_STATUSES filter:
+  @@index([projectId, status])
+  // Sprint backlog and sprint report queries:
+  @@index([projectId, sprintId])
+  // Keyset pagination ordering in taskService.getPage(). Without this, paged
+  // reads degrade to a filesort across the whole project:
+  @@index([projectId, createdAt])
 }
 
 model TaskDependency {
@@ -520,7 +532,7 @@ model ProjectRepository {
   @@index([projectId])
 }
 
-// ─── Project-level GitHub event log ───────────────────────────
+// ─── Project-level GitHub event log ───────────────────────
 
 model RepoEvent {
   id               String   @id @default(cuid())
@@ -569,7 +581,7 @@ model TaskGithubLink {
   @@index([taskId])
 }
 
-// ─── Calendar & Scheduling ─────────────────────────────────
+// ─── Calendar & Scheduling ────────────────────────────
 
 enum ScheduleType {
   MEETING
@@ -685,7 +697,7 @@ model UserSession {
   @@index([userId, startedAt])
 }
 
-// ─── File System ───────────────────────────────
+// ─── File System ────────────────────────────
 
 enum FileType {
   FILE
@@ -730,7 +742,7 @@ model TaskAttachment {
   @@index([fileNodeId])
 }
 
-// ─── Workflow Automation ─────────────────────────────────────────
+// ─── Workflow Automation ────────────────────────────────
 
 enum AutomationTrigger {
   TASK_CREATED
@@ -793,7 +805,7 @@ model AutomationLog {
   @@index([projectId, createdAt])
 }
 
-// ─── Audit Logs (Immutable) ──────────────────────────────────────
+// ─── Audit Logs (Immutable) ─────────────────────────────
 // Enterprise-grade, append-only log of who changed what and when.
 // Denormalized user fields so logs survive user deletion.
 // No foreign keys — audit records must never be cascade-deleted.
@@ -821,7 +833,7 @@ model AuditLog {
   @@index([action])
 }
 
-// ─── AI Chatbot History (30-day TTL) ────────────────────────────────────────
+// ─── AI Chatbot History (30-day TTL) ────────────────────────────────
 // Persists per-user conversation with the AI assistant. Messages are
 // automatically purged after 30 days via the nightly cleanup cron job.
 
@@ -855,7 +867,7 @@ model ChatMessage {
   @@index([sessionId, createdAt])
 }
 
-// ─── AI Chatbot Knowledge (personal + global) ───────────────────────────────
+// ─── AI Chatbot Knowledge (personal + global) ───────────────────────────
 // Personal memory is user-scoped and injected into that user's system prompt.
 // Global knowledge requires admin approval before Pinecone indexing.
 
