@@ -35,6 +35,13 @@ export function useCreateTask() {
       deadline?: string | null
       type?: TaskType
     }) => {
+      // Generate the optimistic id ONCE. This previously called
+      // `offline_${Date.now()}` twice, once for the row written into the cache
+      // and again for the returned result, so the two could disagree and any
+      // follow-up mutation could target an id that was not in the cache
+      // (QA_REPORT M6).
+      const optimisticId = `offline_${Date.now()}`
+
       const result = await queueOrRunMutation<any>({
         method: 'POST',
         url: '/tasks',
@@ -43,7 +50,7 @@ export function useCreateTask() {
           // Optimistically add to the task list
           queryClient.setQueryData(['tasks', payload.projectId], (old: any[] | undefined) => {
             const optimistic = {
-              id: `offline_${Date.now()}`,
+              id: optimisticId,
               ...payload,
               _offline: true,
               createdAt: new Date().toISOString(),
@@ -54,7 +61,7 @@ export function useCreateTask() {
         },
       })
       return result.queued
-        ? { _queued: true, id: `offline_${Date.now()}`, ...payload }
+        ? { _queued: true, id: optimisticId, ...payload }
         : result.data
     },
     onSuccess: (data: any, vars) => {
