@@ -1,0 +1,98 @@
+name: verify
+
+# First CI in this repository. QA_REPORT.md notes that a previous review claimed
+# compiler success without any commit-scoped run to prove it; nothing enforced
+# that main even compiles. This closes that gap.
+#
+# Deliberately NOT in this gate yet:
+#   - `npm run lint`: the repo carries a committed frontend/errors.txt, which
+#     suggests pre-existing lint/type noise. Making lint required in the same PR
+#     that introduces CI would block it on unrelated debt. Fix the backlog
+#     locally, then promote lint to a required check.
+#   - unit/integration tests: none exist yet. See QA_REPORT.md for the suite
+#     that should be written (concurrent invite redemption, cross-project
+#     assignees, GitHub installation isolation, webhook retries, SVG rejection,
+#     unauthorized socket events).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref instead of burning minutes on stale commits.
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend (typecheck + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # prisma validate requires the datasource env var to resolve. No database
+      # is contacted: validate and generate are both offline operations.
+      DATABASE_URL: mysql://ci:ci@127.0.0.1:3306/ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Clean install. This also wipes the node_modules directory that is
+      # (wrongly) committed to the repo, so CI builds against the lockfile
+      # rather than whatever was vendored. See QA_REPORT.md H6.
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Type-check and build
+        run: npm run build
+
+  frontend:
+    name: frontend (typecheck + build + bundle budget)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # NOTE: `npm install`, not `npm ci`, on purpose and temporarily.
+      # This branch removes the shadcn CLI from dependencies and moves two
+      # packages to devDependencies without regenerating package-lock.json,
+      # and `npm ci` hard-fails when package.json and the lockfile disagree.
+      # Run `npm install` locally, commit the refreshed lockfile, then switch
+      # this step to `npm ci` so builds become reproducible.
+      # Tracked as T14 in PERFORMANCE_TASKS.md.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npx vite build
+
+      # Structural regression test for route-level code splitting: fails if a
+      # React.lazy() in src/App.tsx is reverted to a static import.
+      - name: Check bundle budget
+        run: node scripts/check-bundle-budget.mjs
+
+      - name: Upload build output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 5
+          if-no-files-found: ignore
