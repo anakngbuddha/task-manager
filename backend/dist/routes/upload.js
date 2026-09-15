@@ -63,9 +63,10 @@ export async function uploadRoutes(app) {
                 : mime.startsWith('video/')
                     ? 'video'
                     : 'auto';
+            const rootFolder = process.env.CLOUDINARY_FOLDER || 'we-work-it';
             const cloudinaryResponse = await new Promise((resolve, reject) => {
                 const uploadStream = cloudinary.uploader.upload_stream({
-                    folder: `task-manager-chat/${req.authUser.id}`,
+                    folder: `${rootFolder}/chat/${req.authUser.id}`,
                     resource_type: resourceType,
                 }, (error, result) => {
                     if (result)

@@ -70,6 +70,8 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
+  CLOUDINARY_URL: z.string().optional(),
+  CLOUDINARY_FOLDER: z.string().optional(),
 
   // ── Gemini AI ──────────────────────────────────────────────
   GEMINI_API_KEY: z.string().optional(),

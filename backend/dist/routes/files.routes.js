@@ -141,7 +141,8 @@ export async function fileRoutes(app) {
                 counter++;
             }
             const cloudinaryResponse = await new Promise((resolve, reject) => {
-                const folderPath = projectId ? `task-manager-project-files/${projectId}` : `task-manager-user-files/${user.id}`;
+                const rootFolder = process.env.CLOUDINARY_FOLDER || 'we-work-it';
+                const folderPath = projectId ? `${rootFolder}/projects/${projectId}` : `${rootFolder}/users/${user.id}`;
                 const resourceType = mimeType.startsWith('image/') || mimeType.startsWith('video/') ? 'auto' : 'raw';
                 const uploadOptions = { folder: folderPath, resource_type: resourceType };
                 if (resourceType === 'raw') {

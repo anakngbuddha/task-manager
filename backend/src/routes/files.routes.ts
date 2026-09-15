@@ -166,7 +166,8 @@ export async function fileRoutes(app: FastifyInstance) {
       }
 
       const cloudinaryResponse = await new Promise<any>((resolve, reject) => {
-        const folderPath = projectId ? `task-manager-project-files/${projectId}` : `task-manager-user-files/${user.id}`
+        const rootFolder = process.env.CLOUDINARY_FOLDER || 'we-work-it'
+        const folderPath = projectId ? `${rootFolder}/projects/${projectId}` : `${rootFolder}/users/${user.id}`
         const resourceType = mimeType.startsWith('image/') || mimeType.startsWith('video/') ? 'auto' : 'raw';
         
         const uploadOptions: any = { folder: folderPath, resource_type: resourceType };
