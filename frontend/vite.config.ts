@@ -4,64 +4,6 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { VitePWA } from 'vite-plugin-pwa'
 
-/**
- * Group node_modules into named vendor chunks.
- *
- * Route components are lazily imported in src/App.tsx, so a vendor only ships
- * to the browser once a route that needs it is visited. Without this grouping
- * Rollup is free to hoist shared vendor code into a chunk the entry pulls in,
- * which defeats the point: an anonymous visitor on the login screen would
- * still download the dependency-diagram, charting and map stacks.
- *
- * Order matters. More specific matches must come before the generic React
- * check, otherwise packages whose paths merely contain "react" get misfiled.
- */
-function manualChunks(id: string): string | undefined {
-  if (!id.includes('node_modules')) return undefined
-
-  // Dependency diagram: @xyflow/react + @dagrejs/dagre. Only /projects/:id/dependencies.
-  if (id.includes('@xyflow') || id.includes('dagre')) return 'vendor-diagram'
-
-  // Charts: recharts pulls a large tree of d3-* packages.
-  if (id.includes('recharts') || id.includes('d3-') || id.includes('victory-vendor')) return 'vendor-charts'
-
-  // Maps: only the calendar location picker / map modal.
-  if (id.includes('leaflet')) return 'vendor-maps'
-
-  if (id.includes('framer-motion') || id.includes('motion-dom') || id.includes('motion-utils')) return 'vendor-motion'
-
-  if (id.includes('emoji-picker-react')) return 'vendor-emoji'
-
-  // react-markdown drags in the whole unified/remark/micromark pipeline.
-  if (
-    id.includes('react-markdown') ||
-    id.includes('remark') ||
-    id.includes('rehype') ||
-    id.includes('micromark') ||
-    id.includes('mdast') ||
-    id.includes('hast') ||
-    id.includes('unified') ||
-    id.includes('unist')
-  ) {
-    return 'vendor-markdown'
-  }
-
-  if (id.includes('socket.io') || id.includes('engine.io')) return 'vendor-socket'
-
-  if (id.includes('@dnd-kit')) return 'vendor-dnd'
-
-  if (id.includes('radix-ui') || id.includes('@radix-ui')) return 'vendor-radix'
-
-  if (id.includes('react-router') || id.includes('@remix-run')) return 'vendor-router'
-
-  if (id.includes('react-hook-form') || id.includes('@hookform') || id.includes('/zod/')) return 'vendor-forms'
-
-  // React core last, so the checks above win.
-  if (id.includes('/react-dom/') || id.includes('/react/') || id.includes('/scheduler/')) return 'vendor-react'
-
-  return 'vendor'
-}
-
 export default defineConfig({
   plugins: [
     react(),
@@ -147,19 +89,14 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      '@': path.resolve(__dirname, './src'),
     },
   },
   build: {
-    // Raised from the 500 kB default so the warning flags genuine regressions
-    // rather than firing on every legitimately large vendor chunk. The hard
-    // ceiling is enforced by scripts/check-bundle-budget.mjs.
+    // Route components are already lazy-loaded in App.tsx. Let Rollup place
+    // shared dependencies automatically so React is not split into circular
+    // vendor chunks that can execute before the React namespace is initialized.
     chunkSizeWarningLimit: 900,
-    rollupOptions: {
-      output: {
-        manualChunks,
-      },
-    },
   },
   server: {
     proxy: {
